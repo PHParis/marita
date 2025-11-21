@@ -1,0 +1,499 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\title{MAHILDA Rule Discovery Results}
+\author{Generated on 2025-11-21 09:25:29}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Summary Statistics}
+\begin{table}[h!]
+\centering
+\caption{MAHILDA Rule Discovery Summary Statistics}
+\label{tab:mahilda_summary}
+\begin{tabular}{|l|r|r|r|r|}
+\hline
+\textbf{Database} & \textbf{Rules} & \textbf{Accuracy} & \textbf{Confidence} & \textbf{Time (s)} \\
+\hline
+Atherosclerosis & 0 & 0.0000 & 0.0000 & 11.48ms \\
+Biodegradability & 10 & 0.4000 & 0.4000 & 173.29ms \\
+Bupa & 4 & 0.2500 & 0.2500 & 128.18ms \\
+CORA & 0 & 0.0000 & 0.0000 & 275.66ms \\
+Carcinogenesis & 0 & 0.0000 & 0.0000 & 71.95ms \\
+Chess & 0 & 0.0000 & 0.0000 & 56.74ms \\
+CiteSeer & 0 & 0.0000 & 0.0000 & 444.12ms \\
+Countries & 0 & 0.0000 & 0.0000 & 281.12ms \\
+CraftBeer & 0 & 0.0000 & 0.0000 & 40.52ms \\
+DCG & 0 & 0.0000 & 0.0000 & 33.19ms \\
+Dallas & 0 & 0.0000 & 0.0000 & 52.02ms \\
+Dunur & 9 & 0.6667 & 0.6667 & 582.82ms \\
+Elti & 0 & 0.0000 & 0.0000 & 213.99ms \\
+Facebook & 0 & 0.0000 & 0.0000 & 283.14ms \\
+Hepatitis_std & 0 & 0.0000 & 0.0000 & 63.17ms \\
+KRK & 0 & 0.0000 & 0.0000 & 42.36ms \\
+Mesh & 5 & 0.4000 & 0.4000 & 176.35ms \\
+Mooney_Family & 49 & 0.9388 & 0.9388 & 7.308s \\
+MuskSmall & 0 & 0.0000 & 0.0000 & 124.96ms \\
+NBA & 0 & 0.0000 & 0.0000 & 234.58ms \\
+PTE & 14 & 0.5714 & 0.5714 & 540.44ms \\
+Pima & 0 & 0.0000 & 0.0000 & 80.73ms \\
+PremierLeague & 3 & 0.0000 & 0.0000 & 4m 55.0s \\
+Pyrimidine & 0 & 0.0000 & 0.0000 & 21.10ms \\
+SAT & 3 & 0.0000 & 0.0000 & 371.77ms \\
+SFScores & 0 & 0.0000 & 0.0000 & 222.24ms \\
+Same_gen & 0 & 0.0000 & 0.0000 & 48.98ms \\
+Shakespeare & 0 & 0.0000 & 0.0000 & 98.38ms \\
+Student_loan & 3 & 0.0000 & 0.0000 & 117.81ms \\
+Toxicology & 3 & 0.0000 & 0.0000 & 268.05ms \\
+Triazine & 0 & 0.0000 & 0.0000 & 40.03ms \\
+UTube & 0 & 0.0000 & 0.0000 & 150.46ms \\
+UW_std & 0 & 0.0000 & 0.0000 & 61.21ms \\
+WebKP & 0 & 0.0000 & 0.0000 & 409.22ms \\
+classicmodels & 3 & 0.0000 & 0.0000 & 262.61ms \\
+cs & 0 & 0.0000 & 0.0000 & 132.31ms \\
+financial-db & 0 & 0.0000 & 0.0000 & 27.76ms \\
+ftp & 0 & 0.0000 & 0.0000 & 520.07ms \\
+genes & 0 & 0.0000 & 0.0000 & 41.32ms \\
+medical & 0 & 0.0000 & 0.0000 & 177.24ms \\
+mutagenesis & 0 & 0.0000 & 0.0000 & 81.81ms \\
+nations & 0 & 0.0000 & 0.0000 & 162.76ms \\
+northwind & 0 & 0.0000 & 0.0000 & 154.34ms \\
+restbase & 0 & 0.0000 & 0.0000 & 184.01ms \\
+trains & 0 & 0.0000 & 0.0000 & 34.29ms \\
+university & 3 & 0.0000 & 0.0000 & 388.72ms \\
+walmart-db & 0 & 0.0000 & 0.0000 & 65.05ms \\
+world & 0 & 0.0000 & 0.0000 & 46.96ms \\
+yago & 43 & 0.4963 & 0.2951 & 1h 33m \\
+\hline
+\textbf{Total} & \textbf{152} & & & \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Top Rules by Database}
+The following tables show the top 10 rules discovered in each database, sorted by accuracy:
+
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in Biodegradability}
+\label{tab:rules_Biodegradability}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0: molecule\_0(molecule\_id=x0) ⇒ atom\_0(molecule\_id... & 1.0000 & 1.0000 \\
+2 & ∀ x0: atom\_0(molecule\_id=x0) ⇒ molecule\_0(molecule\_id... & 1.0000 & 1.0000 \\
+3 & ∀ x0: group\_0(group\_id=x0) ⇒ gmember\_0(group\_id=x0) & 1.0000 & 1.0000 \\
+4 & ∀ x0: gmember\_0(group\_id=x0) ⇒ group\_0(group\_id=x0) & 1.0000 & 1.0000 \\
+5 & ∀ x0: atom\_0(molecule\_id=x0) ∧ molecule\_0(molecule\_id... & 0.0000 & 0.0000 \\
+6 & ∀ x0: atom\_0(molecule\_id=x0) ∧ molecule\_0(molecule\_id... & 0.0000 & 0.0000 \\
+7 & ∀ x0: atom\_0(molecule\_id=x0) ∧ molecule\_0(molecule\_id... & 0.0000 & 0.0000 \\
+8 & ∀ x0: gmember\_0(group\_id=x0) ∧ group\_0(group\_id=x0) ⇒... & 0.0000 & 0.0000 \\
+9 & ∀ x0: gmember\_0(group\_id=x0) ∧ group\_0(group\_id=x0) ∧... & 0.0000 & 0.0000 \\
+10 & ∀ x0: gmember\_0(group\_id=x0) ∧ group\_0(group\_id=x0) ∧... & 0.0000 & 0.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in Bupa}
+\label{tab:rules_Bupa}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0: bupa\_type\_0(arg1=x0) ⇒ bupa\_0(arg2=x0) & 1.0000 & 1.0000 \\
+2 & ∀ x0: alkphos\_0(arg1=x0) ∧ bupa\_name\_0(arg1=x0) ⇒ bupa... & 0.0000 & 0.0000 \\
+3 & ∀ x0: alkphos\_0(arg1=x0) ∧ bupa\_name\_0(arg1=x0) ∧ bupa... & 0.0000 & 0.0000 \\
+4 & ∀ x0: alkphos\_0(arg1=x0) ∧ bupa\_name\_0(arg1=x0) ∧ bupa... & 0.0000 & 0.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in Dunur}
+\label{tab:rules_Dunur}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0: husband2\_0(name2=x0) ⇒ person\_0(name=x0) & 1.0000 & 1.0000 \\
+2 & ∀ x0: person\_0(name=x0) ⇒ husband2\_0(name2=x0) & 1.0000 & 1.0000 \\
+3 & ∀ x0: person\_0(name=x0) ⇒ niece\_0(name1=x0) & 1.0000 & 1.0000 \\
+4 & ∀ x0: person\_0(name=x0) ⇒ mother\_0(name1=x0) & 1.0000 & 1.0000 \\
+5 & ∀ x0: person\_0(name=x0) ⇒ nephew\_0(name1=x0) & 1.0000 & 1.0000 \\
+6 & ∀ x0: person\_0(name=x0) ⇒ husband\_0(name1=x0) & 1.0000 & 1.0000 \\
+7 & ∀ x0: husband2\_0(name2=x0) ∧ person\_0(name=x0) ⇒ person... & 0.0000 & 0.0000 \\
+8 & ∀ x0: husband2\_0(name2=x0) ∧ person\_0(name=x0) ∧ person... & 0.0000 & 0.0000 \\
+9 & ∀ x0: husband2\_0(name2=x0) ∧ person\_0(name=x0) ∧ person... & 0.0000 & 0.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in Mesh}
+\label{tab:rules_Mesh}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0: mesh\_0(num=x0) ⇒ nnumber\_0(name=x0) & 1.0000 & 1.0000 \\
+2 & ∀ x0: nnumber\_0(name=x0) ⇒ mesh\_0(num=x0) & 1.0000 & 1.0000 \\
+3 & ∀ x0: mesh\_0(num=x0) ∧ nnumber\_0(name=x0) ⇒ nnumber\_1(... & 0.0000 & 0.0000 \\
+4 & ∀ x0: mesh\_0(num=x0) ∧ nnumber\_0(name=x0) ∧ nnumber\_1(... & 0.0000 & 0.0000 \\
+5 & ∀ x0: mesh\_0(num=x0) ∧ nnumber\_0(name=x0) ∧ nnumber\_1(... & 0.0000 & 0.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in Mooney_Family}
+\label{tab:rules_MooneyFamily}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0: father\_0(name1=x0) ⇒ person\_0(name=x0) & 1.0000 & 1.0000 \\
+2 & ∀ x0: person\_0(name=x0) ⇒ father\_0(name1=x0) & 1.0000 & 1.0000 \\
+3 & ∀ x0: person\_0(name=x0) ⇒ father1\_0(name2=x0) & 1.0000 & 1.0000 \\
+4 & ∀ x0: person\_0(name=x0) ⇒ husband2\_0(name2=x0) & 1.0000 & 1.0000 \\
+5 & ∀ x0: person\_0(name=x0) ⇒ niece2\_0(name2=x0) & 1.0000 & 1.0000 \\
+6 & ∀ x0: person\_0(name=x0) ⇒ mother5\_0(name2=x0) & 1.0000 & 1.0000 \\
+7 & ∀ x0: person\_0(name=x0) ⇒ aunt5\_0(name1=x0) & 1.0000 & 1.0000 \\
+8 & ∀ x0: person\_0(name=x0) ⇒ niece4\_0(name1=x0) & 1.0000 & 1.0000 \\
+9 & ∀ x0: person\_0(name=x0) ⇒ aunt4\_0(name2=x0) & 1.0000 & 1.0000 \\
+10 & ∀ x0: person\_0(name=x0) ⇒ mother3\_0(name2=x0) & 1.0000 & 1.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in PTE}
+\label{tab:rules_PTE}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0: active\_0(Arg0=x0) ⇒ pte\_drug\_0(drug\_id=x0) & 1.0000 & 1.0000 \\
+2 & ∀ x0: pte\_drug\_0(drug\_id=x0) ⇒ pte\_bond\_count\_0(Arg... & 1.0000 & 1.0000 \\
+3 & ∀ x0: pte\_active\_0(is\_active=x0) ⇒ pte\_number\_0(Bina... & 1.0000 & 1.0000 \\
+4 & ∀ x0: pte\_drug\_0(drug\_id=x0) ⇒ pte\_bond\_0(drug\_id=x0) & 1.0000 & 1.0000 \\
+5 & ∀ x0: pte\_drug\_0(drug\_id=x0) ⇒ pte\_atm\_count\_0(Arg0... & 1.0000 & 1.0000 \\
+6 & ∀ x0: pte\_drug\_0(drug\_id=x0) ⇒ pte\_amine\_0(Arg0=x0) & 1.0000 & 1.0000 \\
+7 & ∀ x0: pte\_drug\_0(drug\_id=x0) ⇒ pte\_atm\_min\_charge\_... & 1.0000 & 1.0000 \\
+8 & ∀ x0: pte\_drug\_0(drug\_id=x0) ⇒ pte\_atm\_0(drug\_id=x0) & 1.0000 & 1.0000 \\
+9 & ∀ x0: active\_0(Arg0=x0) ∧ pte\_drug\_0(drug\_id=x0) ⇒ pt... & 0.0000 & 0.0000 \\
+10 & ∀ x0: active\_0(Arg0=x0) ∧ pte\_drug\_0(drug\_id=x0) ∧ pt... & 0.0000 & 0.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in PremierLeague}
+\label{tab:rules_PremierLeague}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0, y0, y1: Actions\_0(PlayerID=y0, TeamID=y1, MatchID=... & 0.0000 & 0.0000 \\
+2 & ∀ x0, y0, y1: Actions\_0(PlayerID=y0, TeamID=y1, MatchID=... & 0.0000 & 0.0000 \\
+3 & ∀ x0, y0, y1: Actions\_0(PlayerID=y0, TeamID=y1, MatchID=... & 0.0000 & 0.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in SAT}
+\label{tab:rules_SAT}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0: fault\_test\_0(tf=x0) ∧ trfl\_0(tf=x0) ⇒ trfl\_1(tf... & 0.0000 & 0.0000 \\
+2 & ∀ x0: fault\_test\_0(tf=x0) ∧ trfl\_0(tf=x0) ∧ trfl\_1(tf... & 0.0000 & 0.0000 \\
+3 & ∀ x0: fault\_test\_0(tf=x0) ∧ trfl\_0(tf=x0) ∧ trfl\_1(tf... & 0.0000 & 0.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in Student_loan}
+\label{tab:rules_Studentloan}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0: disabled\_0(name=x0) ∧ person\_0(name=x0) ⇒ person\... & 0.0000 & 0.0000 \\
+2 & ∀ x0: disabled\_0(name=x0) ∧ person\_0(name=x0) ∧ person\... & 0.0000 & 0.0000 \\
+3 & ∀ x0: disabled\_0(name=x0) ∧ person\_0(name=x0) ∧ person\... & 0.0000 & 0.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in Toxicology}
+\label{tab:rules_Toxicology}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0: bond\_0(molecule\_id=x0) ∧ molecule\_0(molecule\_id... & 0.0000 & 0.0000 \\
+2 & ∀ x0: bond\_0(molecule\_id=x0) ∧ molecule\_0(molecule\_id... & 0.0000 & 0.0000 \\
+3 & ∀ x0: bond\_0(molecule\_id=x0) ∧ molecule\_0(molecule\_id... & 0.0000 & 0.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in classicmodels}
+\label{tab:rules_classicmodels}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0: orderdetails\_0(productCode=x0) ∧ products\_0(produ... & 0.0000 & 0.0000 \\
+2 & ∀ x0: orderdetails\_0(productCode=x0) ∧ products\_0(produ... & 0.0000 & 0.0000 \\
+3 & ∀ x0: orderdetails\_0(productCode=x0) ∧ products\_0(produ... & 0.0000 & 0.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in university}
+\label{tab:rules_university}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0, y0: RA\_0(prof\_id=y0, student\_id=x0) ∧ prof\_0(pr... & 0.0000 & 0.0000 \\
+2 & ∀ x0, y0: RA\_0(prof\_id=y0, student\_id=x0) ∧ prof\_0(pr... & 0.0000 & 0.0000 \\
+3 & ∀ x0, y0: RA\_0(prof\_id=y0, student\_id=x0) ∧ prof\_0(pr... & 0.0000 & 0.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Top 10 Rules Discovered in yago}
+\label{tab:rules_yago}
+\begin{tabular}{|c|p{5cm}|c|c|}
+\hline
+\textbf{Rank} & \textbf{Rule} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+1 & ∀ x0, y0: CreativeWork\_0(id=x0) ∧ CreativeWork\_1(id=x0,... & 4.0000 & 0.0002 \\
+2 & ∀ x0, y0: CreativeWork\_1(id=x0, material=y0) ∧ CreativeW... & 4.0000 & 0.0002 \\
+3 & ∀ x0, y0: CreativeWork\_0(id=y0) ∧ CreativeWork\_1(id=y0,... & 2.0000 & 0.6667 \\
+4 & ∀ x0, x1: CreativeWork\_0(id=x0) ∧ CreativeWork\_2(id=x0)... & 1.3333 & 4.0000 \\
+5 & ∀ x0: Person\_0(parentTaxon=x0) ⇒ Taxon\_0(id=x0) & 1.0000 & 1.0000 \\
+6 & ∀ x0, y0: CreativeWork\_actor\_0(actor=x0) ∧ Person\_0(id... & 1.0000 & 0.0033 \\
+7 & ∀ x0, x1: CreativeWork\_actor\_0(actor=x0) ∧ Person\_0(id... & 1.0000 & 1.0000 \\
+8 & ∀ x0, y0: CreativeWork\_actor\_0(actor=x0) ∧ Person\_0(id... & 1.0000 & 0.0033 \\
+9 & ∀ x0, y0: CreativeWork\_actor\_0(actor=y0) ∧ Person\_0(id... & 1.0000 & 0.0091 \\
+10 & ∀ x0: Intangible\_0(id=x0) ∧ Intangible\_1(id=x0) ⇒ Intan... & 1.0000 & 1.0000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Complete Results}
+\begin{table}[h!]
+\centering
+\tiny
+\caption{All MAHILDA Rules - Complete Results}
+\label{tab:all_rules}
+\begin{longtable}{|l|p{6cm}|c|c|c|c|}
+\hline
+\textbf{Database} & \textbf{Rule} & \textbf{Body} & \textbf{Head} & \textbf{Accuracy} & \textbf{Confidence} \\
+\hline
+\endhead
+Biodegradability & ∀ x0: molecule\_0(molecule\_id=x0) ⇒ atom\_0(mo... & 1 & 1 & 1.0000 & 1.0000 \\
+Biodegradability & ∀ x0: atom\_0(molecule\_id=x0) ⇒ molecule\_0(mo... & 1 & 1 & 1.0000 & 1.0000 \\
+Biodegradability & ∀ x0: group\_0(group\_id=x0) ⇒ gmember\_0(group... & 1 & 1 & 1.0000 & 1.0000 \\
+Biodegradability & ∀ x0: gmember\_0(group\_id=x0) ⇒ group\_0(group... & 1 & 1 & 1.0000 & 1.0000 \\
+Biodegradability & ∀ x0: atom\_0(molecule\_id=x0) ∧ molecule\_0(mo... & 2 & 1 & 0.0000 & 0.0000 \\
+Biodegradability & ∀ x0: atom\_0(molecule\_id=x0) ∧ molecule\_0(mo... & 3 & 1 & 0.0000 & 0.0000 \\
+Biodegradability & ∀ x0: atom\_0(molecule\_id=x0) ∧ molecule\_0(mo... & 4 & 1 & 0.0000 & 0.0000 \\
+Biodegradability & ∀ x0: gmember\_0(group\_id=x0) ∧ group\_0(group... & 2 & 1 & 0.0000 & 0.0000 \\
+Biodegradability & ∀ x0: gmember\_0(group\_id=x0) ∧ group\_0(group... & 3 & 1 & 0.0000 & 0.0000 \\
+Biodegradability & ∀ x0: gmember\_0(group\_id=x0) ∧ group\_0(group... & 4 & 1 & 0.0000 & 0.0000 \\
+Bupa & ∀ x0: bupa\_type\_0(arg1=x0) ⇒ bupa\_0(arg2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Bupa & ∀ x0: alkphos\_0(arg1=x0) ∧ bupa\_name\_0(arg1=... & 2 & 1 & 0.0000 & 0.0000 \\
+Bupa & ∀ x0: alkphos\_0(arg1=x0) ∧ bupa\_name\_0(arg1=... & 3 & 1 & 0.0000 & 0.0000 \\
+Bupa & ∀ x0: alkphos\_0(arg1=x0) ∧ bupa\_name\_0(arg1=... & 4 & 1 & 0.0000 & 0.0000 \\
+Dunur & ∀ x0: husband2\_0(name2=x0) ⇒ person\_0(name=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Dunur & ∀ x0: person\_0(name=x0) ⇒ husband2\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Dunur & ∀ x0: person\_0(name=x0) ⇒ niece\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Dunur & ∀ x0: person\_0(name=x0) ⇒ mother\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Dunur & ∀ x0: person\_0(name=x0) ⇒ nephew\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Dunur & ∀ x0: person\_0(name=x0) ⇒ husband\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Dunur & ∀ x0: husband2\_0(name2=x0) ∧ person\_0(name=x0... & 2 & 1 & 0.0000 & 0.0000 \\
+Dunur & ∀ x0: husband2\_0(name2=x0) ∧ person\_0(name=x0... & 3 & 1 & 0.0000 & 0.0000 \\
+Dunur & ∀ x0: husband2\_0(name2=x0) ∧ person\_0(name=x0... & 4 & 1 & 0.0000 & 0.0000 \\
+Mesh & ∀ x0: mesh\_0(num=x0) ⇒ nnumber\_0(name=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mesh & ∀ x0: nnumber\_0(name=x0) ⇒ mesh\_0(num=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mesh & ∀ x0: mesh\_0(num=x0) ∧ nnumber\_0(name=x0) ⇒ n... & 2 & 1 & 0.0000 & 0.0000 \\
+Mesh & ∀ x0: mesh\_0(num=x0) ∧ nnumber\_0(name=x0) ∧ n... & 3 & 1 & 0.0000 & 0.0000 \\
+Mesh & ∀ x0: mesh\_0(num=x0) ∧ nnumber\_0(name=x0) ∧ n... & 4 & 1 & 0.0000 & 0.0000 \\
+Mooney_Family & ∀ x0: father\_0(name1=x0) ⇒ person\_0(name=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ father\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ father1\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ husband2\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ niece2\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ mother5\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ aunt5\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ niece4\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ aunt4\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ mother3\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ husband\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ father4\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ niece\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ aunt3\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ husband4\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ husband5\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ mother1\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ mother4\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ niece5\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ mother2\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ nephew5\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ nephew3\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ mother\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ brother3\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ brother1\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ daughter5\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ nephew1\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ brother5\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ nephew2\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ daughter\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ daughter2\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ brother\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ niece3\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ husband3\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ husband1\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ brother4\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ nephew4\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ daughter1\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ father3\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ daughter3\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ daughter4\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ father5\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ nephew\_0(name2=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ niece1\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ father2\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: person\_0(name=x0) ⇒ brother2\_0(name1=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+Mooney_Family & ∀ x0: father\_0(name1=x0) ∧ person\_0(name=x0) ... & 2 & 1 & 0.0000 & 0.0000 \\
+Mooney_Family & ∀ x0: father\_0(name1=x0) ∧ person\_0(name=x0) ... & 3 & 1 & 0.0000 & 0.0000 \\
+Mooney_Family & ∀ x0: father\_0(name1=x0) ∧ person\_0(name=x0) ... & 4 & 1 & 0.0000 & 0.0000 \\
+PTE & ∀ x0: active\_0(Arg0=x0) ⇒ pte\_drug\_0(drug\_i... & 1 & 1 & 1.0000 & 1.0000 \\
+PTE & ∀ x0: pte\_drug\_0(drug\_id=x0) ⇒ pte\_bond\_co... & 1 & 1 & 1.0000 & 1.0000 \\
+PTE & ∀ x0: pte\_active\_0(is\_active=x0) ⇒ pte\_numb... & 1 & 1 & 1.0000 & 1.0000 \\
+PTE & ∀ x0: pte\_drug\_0(drug\_id=x0) ⇒ pte\_bond\_0(... & 1 & 1 & 1.0000 & 1.0000 \\
+PTE & ∀ x0: pte\_drug\_0(drug\_id=x0) ⇒ pte\_atm\_cou... & 1 & 1 & 1.0000 & 1.0000 \\
+PTE & ∀ x0: pte\_drug\_0(drug\_id=x0) ⇒ pte\_amine\_0... & 1 & 1 & 1.0000 & 1.0000 \\
+PTE & ∀ x0: pte\_drug\_0(drug\_id=x0) ⇒ pte\_atm\_min... & 1 & 1 & 1.0000 & 1.0000 \\
+PTE & ∀ x0: pte\_drug\_0(drug\_id=x0) ⇒ pte\_atm\_0(d... & 1 & 1 & 1.0000 & 1.0000 \\
+PTE & ∀ x0: active\_0(Arg0=x0) ∧ pte\_drug\_0(drug\_i... & 2 & 1 & 0.0000 & 0.0000 \\
+PTE & ∀ x0: active\_0(Arg0=x0) ∧ pte\_drug\_0(drug\_i... & 3 & 1 & 0.0000 & 0.0000 \\
+PTE & ∀ x0: active\_0(Arg0=x0) ∧ pte\_drug\_0(drug\_i... & 4 & 1 & 0.0000 & 0.0000 \\
+PTE & ∀ x0: pte\_active\_0(is\_active=x0) ∧ pte\_numb... & 2 & 1 & 0.0000 & 0.0000 \\
+PTE & ∀ x0: pte\_active\_0(is\_active=x0) ∧ pte\_numb... & 3 & 1 & 0.0000 & 0.0000 \\
+PTE & ∀ x0: pte\_active\_0(is\_active=x0) ∧ pte\_numb... & 4 & 1 & 0.0000 & 0.0000 \\
+PremierLeague & ∀ x0, y0, y1: Actions\_0(PlayerID=y0, TeamID=y1... & 5 & 1 & 0.0000 & 0.0000 \\
+PremierLeague & ∀ x0, y0, y1: Actions\_0(PlayerID=y0, TeamID=y1... & 6 & 1 & 0.0000 & 0.0000 \\
+PremierLeague & ∀ x0, y0, y1: Actions\_0(PlayerID=y0, TeamID=y1... & 7 & 1 & 0.0000 & 0.0000 \\
+SAT & ∀ x0: fault\_test\_0(tf=x0) ∧ trfl\_0(tf=x0) ⇒ ... & 2 & 1 & 0.0000 & 0.0000 \\
+SAT & ∀ x0: fault\_test\_0(tf=x0) ∧ trfl\_0(tf=x0) ∧ ... & 3 & 1 & 0.0000 & 0.0000 \\
+SAT & ∀ x0: fault\_test\_0(tf=x0) ∧ trfl\_0(tf=x0) ∧ ... & 4 & 1 & 0.0000 & 0.0000 \\
+Student_loan & ∀ x0: disabled\_0(name=x0) ∧ person\_0(name=x0)... & 2 & 1 & 0.0000 & 0.0000 \\
+Student_loan & ∀ x0: disabled\_0(name=x0) ∧ person\_0(name=x0)... & 3 & 1 & 0.0000 & 0.0000 \\
+Student_loan & ∀ x0: disabled\_0(name=x0) ∧ person\_0(name=x0)... & 4 & 1 & 0.0000 & 0.0000 \\
+Toxicology & ∀ x0: bond\_0(molecule\_id=x0) ∧ molecule\_0(mo... & 2 & 1 & 0.0000 & 0.0000 \\
+Toxicology & ∀ x0: bond\_0(molecule\_id=x0) ∧ molecule\_0(mo... & 3 & 1 & 0.0000 & 0.0000 \\
+Toxicology & ∀ x0: bond\_0(molecule\_id=x0) ∧ molecule\_0(mo... & 4 & 1 & 0.0000 & 0.0000 \\
+classicmodels & ∀ x0: orderdetails\_0(productCode=x0) ∧ product... & 2 & 1 & 0.0000 & 0.0000 \\
+classicmodels & ∀ x0: orderdetails\_0(productCode=x0) ∧ product... & 3 & 1 & 0.0000 & 0.0000 \\
+classicmodels & ∀ x0: orderdetails\_0(productCode=x0) ∧ product... & 4 & 1 & 0.0000 & 0.0000 \\
+university & ∀ x0, y0: RA\_0(prof\_id=y0, student\_id=x0) ∧ ... & 3 & 1 & 0.0000 & 0.0000 \\
+university & ∀ x0, y0: RA\_0(prof\_id=y0, student\_id=x0) ∧ ... & 4 & 1 & 0.0000 & 0.0000 \\
+university & ∀ x0, y0: RA\_0(prof\_id=y0, student\_id=x0) ∧ ... & 5 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0, y0: CreativeWork\_0(id=x0) ∧ CreativeWork... & 4 & 1 & 4.0000 & 0.0002 \\
+yago & ∀ x0, y0: CreativeWork\_1(id=x0, material=y0) ∧... & 4 & 1 & 4.0000 & 0.0002 \\
+yago & ∀ x0, y0: CreativeWork\_0(id=y0) ∧ CreativeWork... & 4 & 1 & 2.0000 & 0.6667 \\
+yago & ∀ x0, x1: CreativeWork\_0(id=x0) ∧ CreativeWork... & 3 & 1 & 1.3333 & 4.0000 \\
+yago & ∀ x0: Person\_0(parentTaxon=x0) ⇒ Taxon\_0(id=x0) & 1 & 1 & 1.0000 & 1.0000 \\
+yago & ∀ x0, y0: CreativeWork\_actor\_0(actor=x0) ∧ Pe... & 5 & 1 & 1.0000 & 0.0033 \\
+yago & ∀ x0, x1: CreativeWork\_actor\_0(actor=x0) ∧ Pe... & 5 & 1 & 1.0000 & 1.0000 \\
+yago & ∀ x0, y0: CreativeWork\_actor\_0(actor=x0) ∧ Pe... & 5 & 1 & 1.0000 & 0.0033 \\
+yago & ∀ x0, y0: CreativeWork\_actor\_0(actor=y0) ∧ Pe... & 5 & 1 & 1.0000 & 0.0091 \\
+yago & ∀ x0: Intangible\_0(id=x0) ∧ Intangible\_1(id=x... & 2 & 1 & 1.0000 & 1.0000 \\
+yago & ∀ x0: Intangible\_0(id=x0) ∧ Intangible\_2(id=x... & 2 & 1 & 1.0000 & 1.0000 \\
+yago & ∀ x0: Intangible\_0(id=x0) ∧ Intangible\_1(id=x... & 3 & 1 & 1.0000 & 1.0000 \\
+yago & ∀ x0, y0: CreativeWork\_0(id=x0) ∧ CreativeWork... & 4 & 1 & 1.0000 & 0.0000 \\
+yago & ∀ x0, x1: CreativeWork\_0(id=x0) ∧ CreativeWork... & 3 & 1 & 1.0000 & 1.0000 \\
+yago & ∀ x0, y0: CreativeWork\_0(id=x0) ∧ CreativeWork... & 4 & 1 & 0.0064 & 0.0064 \\
+yago & ∀ x0, y0: CreativeWork\_0(id=x0) ∧ CreativeWork... & 4 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0, x1: CreativeWork\_0(id=x0) ∧ CreativeWork... & 4 & 1 & 0.0000 & 1.0000 \\
+yago & ∀ x0, x1: CreativeWork\_actor\_0(actor=x0) ∧ Pe... & 5 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0, x1: CreativeWork\_0(id=x0) ∧ CreativeWork... & 4 & 1 & 0.0000 & 1.0000 \\
+yago & ∀ x0: Person\_0(parentTaxon=x0) ∧ Taxon\_0(id=x... & 2 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: Person\_0(parentTaxon=x0) ∧ Taxon\_0(id=x... & 3 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: Person\_0(parentTaxon=x0) ∧ Taxon\_0(id=x... & 4 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: Person\_0(deathPlace=x0) ⇒ Place\_0(id=x0) & 1 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: Person\_0(deathPlace=x0) ∧ Place\_0(id=x0... & 2 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: Person\_0(deathPlace=x0) ∧ Place\_0(id=x0... & 3 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: Person\_0(deathPlace=x0) ∧ Place\_0(id=x0... & 4 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: CreativeWork\_actor\_0(actor=x0) ∧ Person... & 2 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: CreativeWork\_actor\_0(actor=x0) ∧ Person... & 3 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: CreativeWork\_actor\_0(actor=x0) ∧ Person... & 4 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: Intangible\_0(id=x0) ⇒ Intangible\_1(id=x0) & 1 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: CreativeWork\_0(id=x0) ⇒ CreativeWork\_1(... & 1 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: CreativeWork\_0(id=x0) ∧ CreativeWork\_1(... & 2 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: CreativeWork\_0(id=x0) ∧ CreativeWork\_1(... & 3 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0, y0: CreativeWork\_0(id=y0, material=x0) ∧... & 4 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0, y0: CreativeWork\_0(id=y0, material=x0) ∧... & 5 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0, y0: CreativeWork\_0(id=y0, material=x0) ∧... & 6 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0, y0: CreativeWork\_0(id=y0, material=x0) ∧... & 7 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: CreativeWork\_manufacturer\_0(manufacture... & 2 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: CreativeWork\_manufacturer\_0(manufacture... & 3 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: CreativeWork\_manufacturer\_0(manufacture... & 4 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: Event\_0(id=x0) ⇒ Event\_1(id=x0) & 1 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: Event\_0(id=x0) ∧ Event\_1(id=x0) ⇒ Event... & 2 & 1 & 0.0000 & 0.0000 \\
+yago & ∀ x0: Event\_0(id=x0) ∧ Event\_1(id=x0) ∧ Event... & 3 & 1 & 0.0000 & 0.0000 \\
+\hline
+\textbf{Total Rules} & & & & & \textbf{152} \\
+\hline
+\end{longtable}
+\end{table}
+
+\end{document}

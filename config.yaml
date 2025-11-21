@@ -1,0 +1,20 @@
+monitor:
+  memory_threshold: 16106127360  # 15GB in bytes
+  timeout: 3600  # 1 hour
+
+database:
+  path: "/Volumes/backup_mac_1/data_mahilda_2"  # Path to database files
+
+logging:
+  log_dir: "logs"  # Directory for logs
+
+results:
+  output_dir: "results_MAHILDA"  # Directory for saving results
+
+algorithm:
+  name: "MAHILDA"  # Default algorithm
+
+mlflow:
+  use: true  # Set to true to log experiments to mlflow
+  tracking_uri: "file:./mlruns"  # File-based backend (relative path)
+  experiment_name: "Rule Discovery"

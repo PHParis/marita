@@ -1,0 +1,28 @@
+monitor:
+  memory_threshold: 16106127360  # 15GB in bytes
+  timeout: 3600  # 1 hour
+
+database:
+  path: "test_data"  # Path to test database
+  name: "test.db"  # Test database file
+
+logging:
+  log_dir: "logs"  # Directory for logs
+
+results:
+  output_dir: "results_test"  # Directory for saving results
+
+algorithm:
+  name: "MAHILDA"  # Algorithm to use
+  parameters:
+    walk_length: 1  # Absolute minimum recursivity
+    max_tables: 2  # Minimal number of tables
+    max_variables: 3  # Minimal number of variables
+    disjoint_semantics: false
+    split_mean_threshold: 0.0
+    timeout: 10  # 10 seconds timeout for very fast test
+
+mlflow:
+  use: false  # Disabled for testing
+  tracking_uri: "http://localhost:5000"
+  experiment_name: "MAHILDA Test Run"
