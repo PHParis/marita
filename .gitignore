@@ -370,3 +370,6 @@ auth/
 # Configuration examples
 !.env.example
 !config.example.yaml
+
+old/
+results/
