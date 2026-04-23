@@ -1,0 +1,92 @@
+# MAHILDA
+
+MAHILDA is a rule-discovery project for relational databases with multiple algorithm backends:
+
+- `MAHILDA` (default)
+- `AMIE3` (Java jar)
+- `SPIDER` (Java jars)
+- `ILP` / `POPPER` (Popper + clingo + SWI-Prolog)
+
+This repository uses `uv` + `pyproject.toml` for reproducible Python environments.
+
+## Prerequisites
+
+### Required for Python setup
+
+- Python `>=3.10`
+- `uv`
+
+### Required by specific algorithms/tools
+
+- Java (required for `AMIE3` and `SPIDER`)
+- SWI-Prolog runtime (`swipl`) for `ILP` / `POPPER`
+- `sqlite3` for SQL-to-SQLite conversion workflows
+- `mysqldump` for `download_databases.py`
+
+## Quick Start (uv)
+
+```bash
+uv sync
+```
+
+Run commands inside the managed environment:
+
+```bash
+uv run python3 create_test_database.py
+uv run python3 run_test.py
+```
+
+Verbose mode:
+
+```bash
+uv run python3 run_test.py -v
+```
+
+Quiet mode:
+
+```bash
+uv run python3 run_test.py -q
+```
+
+## Main Entrypoints
+
+### 1) Fast smoke test
+
+```bash
+uv run python3 create_test_database.py
+uv run python3 run_test.py
+```
+
+### 2) Single database run
+
+```bash
+uv run python3 src/main.py --config config.yaml
+```
+
+### 3) Batch processing
+
+```bash
+uv run python3 run_all_databases.py -d <db_dir> -o <results_dir> [--workers N --timeout SEC --max-databases K --start-from I]
+```
+
+Note: the batch script default input directory is `/Volumes/backup_mac_1/data_mahilda_3`; override it on other machines.
+
+## Configuration Notes
+
+- `src/main.py` reads config from `--config` (`config.yaml` by default).
+- If `database.name` is omitted, it defaults to `test.db`.
+- `config.yaml` enables MLflow by default with local file backend: `file:./mlruns`.
+- Verbosity is controlled by environment variables:
+  - `MAHILDA_VERBOSE=1`
+  - `MAHILDA_QUIET=1`
+
+## Outputs
+
+- Rules JSON: `<results.output_dir>/<ALGORITHM>_<db_stem>/<ALGORITHM>_<db_stem>_results.json`
+- Markdown report: `<results.output_dir>/report_<ALGORITHM>_<db_stem>.md`
+- Batch summary: `<output>/summary.txt`
+- Logs: `logs/global.log`, `logs/query_time.log`, `logs/query_results.log`
+
+## Known Limitation
+
+`src/main_all.py` is currently not runnable (indentation error). Use `run_all_databases.py` for multi-database execution.
