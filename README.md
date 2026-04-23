@@ -71,6 +71,48 @@ uv run python3 run_all_databases.py -d <db_dir> -o <results_dir> [--workers N --
 
 Note: the batch script default input directory is `/Volumes/backup_mac_1/data_mahilda_3`; override it on other machines.
 
+## Code Quality Tools
+
+The project uses `ruff` for linting and formatting, and `pyright` for static type checking.
+
+### Linting & Formatting
+
+```bash
+# Run ruff linter (auto-fixes fixable issues)
+uv run ruff check .
+
+# Format code
+uv run ruff format .
+
+# Check without applying fixes
+uv run ruff check . --diff
+uv run ruff format . --diff
+```
+
+### Type Checking
+
+```bash
+# Run pyright type checker
+uv run pyright
+```
+
+### Pre-commit Hooks
+
+Install pre-commit hooks to run linting and formatting automatically before each commit:
+
+```bash
+# Install pre-commit (from dev deps)
+uv sync
+
+# Install the git hooks
+uv run pre-commit install
+
+# Run all hooks on all files
+uv run pre-commit run --all-files
+```
+
+The pre-commit config runs `ruff check`, `ruff format`, and `pyright` on every commit.
+
 ## Configuration Notes
 
 - `src/main.py` reads config from `--config` (`config.yaml` by default).
