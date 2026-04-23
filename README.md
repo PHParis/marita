@@ -71,6 +71,28 @@ uv run python3 run_all_databases.py -d <db_dir> -o <results_dir> [--workers N --
 
 Note: the batch script default input directory is `/Volumes/backup_mac_1/data_mahilda_3`; override it on other machines.
 
+## Testing
+
+The project uses `pytest` for tests and `coverage.py` (via `pytest-cov`) for coverage reporting.
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run tests with verbose output
+uv run pytest -v
+
+# Run tests with coverage output (terminal + XML + HTML)
+uv run pytest --cov=src --cov-report=term-missing --cov-report=xml --cov-report=html
+```
+
+Default pytest configuration is defined in `pyproject.toml` and includes:
+
+- strict marker/config validation
+- coverage collection from `src`
+- missing-line reporting in terminal
+- generated reports at `coverage.xml` and `htmlcov/index.html`
+
 ## Code Quality Tools
 
 The project uses `ruff` for linting and formatting, and `pyright` for static type checking.
