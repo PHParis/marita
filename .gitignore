@@ -297,10 +297,10 @@ desktop.ini
 # DEVELOPMENT
 # ============================================================================
 
-# Development-only scripts
-dev_*.py
-test_*.py
-scratch_*.py
+# Development-only scripts (repo root only)
+/dev_*.py
+/test_*.py
+/scratch_*.py
 
 # Temporary notebooks
 scratch.ipynb
