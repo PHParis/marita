@@ -4,6 +4,127 @@ from typing import Any
 
 import yaml
 
+ALLOWED_ALGORITHMS = {"MAHILDA", "AMIE3", "SPIDER", "POPPER", "ILP"}
+ALLOWED_BASELINES = {"AMIE3", "SPIDER", "POPPER", "ILP"}
+
+
+def _is_mapping(value: Any) -> bool:
+    return isinstance(value, dict)
+
+
+def _add_error(errors: list[str], message: str) -> None:
+    errors.append(message)
+
+
+def _expect_mapping(config: dict[str, Any], key: str, errors: list[str], *, required: bool = True) -> dict[str, Any] | None:
+    value = config.get(key)
+    if value is None:
+        if required:
+            _add_error(errors, f"Missing required section: '{key}'.")
+        return None
+    if not _is_mapping(value):
+        _add_error(errors, f"Section '{key}' must be a mapping.")
+        return None
+    return value
+
+
+def _expect_non_empty_string(
+    section: dict[str, Any],
+    section_name: str,
+    key: str,
+    errors: list[str],
+    *,
+    required: bool = True,
+) -> str | None:
+    value = section.get(key)
+    if value is None:
+        if required:
+            _add_error(errors, f"Missing required key: '{section_name}.{key}'.")
+        return None
+    if not isinstance(value, str) or not value.strip():
+        _add_error(errors, f"Key '{section_name}.{key}' must be a non-empty string.")
+        return None
+    return value
+
+
+def _expect_positive_number(section: dict[str, Any], section_name: str, key: str, errors: list[str]) -> None:
+    value = section.get(key)
+    if value is None:
+        return
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+        _add_error(errors, f"Key '{section_name}.{key}' must be a positive number.")
+
+
+def _expect_positive_int(section: dict[str, Any], section_name: str, key: str, errors: list[str]) -> None:
+    value = section.get(key)
+    if value is None:
+        return
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        _add_error(errors, f"Key '{section_name}.{key}' must be a positive integer.")
+
+
+def validate_config(config: dict[str, Any]) -> None:
+    errors: list[str] = []
+
+    database = _expect_mapping(config, "database", errors)
+    if database is not None:
+        _expect_non_empty_string(database, "database", "path", errors)
+        _expect_non_empty_string(database, "database", "name", errors)
+
+    logging_section = _expect_mapping(config, "logging", errors)
+    if logging_section is not None:
+        _expect_non_empty_string(logging_section, "logging", "log_dir", errors)
+
+    results = _expect_mapping(config, "results", errors)
+    if results is not None:
+        _expect_non_empty_string(results, "results", "output_dir", errors)
+
+    algorithm = _expect_mapping(config, "algorithm", errors)
+    if algorithm is not None:
+        algorithm_name = _expect_non_empty_string(algorithm, "algorithm", "name", errors)
+        if algorithm_name is not None and algorithm_name.strip().upper() not in ALLOWED_ALGORITHMS:
+            allowed = ", ".join(sorted(ALLOWED_ALGORITHMS))
+            _add_error(errors, f"Key 'algorithm.name' must be one of: {allowed}.")
+        parameters = algorithm.get("parameters")
+        if parameters is not None:
+            if not _is_mapping(parameters):
+                _add_error(errors, "Section 'algorithm.parameters' must be a mapping when provided.")
+            else:
+                _expect_positive_number(parameters, "algorithm.parameters", "timeout", errors)
+
+    benchmark = _expect_mapping(config, "benchmark", errors, required=False)
+    if benchmark is not None:
+        baseline_name = benchmark.get("baseline")
+        if baseline_name is not None:
+            if not isinstance(baseline_name, str) or not baseline_name.strip():
+                _add_error(errors, "Key 'benchmark.baseline' must be a non-empty string.")
+            elif baseline_name.strip().upper() not in ALLOWED_BASELINES:
+                allowed = ", ".join(sorted(ALLOWED_BASELINES))
+                _add_error(errors, f"Key 'benchmark.baseline' must be one of: {allowed}.")
+
+    monitor = _expect_mapping(config, "monitor", errors, required=False)
+    if monitor is not None:
+        _expect_positive_int(monitor, "monitor", "memory_threshold", errors)
+        _expect_positive_number(monitor, "monitor", "timeout", errors)
+
+    batch = _expect_mapping(config, "batch", errors, required=False)
+    if batch is not None:
+        _expect_positive_int(batch, "batch", "workers", errors)
+        _expect_positive_number(batch, "batch", "timeout", errors)
+
+    mlflow = _expect_mapping(config, "mlflow", errors, required=False)
+    if mlflow is not None:
+        use_value = mlflow.get("use")
+        if use_value is not None and not isinstance(use_value, bool):
+            _add_error(errors, "Key 'mlflow.use' must be a boolean.")
+        if use_value is True:
+            _expect_non_empty_string(mlflow, "mlflow", "tracking_uri", errors)
+            _expect_non_empty_string(mlflow, "mlflow", "experiment_name", errors)
+
+    if errors:
+        details = "\n".join(f"- {message}" for message in errors)
+        raise ValueError(f"Invalid configuration:\n{details}")
+
 
 def _resolve_path(base_dir: Path, value: Any) -> Any:
     if not isinstance(value, str):
@@ -59,12 +180,14 @@ def load_config(config_path: str) -> dict:
         with resolved_config_path.open("r", encoding="utf-8") as file:
             loaded = yaml.safe_load(file) or {}
     except FileNotFoundError:
-        logger.error("Configuration file not found: %s", resolved_config_path)
-        return {}
+        raise ValueError(f"Configuration file not found: {resolved_config_path}") from None
     except yaml.YAMLError as exc:
         raise ValueError(f"Error parsing configuration file: {exc}") from exc
 
     if not isinstance(loaded, dict):
         raise ValueError("Configuration root must be a YAML mapping.")
 
-    return _normalise_relative_paths(loaded, resolved_config_path.parent)
+    validated = _normalise_relative_paths(loaded, resolved_config_path.parent)
+    validate_config(validated)
+    logger.debug("Loaded and validated configuration from %s", resolved_config_path)
+    return validated

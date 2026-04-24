@@ -258,8 +258,10 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    config = load_config(args.config)
-    if not config:
+    try:
+        config = load_config(args.config)
+    except ValueError as exc:
+        print_error(str(exc))
         return 1
 
     configured_db_dir = config.get("database", {}).get("path")

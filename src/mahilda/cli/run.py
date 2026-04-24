@@ -321,9 +321,10 @@ def setup_signal_handlers(monitor: ResourceMonitor, logger: logging.Logger) -> N
 def main(argv: list[str] | None = None) -> int:
     """Main entry point of the script."""
     args = parse_arguments(argv)
-    config = load_config(args.config)
-
-    if not config:
+    try:
+        config = load_config(args.config)
+    except ValueError as exc:
+        print(exc)
         return 1
 
     # Check verbose/quiet mode from environment

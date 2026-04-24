@@ -154,9 +154,10 @@ Below are the top-5 best rules discovered based on their scores:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_arguments(argv)
-    config = load_config(args.config)
-
-    if not config:
+    try:
+        config = load_config(args.config)
+    except ValueError as exc:
+        print(exc)
         return 1
 
     baseline_from_config = str(config.get("algorithm", {}).get("name", "")).strip()
