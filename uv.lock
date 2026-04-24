@@ -1526,16 +1526,20 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
-    { name = "clingo" },
     { name = "colorama" },
     { name = "mlflow" },
     { name = "psutil" },
-    { name = "pyswip" },
     { name = "pyyaml" },
     { name = "requests" },
     { name = "setuptools" },
     { name = "sqlalchemy" },
     { name = "tqdm" },
+]
+
+[package.optional-dependencies]
+benchmark = [
+    { name = "clingo" },
+    { name = "pyswip" },
 ]
 
 [package.dev-dependencies]
@@ -1551,17 +1555,18 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12" },
-    { name = "clingo", specifier = ">=5.7" },
+    { name = "clingo", marker = "extra == 'benchmark'", specifier = ">=5.7" },
     { name = "colorama", specifier = ">=0.4.6" },
     { name = "mlflow", specifier = ">=2.11" },
     { name = "psutil", specifier = ">=5.9" },
-    { name = "pyswip", specifier = ">=0.2.10" },
+    { name = "pyswip", marker = "extra == 'benchmark'", specifier = ">=0.2.10" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "requests", specifier = ">=2.31" },
     { name = "setuptools", specifier = ">=69" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "tqdm", specifier = ">=4.66" },
 ]
+provides-extras = ["benchmark"]
 
 [package.metadata.requires-dev]
 dev = [

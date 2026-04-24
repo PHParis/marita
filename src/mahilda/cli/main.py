@@ -1,6 +1,6 @@
 import argparse
 
-from mahilda.cli import batch, mlflow_start, mlflow_ui, run, smoke, test_data
+from mahilda.cli import batch, benchmark, mlflow_start, mlflow_ui, run, smoke, test_data
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -13,6 +13,19 @@ def main(argv: list[str] | None = None) -> int:
         "--config",
         default="configs/config.example.yaml",
         help="Config path (default: configs/config.example.yaml)",
+    )
+
+    benchmark_parser = subparsers.add_parser("benchmark", help="Run competitor baseline on one database")
+    benchmark_parser.add_argument(
+        "-c",
+        "--config",
+        default="configs/config.example.yaml",
+        help="Config path (default: configs/config.example.yaml)",
+    )
+    benchmark_parser.add_argument(
+        "--baseline",
+        default=None,
+        help="Benchmark baseline to run (AMIE3, SPIDER, POPPER)",
     )
 
     batch_parser = subparsers.add_parser("batch", help="Run batch processing across many databases")
@@ -40,6 +53,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run":
         return run.main(["--config", args.config])
+
+    if args.command == "benchmark":
+        benchmark_args: list[str] = ["--config", args.config]
+        if args.baseline:
+            benchmark_args.extend(["--baseline", args.baseline])
+        return benchmark.main(benchmark_args)
 
     if args.command == "batch":
         batch_args: list[str] = [

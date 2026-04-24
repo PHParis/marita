@@ -17,10 +17,7 @@ try:
 except ImportError:
     MLFLOW_AVAILABLE = False
 
-from mahilda.algorithms.amie3 import Amie3
-from mahilda.algorithms.ilp import ILP
 from mahilda.algorithms.mahilda import MAHILDA
-from mahilda.algorithms.spider import Spider
 from mahilda.database.alchemy_utility import AlchemyUtility
 from mahilda.utils.config_loader import load_config
 from mahilda.utils.logging_utils import configure_global_logger
@@ -103,7 +100,13 @@ class DatabaseProcessor:
         use_mlflow: bool = False,
         config: dict | None = None,
     ):
-        self.algorithm_name = algorithm_name
+        if algorithm_name.upper() != "MAHILDA":
+            msg = (
+                "`mahilda run` only supports the MAHILDA algorithm. "
+                "Use `mahilda benchmark --baseline ...` for competitor baselines."
+            )
+            raise ValueError(msg)
+        self.algorithm_name = "MAHILDA"
         self.database_name = database_name
         self.database_path = database_path
         self.results_dir = results_dir
@@ -119,16 +122,8 @@ class DatabaseProcessor:
         verbose = os.environ.get("MAHILDA_VERBOSE") == "1"
         quiet = os.environ.get("MAHILDA_QUIET") == "1"
 
-        algorithm_map = {
-            "POPPER": ILP,
-            "ILP": ILP,
-            "AMIE3": Amie3,
-            "SPIDER": Spider,
-            "MAHILDA": MAHILDA,
-        }
-        selected_algorithm = algorithm_map.get(self.algorithm_name.upper(), MAHILDA)
+        selected_algorithm = MAHILDA
 
-        # Patch: créer un sous-dossier unique pour chaque algo/base
         unique_results_dir = self.results_dir / f"{self.algorithm_name}_{self.database_name.stem}"
         unique_results_dir.mkdir(parents=True, exist_ok=True)
 
@@ -200,11 +195,8 @@ class DatabaseProcessor:
 
                 elapsed = time.time() - start
 
-                if self.algorithm_name.upper() == "SPIDER":
-                    self.generate_report(number_of_rules, result_path, [], elapsed)
-                else:
-                    top_rules = sorted(rules, key=lambda x: -x.accuracy)[:5]
-                    self.generate_report(number_of_rules, result_path, top_rules, elapsed)
+                top_rules = sorted(rules, key=lambda x: -x.accuracy)[:5]
+                self.generate_report(number_of_rules, result_path, top_rules, elapsed)
 
                 if self.use_mlflow:
                     mlflow.log_param("algorithm", self.algorithm_name)
@@ -362,7 +354,7 @@ def main(argv: list[str] | None = None) -> int:
     database_name = Path(config.get("database", {}).get("name", "test.db"))
     log_dir = Path(config.get("logging", {}).get("log_dir", "logs/"))
     results_dir = Path(config.get("results", {}).get("output_dir", "results/"))
-    algorithm_name = config.get("algorithm", {}).get("name", "MAHILDA")
+    algorithm_name = str(config.get("algorithm", {}).get("name", "MAHILDA")).upper()
 
     # Initialize directories
     initialize_directories(results_dir, log_dir)
@@ -370,6 +362,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # Configure logger
     logger = configure_global_logger(str(log_dir))
+
+    if algorithm_name != "MAHILDA":
+        logger.error(
+            "`mahilda run` only supports MAHILDA. Use `mahilda benchmark --baseline %s` for baselines.",
+            algorithm_name,
+        )
+        return 1
 
     # Determine MLflow usage
     use_mlflow = False

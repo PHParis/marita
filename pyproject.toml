@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mahilda"
 version = "0.1.0"
-description = "Rule discovery toolkit with MAHILDA, AMIE3, SPIDER, and ILP backends"
+description = "MAHILDA rule discovery toolkit with optional benchmark baselines"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary" }
@@ -20,6 +20,10 @@ dependencies = [
   "mlflow>=2.11",
   "requests>=2.31",
   "beautifulsoup4>=4.12",
+]
+
+[project.optional-dependencies]
+benchmark = [
   "clingo>=5.7",
   "pyswip>=0.2.10",
 ]
@@ -36,9 +40,8 @@ where = ["src"]
 include = ["mahilda*"]
 
 [tool.setuptools.package-data]
-"mahilda.algorithms" = ["bins/**/*.jar"]
+"mahilda.evaluation" = ["third_party/**/*.jar", "third_party/popper/lp/*.pl"]
 "mahilda.database" = ["*.sh"]
-"mahilda._vendor.popper" = ["lp/*.pl"]
 
 [dependency-groups]
 dev = [
@@ -60,8 +63,9 @@ addopts = "-ra --strict-markers --strict-config --cov=mahilda --cov-report=term-
 branch = true
 source = ["mahilda"]
 omit = [
-  "src/mahilda/algorithms/bins/*",
-  "src/mahilda/_vendor/popper/*",
+  "src/mahilda/evaluation/third_party/amie3/*",
+  "src/mahilda/evaluation/third_party/metanome/*",
+  "src/mahilda/evaluation/third_party/popper/*",
 ]
 
 [tool.coverage.report]
@@ -78,6 +82,8 @@ extend-exclude = [
   "research/legacy",
   "src/mahilda/_vendor",
   "src/mahilda/algorithms",
+  "src/mahilda/evaluation/third_party",
+  "src/mahilda/evaluation/baselines/popper.py",
   "src/mahilda/utils/log_setup.py",
   "src/mahilda/utils/logging_utils.py",
   "src/mahilda/utils/monitor.py",
@@ -124,7 +130,7 @@ include = [
   "src/mahilda/database/download_databases.py",
 ]
 exclude = [
-  "**/_vendor/popper/**",
+  "**/evaluation/third_party/popper/**",
   "**/__pycache__",
 ]
 pythonVersion = "3.10"

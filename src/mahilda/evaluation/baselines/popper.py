@@ -19,11 +19,11 @@ def import_and_reload_package(package_name: str) -> ModuleType:
     importlib.reload(package)
     return package
 
-class ILP(RuleDiscoveryAlgorithm):
+class Popper(RuleDiscoveryAlgorithm):
     def discover_rules(self, **kwargs) -> List[Rule]:
         # Copy vendored Popper sources to a runtime package path.
         script_dir = Path(__file__).resolve().parent
-        popper_source = script_dir.parent / "_vendor" / "popper"
+        popper_source = script_dir.parent / "third_party" / "popper"
         runtime_package = Path.cwd() / "popper"
 
         try:

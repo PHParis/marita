@@ -1,11 +1,12 @@
 # MAHILDA
 
-MAHILDA is a rule-discovery toolkit for relational databases with multiple algorithm backends:
+MAHILDA is a rule-discovery toolkit for relational databases focused on the `MAHILDA` algorithm.
 
-- `MAHILDA` (default)
+Competitor systems are available as benchmark baselines:
+
 - `AMIE3` (Java jar)
 - `SPIDER` (Java jars)
-- `ILP` / `POPPER` (vendored Popper + clingo + SWI-Prolog)
+- `POPPER` (vendored Popper + clingo + SWI-Prolog)
 
 This repository uses `uv` + `pyproject.toml` for reproducible Python environments.
 
@@ -16,10 +17,10 @@ This repository uses `uv` + `pyproject.toml` for reproducible Python environment
 - Python `>=3.10`
 - `uv`
 
-### Required by specific algorithms/tools
+### Required by benchmark baselines
 
 - Java (required for `AMIE3` and `SPIDER`)
-- SWI-Prolog runtime (`swipl`) for `ILP` / `POPPER`
+- SWI-Prolog runtime (`swipl`) for `POPPER`
 - `sqlite3` for SQL-to-SQLite conversion workflows
 - `mysqldump` for `download_databases.py`
 
@@ -51,7 +52,17 @@ uv run mahilda smoke -q
 uv run mahilda run --config configs/config.example.yaml
 ```
 
-### 3) Batch processing
+`mahilda run` is MAHILDA-only.
+
+### 3) Baseline benchmark run
+
+```bash
+uv run mahilda benchmark --config configs/config.example.yaml --baseline AMIE3
+uv run mahilda benchmark --config configs/config.example.yaml --baseline SPIDER
+uv run mahilda benchmark --config configs/config.example.yaml --baseline POPPER
+```
+
+### 4) Batch processing
 
 ```bash
 uv run mahilda batch -d <db_dir> -o <results_dir> [--workers N --timeout SEC --max-databases K --start-from I]
@@ -59,7 +70,7 @@ uv run mahilda batch -d <db_dir> -o <results_dir> [--workers N --timeout SEC --m
 
 Note: the batch command default input directory is `/Volumes/backup_mac_1/data_mahilda_3`; override it on other machines.
 
-### 4) MLflow helpers
+### 5) MLflow helpers
 
 ```bash
 uv run mahilda mlflow start
