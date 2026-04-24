@@ -1,40 +1,24 @@
-import csv
-import hashlib
+from __future__ import annotations
+
 import logging
-import os
-import time
-from typing import Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any
 
-import psutil
-from sqlalchemy import (
-    MetaData,
-    alias,
-    and_,
-    create_engine,
-    func,
-    select,
-    text
-)
+from sqlalchemy import MetaData, select
 
-#from mahilda.utils.log_setup import setup_loggers
-import colorama   # Added colorama
-colorama.init(autoreset=True)
-
-
-
-
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
 class TripleConverter:
     """
     Converts database tables into RDF-like triples.
     """
 
-    def __init__(self, engine, metadata: MetaData, logger):
+    def __init__(self, engine: Engine, metadata: MetaData, logger: logging.Logger) -> None:
         self.engine = engine
         self.metadata = metadata
         self.logger = logger
 
-    def convert_to_triples(self) -> List[Tuple[str, str, str]]:
-        triples = []
+    def convert_to_triples(self) -> list[tuple[str, str, str]]:
+        triples: list[tuple[str, str, str]] = []
         foreign_keys = self._get_foreign_keys()
         primary_keys = {table: self._get_primary_keys(table) for table in self._get_table_names()}
 
@@ -51,7 +35,7 @@ class TripleConverter:
 
             rows = self._select_query(table_name, attributes)
             for row in rows:
-                row_dict = dict(zip(attributes, row))
+                row_dict = dict(zip(attributes, row, strict=False))
                 # Skip row if a primary key is missing
                 if any(pk not in row_dict or row_dict[pk] is None for pk in pk_columns):
                     self.logger.error(f"Missing primary keys in table {table_name} for row {row_dict}.")
@@ -84,14 +68,14 @@ class TripleConverter:
 
                             # Build FK dict with all available PK columns from current row
                             # For composite PKs, we need all columns present in the current row
-                            row_dict_fk = {}
+                            row_dict_fk: dict[str, Any] = {}
                             missing_pk_columns = []
                             for pk_col in ref_pk_columns:
                                 if pk_col in row_dict and row_dict[pk_col] is not None:
                                     row_dict_fk[pk_col] = row_dict[pk_col]
                                 else:
                                     missing_pk_columns.append(pk_col)
-                            
+
                             # If any PK column is missing, skip this FK triple
                             if missing_pk_columns:
                                 # Only log at debug level to reduce noise
@@ -101,7 +85,7 @@ class TripleConverter:
                                         f"missing columns {missing_pk_columns} needed for {ref_table} PK"
                                     )
                                 continue
-                            
+
                             ref_subject = self._generate_rdf_id(ref_table, ref_pk_columns, row_dict_fk)
                             triples.append((subject, predicate, ref_subject))
                         except Exception as e:
@@ -113,11 +97,11 @@ class TripleConverter:
 
         return triples
 
-    def _get_table_names(self) -> List[str]:
+    def _get_table_names(self) -> list[str]:
         return sorted(self.metadata.tables.keys())
 
-    def _get_foreign_keys(self) -> Dict[str, Dict[str, Tuple[str, str]]]:
-        foreign_keys_info = {}
+    def _get_foreign_keys(self) -> dict[str, dict[str, tuple[str, str]]]:
+        foreign_keys_info: dict[str, dict[str, tuple[str, str]]] = {}
         for table_name, table in self.metadata.tables.items():
             for fk in table.foreign_keys:
                 ref_table = fk.column.table.name
@@ -128,19 +112,19 @@ class TripleConverter:
                 foreign_keys_info[table_name][local_column] = (ref_table, reference_column)
         return foreign_keys_info
 
-    def _get_primary_keys(self, table_name: str) -> List[str]:
+    def _get_primary_keys(self, table_name: str) -> list[str]:
         table = self.metadata.tables.get(table_name)
         if table is not None and table.primary_key:
             return [key.name for key in table.primary_key.columns]
         return []
 
-    def _get_attribute_names(self, table_name: str) -> List[str]:
+    def _get_attribute_names(self, table_name: str) -> list[str]:
         table = self.metadata.tables.get(table_name)
         if table is not None and hasattr(table, "columns"):
             return [column.name for column in table.columns]
         return []
 
-    def _select_query(self, table_name: str, attributes: List[str]) -> List[Tuple]:
+    def _select_query(self, table_name: str, attributes: list[str]) -> list[tuple[Any, ...]]:
         table_obj = self.metadata.tables.get(table_name)
         if table_obj is None:
             return []
@@ -150,12 +134,12 @@ class TripleConverter:
         query = select(*columns)
         try:
             with self.engine.connect() as conn:
-                return conn.execute(query).fetchall()
+                return [tuple(row) for row in conn.execute(query).fetchall()]
         except Exception as e:
             self.logger.error(f"Error executing select query on '{table_name}': {e}")
             return []
 
-    def _generate_rdf_id(self, table: str, primary_keys: List[str], row_dict: Dict[str, Any]) -> str:
+    def _generate_rdf_id(self, table: str, primary_keys: list[str], row_dict: dict[str, Any]) -> str:
         try:
             pk_values = "_".join(
                 self._sanitize_identifier(str(row_dict[pk])) for pk in primary_keys
@@ -170,4 +154,3 @@ class TripleConverter:
     @staticmethod
     def _sanitize_identifier(identifier: str) -> str:
         return "".join(e if e.isalnum() else "_" for e in identifier)
-

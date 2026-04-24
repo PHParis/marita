@@ -78,7 +78,6 @@ extend-exclude = [
   "research/legacy",
   "src/mahilda/_vendor",
   "src/mahilda/algorithms",
-  "src/mahilda/database",
   "src/mahilda/utils/log_setup.py",
   "src/mahilda/utils/logging_utils.py",
   "src/mahilda/utils/monitor.py",
@@ -116,6 +115,13 @@ typeCheckingMode = "basic"
 include = [
   "src/mahilda/cli",
   "src/mahilda/utils/config_loader.py",
+  "src/mahilda/database/database_connection_manager.py",
+  "src/mahilda/database/data_exporter.py",
+  "src/mahilda/database/index_manager.py",
+  "src/mahilda/database/triple_converter.py",
+  "src/mahilda/database/query_utility.py",
+  "src/mahilda/database/alchemy_utility.py",
+  "src/mahilda/database/download_databases.py",
 ]
 exclude = [
   "**/_vendor/popper/**",

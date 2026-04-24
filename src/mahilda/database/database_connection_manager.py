@@ -1,41 +1,27 @@
-import csv
-import hashlib
-import logging
-import os
-import time
-from typing import Any, Dict, List, Tuple
+from __future__ import annotations
 
-import psutil
-from sqlalchemy import (
-    MetaData,
-    alias,
-    and_,
-    create_engine,
-    func,
-    select,
-    text
-)
-import colorama   # Ajout de colorama
-colorama.init(autoreset=True)
+from typing import TYPE_CHECKING
 
+from sqlalchemy import MetaData, create_engine
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Connection, Engine
 
 
 class DatabaseConnectionManager:
-    """
-    Manages the database connection, engine, and metadata reflection.
-    """
+    """Manage SQLAlchemy engine, metadata reflection, and open connection."""
 
     def __init__(self, db_url: str):
         self.db_url = db_url
-        self.engine = create_engine(db_url)
+        self.engine: Engine | None = create_engine(db_url)
         self.metadata = MetaData()
         self.metadata.reflect(bind=self.engine)
-        self.conn = self.engine.connect()
+        self.conn: Connection | None = self.engine.connect()
 
-    def close(self):
-        if self.conn:
+    def close(self) -> None:
+        if self.conn is not None:
             self.conn.close()
-            self.engine.dispose()
             self.conn = None
+        if self.engine is not None:
+            self.engine.dispose()
             self.engine = None
-

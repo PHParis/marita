@@ -1,25 +1,9 @@
 import csv
-import hashlib
 import logging
 import os
-import time
-from typing import Any, Dict, List, Tuple
 
-import psutil
-from sqlalchemy import (
-    MetaData,
-    alias,
-    and_,
-    create_engine,
-    func,
-    select,
-    text
-)
-
-
-#from mahilda.utils.log_setup import setup_loggers
-import colorama   # Ajout de colorama
-colorama.init(autoreset=True)
+from sqlalchemy import MetaData, select
+from sqlalchemy.engine import Engine
 
 
 class DataExporter:
@@ -27,7 +11,15 @@ class DataExporter:
     Handles exporting database tables to CSV and the entire database to TSV (triples).
     """
 
-    def __init__(self, db_path: str, base_name: str, engine, metadata: MetaData, logger_query_time, logger_query_results):
+    def __init__(
+        self,
+        db_path: str,
+        base_name: str,
+        engine: Engine,
+        metadata: MetaData,
+        logger_query_time: logging.Logger,
+        logger_query_results: logging.Logger,
+    ) -> None:
         self.database_path = db_path
         self.base_name = base_name
         self.engine = engine
@@ -35,14 +27,14 @@ class DataExporter:
         self.logger_query_time = logger_query_time
         self.logger_query_results = logger_query_results
 
-    def export_tables_to_csv(self):
+    def export_tables_to_csv(self) -> None:
         """Export all tables to CSV files."""
         base_csv_dir = os.path.join(self.database_path, self.base_name, "csv")
         os.makedirs(base_csv_dir, exist_ok=True)
 
         for table_name in sorted(self.metadata.tables.keys()):
             table = self.metadata.tables.get(table_name)
-            if  table is None:
+            if table is None:
                 continue
 
             table_attributes = [col.name for col in table.columns]
@@ -65,7 +57,7 @@ class DataExporter:
             except Exception as e:
                 self.logger_query_time.error(f"Error writing CSV file '{csv_filename}': {e}")
 
-    def export_triples_to_tsv(self, triples: List[Tuple[str, str, str]]):
+    def export_triples_to_tsv(self, triples: list[tuple[str, str, str]]):
         """Export the given triples to a TSV file."""
         base_dir = os.path.join(self.database_path, self.base_name)
         tsv_dir = os.path.join(base_dir, "tsv")
@@ -79,7 +71,7 @@ class DataExporter:
         except Exception as e:
             self.logger_query_time.error(f"Error writing TSV file '{tsv_filename}': {e}")
 
-    def export_triples_to_ttl(self, triples: List[Tuple[str, str, str]]):
+    def export_triples_to_ttl(self, triples: list[tuple[str, str, str]]):
         """Export the triples to a TTL file."""
         base_dir = os.path.join(self.database_path, self.base_name)
         ttl_dir = os.path.join(base_dir, "ttl")
@@ -105,4 +97,4 @@ class DataExporter:
     @staticmethod
     def _sanitize_identifier(identifier: str) -> str:
         """Sanitize an identifier to be used in RDF IRIs."""
-        return str(identifier).replace(' ', '_').replace('"', '').replace("'", '')
+        return str(identifier).replace(" ", "_").replace('"', "").replace("'", "")
