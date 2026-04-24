@@ -1,0 +1,83 @@
+import argparse
+
+from mahilda.cli import batch, mlflow_start, mlflow_ui, run, smoke, test_data
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="mahilda", description="MAHILDA command line interface")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    run_parser = subparsers.add_parser("run", help="Run rule discovery for one database")
+    run_parser.add_argument(
+        "-c",
+        "--config",
+        default="configs/config.example.yaml",
+        help="Config path (default: configs/config.example.yaml)",
+    )
+
+    batch_parser = subparsers.add_parser("batch", help="Run batch processing across many databases")
+    batch_parser.add_argument("-d", "--directory", default="/Volumes/backup_mac_1/data_mahilda_3")
+    batch_parser.add_argument("-o", "--output", default="results_all_databases")
+    batch_parser.add_argument("-t", "--timeout", type=int, default=7200)
+    batch_parser.add_argument("--start-from", type=int, default=0)
+    batch_parser.add_argument("--max-databases", type=int, default=None)
+    batch_parser.add_argument("-w", "--workers", type=int, default=3)
+
+    smoke_parser = subparsers.add_parser("smoke", help="Run fast local smoke test")
+    smoke_parser.add_argument("-v", "--verbose", action="store_true")
+    smoke_parser.add_argument("-q", "--quiet", action="store_true")
+    smoke_parser.add_argument("-c", "--config", default="configs/config.test.yaml")
+
+    test_db_parser = subparsers.add_parser("test-db", help="Create local test database")
+    test_db_parser.add_argument("-o", "--output", default="test_data/test.db")
+
+    mlflow_parser = subparsers.add_parser("mlflow", help="MLflow helper commands")
+    mlflow_subparsers = mlflow_parser.add_subparsers(dest="mlflow_command", required=True)
+    mlflow_subparsers.add_parser("start", help="Start MLflow local tracking helper")
+    mlflow_subparsers.add_parser("ui", help="Launch MLflow UI")
+
+    args = parser.parse_args(argv)
+
+    if args.command == "run":
+        return run.main(["--config", args.config])
+
+    if args.command == "batch":
+        batch_args: list[str] = [
+            "--directory",
+            args.directory,
+            "--output",
+            args.output,
+            "--timeout",
+            str(args.timeout),
+            "--start-from",
+            str(args.start_from),
+            "--workers",
+            str(args.workers),
+        ]
+        if args.max_databases is not None:
+            batch_args.extend(["--max-databases", str(args.max_databases)])
+        return batch.main(batch_args)
+
+    if args.command == "smoke":
+        smoke_args: list[str] = ["--config", args.config]
+        if args.verbose:
+            smoke_args.append("--verbose")
+        if args.quiet:
+            smoke_args.append("--quiet")
+        return smoke.main(smoke_args)
+
+    if args.command == "test-db":
+        return test_data.main(["--output", args.output])
+
+    if args.command == "mlflow":
+        if args.mlflow_command == "start":
+            return mlflow_start.main([])
+        if args.mlflow_command == "ui":
+            return mlflow_ui.main([])
+
+    parser.error("Unknown command")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

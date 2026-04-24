@@ -229,6 +229,7 @@ logs/
 # Output files
 output/
 results/
+results_*/
 reports/
 *.out
 
@@ -260,6 +261,7 @@ cache/
 config.local.yaml
 config.dev.yaml
 .config_override
+configs/config.local.yaml
 
 # Downloaded databases
 downloads/
@@ -353,13 +355,11 @@ auth/
 !MLFLOW_*.md
 
 # Important configuration
-!config.yaml
+!configs/config.example.yaml
+!configs/config.test.yaml
 !config_bin_*.yaml
 
 # Important scripts
-!start_mlflow.py
-!start_mlflow.sh
-!start_mlflow_ui.py
 !run_*.sh
 
 # Source code
@@ -369,8 +369,8 @@ auth/
 
 # Configuration examples
 !.env.example
-!config.example.yaml
 
 old/
 results/
 AGENTS.md
+resume_last_session.sh
