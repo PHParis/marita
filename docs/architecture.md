@@ -31,6 +31,7 @@
 ## Canonical Generated Artifacts
 
 - `logs/`: command logs (`global.log`, `query_time.log`, `query_results.log`)
+  - Batch workers write per-database logs under `<logging.log_dir>/<db_stem>/`
 - `results/`: single-run and benchmark artifacts
   - `results/<ALGORITHM>_<db_stem>/<ALGORITHM>_<db_stem>_results.json`
   - `results/report_<ALGORITHM>_<db_stem>.md`

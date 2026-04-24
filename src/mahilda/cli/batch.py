@@ -11,7 +11,6 @@ Features:
 """
 
 import argparse
-import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
@@ -25,7 +24,7 @@ from mahilda.cli.artifacts import (
     write_execution_time_metrics,
 )
 from mahilda.cli.run import DatabaseProcessor
-from mahilda.cli.runtime import initialize_directories
+from mahilda.cli.runtime import initialize_directories, scoped_env_vars
 from mahilda.utils.config_loader import load_typed_config
 from mahilda.utils.logging_utils import configure_global_logger
 
@@ -91,7 +90,13 @@ def print_warning(message: str):
     print(f"{Fore.YELLOW}⚠ {message}{Style.RESET_ALL}")
 
 
-def run_database(db_path: Path, db_name: str, results_base_dir: Path, timeout: int = 7200) -> dict:
+def run_database(
+    db_path: Path,
+    db_name: str,
+    results_base_dir: Path,
+    timeout: int = 7200,
+    log_root: Path | None = None,
+) -> dict:
     """
     Run MAHILDA on a single database.
 
@@ -117,75 +122,52 @@ def run_database(db_path: Path, db_name: str, results_base_dir: Path, timeout: i
     artifacts = build_command_artifacts(results_base_dir, "MAHILDA", db_path)
     artifacts.run_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create logs directory
-    log_dir = Path("logs") / db_name
+    if log_root is None:
+        log_root = Path("logs")
+    log_dir = log_root / db_name
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    previous_log_dir = os.environ.get("MAHILDA_LOG_DIR")
-    previous_quiet = os.environ.get("MAHILDA_QUIET")
-
-    # Configure logger
     logger = configure_global_logger(str(log_dir))
-    os.environ["MAHILDA_LOG_DIR"] = str(log_dir)
-
-    # Set quiet mode
-    os.environ["MAHILDA_QUIET"] = "1"
 
     start_time = time.time()
     result["start_time"] = datetime.now()
 
     try:
-        # Create processor
-        processor = DatabaseProcessor(
-            algorithm_name="MAHILDA",
-            database_name=Path(db_path.name),
-            database_path=db_path.parent,
-            results_dir=results_base_dir,
-            logger=logger,
-            use_mlflow=False,
-        )
+        with scoped_env_vars({"MAHILDA_LOG_DIR": str(log_dir), "MAHILDA_QUIET": "1"}):
+            processor = DatabaseProcessor(
+                algorithm_name="MAHILDA",
+                database_name=Path(db_path.name),
+                database_path=db_path.parent,
+                results_dir=results_base_dir,
+                logger=logger,
+                use_mlflow=False,
+            )
 
-        # Run with timeout
-        import signal
+            import signal
 
-        def timeout_handler(signum, frame):
-            raise TimeoutError(f"Execution exceeded {timeout} seconds")
-
-        # Set timeout (only on Unix systems)
-        if hasattr(signal, "SIGALRM"):
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(timeout)
-
-        try:
-            rules_count = processor.discover_rules()
-            result["rules_count"] = rules_count
-            result["status"] = "success"
+            def timeout_handler(signum, frame):
+                raise TimeoutError(f"Execution exceeded {timeout} seconds")
 
             if hasattr(signal, "SIGALRM"):
-                signal.alarm(0)  # Cancel alarm
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(timeout)
 
-        except TimeoutError as e:
-            result["status"] = "timeout"
-            result["error"] = str(e)
-            if hasattr(signal, "SIGALRM"):
-                signal.alarm(0)
+            try:
+                rules_count = processor.discover_rules()
+                result["rules_count"] = rules_count
+                result["status"] = "success"
+            except TimeoutError as e:
+                result["status"] = "timeout"
+                result["error"] = str(e)
+            finally:
+                if hasattr(signal, "SIGALRM"):
+                    signal.alarm(0)
+                processor.clean_up()
 
     except Exception as e:
         result["status"] = "error"
         result["error"] = str(e)
         logger.error(f"Error processing {db_name}: {e}", exc_info=True)
-
-    finally:
-        # Clean environment
-        if previous_quiet is None:
-            os.environ.pop("MAHILDA_QUIET", None)
-        else:
-            os.environ["MAHILDA_QUIET"] = previous_quiet
-
-        if previous_log_dir is None:
-            os.environ.pop("MAHILDA_LOG_DIR", None)
-        else:
-            os.environ["MAHILDA_LOG_DIR"] = previous_log_dir
 
     end_time = time.time()
     result["end_time"] = datetime.now()
@@ -282,8 +264,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # Create results directory
     results_base_dir = Path(args.output)
-    log_dir = config.logging.log_dir
-    initialize_directories(results_base_dir, log_dir)
+    log_root = config.logging.log_dir
+    initialize_directories(results_base_dir, log_root)
 
     # Print header
     print()
@@ -309,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         for db_file in db_files:
             db_path = Path(db_file)
             db_name = db_path.stem
-            future = executor.submit(run_database, db_path, db_name, results_base_dir, effective_timeout)
+            future = executor.submit(run_database, db_path, db_name, results_base_dir, effective_timeout, log_root)
             future_to_db[future] = db_name
 
         # Process completed tasks

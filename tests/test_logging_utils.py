@@ -1,9 +1,11 @@
 import logging
+import os
 from contextlib import nullcontext
 from pathlib import Path
 
 from mahilda.cli import run as run_cli
 from mahilda.utils.config_loader import load_typed_config
+from mahilda.utils.log_setup import setup_loggers
 from mahilda.utils.logging_utils import configure_global_logger
 
 
@@ -12,6 +14,14 @@ def _reset_logger() -> None:
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
         handler.close()
+
+
+def _reset_query_loggers() -> None:
+    for logger_name in ("query_time", "query_results"):
+        logger = logging.getLogger(logger_name)
+        for handler in list(logger.handlers):
+            logger.removeHandler(handler)
+            handler.close()
 
 
 def test_configure_global_logger_is_idempotent(tmp_path: Path) -> None:
@@ -105,3 +115,64 @@ def test_repeated_run_command_does_not_duplicate_handlers(monkeypatch, tmp_path:
 
     assert run_cli.main(["--config", str(config_path)]) == 0
     assert len(logger.handlers) == first_count
+
+
+def test_setup_loggers_is_idempotent_for_same_directory(tmp_path: Path) -> None:
+    _reset_query_loggers()
+    log_dir = tmp_path / "logs"
+
+    setup_loggers(str(log_dir))
+    setup_loggers(str(log_dir))
+
+    query_time = logging.getLogger("query_time")
+    query_results = logging.getLogger("query_results")
+
+    query_time_files = [handler for handler in query_time.handlers if isinstance(handler, logging.FileHandler)]
+    query_results_files = [handler for handler in query_results.handlers if isinstance(handler, logging.FileHandler)]
+
+    assert len(query_time_files) == 1
+    assert len(query_results_files) == 1
+
+
+def test_setup_loggers_rebinds_handlers_when_log_dir_changes(tmp_path: Path) -> None:
+    _reset_query_loggers()
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+
+    setup_loggers(str(first_dir))
+    setup_loggers(str(second_dir))
+
+    query_time = logging.getLogger("query_time")
+    query_results = logging.getLogger("query_results")
+
+    query_time_files = [handler for handler in query_time.handlers if isinstance(handler, logging.FileHandler)]
+    query_results_files = [handler for handler in query_results.handlers if isinstance(handler, logging.FileHandler)]
+
+    assert len(query_time_files) == 1
+    assert len(query_results_files) == 1
+    assert Path(query_time_files[0].baseFilename).parent == second_dir
+    assert Path(query_results_files[0].baseFilename).parent == second_dir
+
+
+def test_setup_loggers_follows_env_log_dir_between_invocations(tmp_path: Path) -> None:
+    _reset_query_loggers()
+    first_dir = tmp_path / "env_first"
+    second_dir = tmp_path / "env_second"
+    previous = os.environ.get("MAHILDA_LOG_DIR")
+
+    try:
+        os.environ["MAHILDA_LOG_DIR"] = str(first_dir)
+        setup_loggers()
+
+        os.environ["MAHILDA_LOG_DIR"] = str(second_dir)
+        setup_loggers()
+    finally:
+        if previous is None:
+            os.environ.pop("MAHILDA_LOG_DIR", None)
+        else:
+            os.environ["MAHILDA_LOG_DIR"] = previous
+
+    query_time = logging.getLogger("query_time")
+    query_time_files = [handler for handler in query_time.handlers if isinstance(handler, logging.FileHandler)]
+    assert len(query_time_files) == 1
+    assert Path(query_time_files[0].baseFilename).parent == second_dir

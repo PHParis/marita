@@ -18,7 +18,7 @@ except ImportError:
 
 from mahilda.algorithms.mahilda import MAHILDA
 from mahilda.cli.artifacts import build_command_artifacts, write_execution_time_metrics, write_markdown_report
-from mahilda.cli.runtime import initialize_directories, mlflow_run_context
+from mahilda.cli.runtime import initialize_directories, mlflow_run_context, scoped_env_vars
 from mahilda.database.alchemy_utility import AlchemyUtility
 from mahilda.utils.config_loader import load_typed_config
 from mahilda.utils.logging_utils import configure_global_logger
@@ -284,9 +284,6 @@ def main(argv: list[str] | None = None) -> int:
 
     # Initialize directories
     initialize_directories(results_dir, log_dir)
-    previous_log_dir = os.environ.get("MAHILDA_LOG_DIR")
-    os.environ["MAHILDA_LOG_DIR"] = str(log_dir)
-
     # Configure logger
     logger = configure_global_logger(str(log_dir))
 
@@ -335,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.info(f"{Fore.CYAN}{Style.BRIGHT}Starting rule discovery process.{Style.RESET_ALL}")
 
     try:
-        with mlflow_run_context(use_mlflow, config.raw):
+        with scoped_env_vars({"MAHILDA_LOG_DIR": str(log_dir)}), mlflow_run_context(use_mlflow, config.raw):
             if use_mlflow and not quiet:
                 logger.info("MLflow run started.")
 
@@ -352,10 +349,6 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         monitor.stop()
         monitor_thread.join(timeout=2)
-        if previous_log_dir is None:
-            os.environ.pop("MAHILDA_LOG_DIR", None)
-        else:
-            os.environ["MAHILDA_LOG_DIR"] = previous_log_dir
         if use_mlflow and MLFLOW_AVAILABLE:
             try:
                 import mlflow

@@ -55,7 +55,7 @@
 - [x] Add tests for baseline normalization in `src/mahilda/cli/benchmark.py`, including alias handling such as `ILP -> POPPER`.
 - [x] Add optional integration tests for Java- and Prolog-dependent baselines behind pytest markers and skips so local fast tests stay fast while integration coverage is still possible.
 - [x] Reduce Ruff exclusions in `pyproject.toml` by first bringing `src/mahilda/cli/batch.py`, `src/mahilda/utils/logging_utils.py`, `src/mahilda/utils/run_cmd.py`, `src/mahilda/utils/rules.py`, and `src/mahilda/algorithms/mahilda.py` under linting.
-- [x] Expand Pyright coverage in `pyproject.toml` from the current narrow include list to all first-party non-vendored code, then fix the resulting type issues incrementally.
+- [x] Expand Pyright coverage in `pyproject.toml` from the current narrow include list to active first-party non-vendored code, while keeping frozen competitor adapters and explicitly listed legacy exceptions out of scope.
 - [x] Add a CI workflow in `.github/workflows/` to run `uv sync`, `uv run ruff check .`, `uv run pyright`, and `uv run pytest` on pull requests and pushes.
 - [x] Optionally add a lightweight local task runner such as `justfile` or `Makefile`; recommendation: only do this if the team wants shorter aliases for the existing `uv` commands.
 
@@ -63,7 +63,7 @@
 
 - [x] Invalid configs fail early with clear, user-facing messages.
 - [x] Fast local tests cover CLI routing, config validation, monitor behavior, and output paths.
-- [x] Ruff and Pyright cover the active first-party codebase except explicitly vendored and archive areas.
+- [x] Ruff and Pyright cover the active first-party codebase except explicitly vendored/archive areas plus frozen competitor adapters and explicit tool-config exceptions.
 - [x] CI runs on every PR and blocks regressions in lint, types, and tests.
 
 ## Phase 3: Documentation and Repository Hygiene
@@ -122,6 +122,6 @@
 - [x] `run`, `benchmark`, and `batch` share one execution model for setup, logging, config, and outputs.
 - [x] Logging is deterministic and non-duplicative.
 - [x] Config errors fail fast and clearly.
-- [x] Core first-party code is covered by tests, linting, and type checking.
+- [x] Core first-party code is covered by tests, linting, and type checking, with frozen competitor adapters excluded from refactoring/typing scope.
 - [x] CI enforces the new baseline.
 - [x] Docs accurately describe the reorganized repository.

@@ -52,6 +52,7 @@ Behavior notes:
 
 - Directory is required via `--directory` or config `database.path`.
 - Only `.db` files are scheduled.
+- Worker logs are written under `<logging.log_dir>/<db_stem>/`.
 - A run summary is written to `<output>/summary.txt`.
 
 ## `smoke`

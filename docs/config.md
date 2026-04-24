@@ -12,7 +12,7 @@
 ## `database`
 
 - `path` (required): directory containing DB files
-- `name` (required for single-run/benchmark): database filename (defaults to `test.db` in typed fallback)
+- `name` (optional): database filename for single-run and benchmark commands; defaults to `test.db` in typed config fallback
 
 ## `logging`
 

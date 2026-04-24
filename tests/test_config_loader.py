@@ -221,3 +221,49 @@ def test_load_typed_config_builds_dataclass_view(tmp_path: Path) -> None:
     assert config.batch.workers == 5
     assert config.batch.timeout == 88
     assert config.database.name.name == "my.db"
+
+
+def test_load_typed_config_defaults_database_name_when_omitted(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "database:",
+                "  path: ./data",
+                "logging:",
+                "  log_dir: ./logs",
+                "results:",
+                "  output_dir: ./results",
+                "algorithm:",
+                "  name: MAHILDA",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_typed_config(str(config_path))
+
+    assert config.database.name.name == "test.db"
+
+
+def test_load_config_rejects_blank_database_name(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "database:",
+                "  path: ./data",
+                "  name: '   '",
+                "logging:",
+                "  log_dir: ./logs",
+                "results:",
+                "  output_dir: ./results",
+                "algorithm:",
+                "  name: MAHILDA",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="database.name"):
+        load_config(str(config_path))

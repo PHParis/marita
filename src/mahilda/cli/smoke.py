@@ -1,10 +1,10 @@
 import argparse
 import logging
-import os
 import time
 from pathlib import Path
 
 from mahilda.cli import run as run_cli
+from mahilda.cli.runtime import scoped_env_vars
 
 logger = logging.getLogger(__name__)
 
@@ -26,35 +26,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.verbose and args.quiet:
         parser.error("--verbose and --quiet are mutually exclusive")
 
-    previous_verbose = os.environ.get("MAHILDA_VERBOSE")
-    previous_quiet = os.environ.get("MAHILDA_QUIET")
-
+    env_overrides: dict[str, str | None] = {}
     if args.verbose:
-        os.environ["MAHILDA_VERBOSE"] = "1"
-        os.environ.pop("MAHILDA_QUIET", None)
+        env_overrides = {"MAHILDA_VERBOSE": "1", "MAHILDA_QUIET": None}
     elif args.quiet:
-        os.environ["MAHILDA_QUIET"] = "1"
-        os.environ.pop("MAHILDA_VERBOSE", None)
+        env_overrides = {"MAHILDA_QUIET": "1", "MAHILDA_VERBOSE": None}
 
     config_path = Path(args.config)
     if not config_path.exists():
         logger.error("Config not found: %s", config_path)
         return 1
 
-    try:
+    with scoped_env_vars(env_overrides):
         start_time = time.time()
         exit_code = run_cli.main(["--config", str(config_path)])
         elapsed = time.time() - start_time
-    finally:
-        if previous_verbose is None:
-            os.environ.pop("MAHILDA_VERBOSE", None)
-        else:
-            os.environ["MAHILDA_VERBOSE"] = previous_verbose
-
-        if previous_quiet is None:
-            os.environ.pop("MAHILDA_QUIET", None)
-        else:
-            os.environ["MAHILDA_QUIET"] = previous_quiet
 
     if not args.quiet:
         logger.info("Smoke test finished in %.2fs", elapsed)

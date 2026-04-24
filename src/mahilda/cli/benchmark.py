@@ -1,6 +1,5 @@
 import argparse
 import logging
-import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -13,7 +12,7 @@ except ImportError:
     MLFLOW_AVAILABLE = False
 
 from mahilda.cli.artifacts import build_command_artifacts, write_markdown_report
-from mahilda.cli.runtime import initialize_directories, mlflow_run_context
+from mahilda.cli.runtime import initialize_directories, mlflow_run_context, scoped_env_vars
 from mahilda.database.alchemy_utility import AlchemyUtility
 from mahilda.evaluation.baselines import Amie3, Popper, Spider
 from mahilda.utils.config_loader import load_typed_config
@@ -158,9 +157,6 @@ def main(argv: list[str] | None = None) -> int:
     results_dir = config.results.output_dir
 
     initialize_directories(results_dir, log_dir)
-    previous_log_dir = os.environ.get("MAHILDA_LOG_DIR")
-    os.environ["MAHILDA_LOG_DIR"] = str(log_dir)
-
     logger = configure_global_logger(str(log_dir))
 
     use_mlflow = False
@@ -179,17 +175,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        with mlflow_run_context(use_mlflow, config.raw):
+        with scoped_env_vars({"MAHILDA_LOG_DIR": str(log_dir)}), mlflow_run_context(use_mlflow, config.raw):
             processor.discover_rules()
             processor.clean_up()
     except Exception:
         logger.error("An error occurred during baseline benchmark execution.", exc_info=True)
         return 1
-    finally:
-        if previous_log_dir is None:
-            os.environ.pop("MAHILDA_LOG_DIR", None)
-        else:
-            os.environ["MAHILDA_LOG_DIR"] = previous_log_dir
 
     return 0
 
