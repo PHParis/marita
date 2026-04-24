@@ -1,5 +1,6 @@
 import importlib
 import json
+import logging
 import os
 import shutil
 import warnings
@@ -12,6 +13,7 @@ from mahilda.algorithms.rule_discovery_algorithm import RuleDiscoveryAlgorithm
 from mahilda.utils.rules import HornRule, Predicate, Rule, TGDRule
 
 warnings.filterwarnings("ignore")
+logger = logging.getLogger(__name__)
 
 
 def import_and_reload_package(package_name: str) -> ModuleType:
@@ -29,12 +31,12 @@ class Popper(RuleDiscoveryAlgorithm):
         try:
             shutil.copytree(popper_source, runtime_package, dirs_exist_ok=True)
         except Exception as e:
-            print(f"Error copying Popper sources: {e}")
+            logger.error("Error copying Popper sources: %s", e)
             return []
 
         tables = self.database.get_table_names()
         if not tables:
-            print("No tables found in the database.")
+            logger.warning("No tables found in the database.")
             return []
 
         number_max_attributes = max(len(self.database.get_attribute_names(table)) for table in tables)
@@ -69,7 +71,7 @@ class Popper(RuleDiscoveryAlgorithm):
                 try:
                     prog, score, stats = popper.loop.learn_solution(settings)
                 except Exception as e:
-                    print(f"Popper learning error: {e}")
+                    logger.error("Popper learning error: %s", e)
                     raise Exception("Popper failed to learn a solution") from e
 
                 if prog is None:
@@ -83,7 +85,7 @@ class Popper(RuleDiscoveryAlgorithm):
                     if rule:
                         rules.append(rule)
             except Exception as e:
-                print(f"Error processing directory {directory}: {e}")
+                logger.error("Error processing directory %s: %s", directory, e)
                 raise
 
         return rules
@@ -95,7 +97,7 @@ class Popper(RuleDiscoveryAlgorithm):
             head = head.strip()
             body = body.strip().rstrip(".")
         except ValueError:
-            print(f"Invalid rule format: {raw_rule}")
+            logger.warning("Invalid rule format: %s", raw_rule)
             return None
 
         body_lst = self.parse_predicates(body, variables_used)
@@ -124,7 +126,7 @@ class Popper(RuleDiscoveryAlgorithm):
                 relation, variables = predicate.split("(")
                 variables = variables.split(",")
             except ValueError:
-                print(f"Invalid predicate format: {predicate}")
+                logger.warning("Invalid predicate format: %s", predicate)
                 continue
             for var in variables:
                 variables_used[var] = variables_used.get(var, 0) + 1
@@ -138,7 +140,7 @@ class Popper(RuleDiscoveryAlgorithm):
             relation, variables = head.split("(")
             variables = variables.split(",")
         except ValueError:
-            print(f"Invalid head format: {head}")
+            logger.warning("Invalid head format: %s", head)
             return predicates
         for var in variables:
             variables_used[var] = variables_used.get(var, 0) + 1
@@ -155,7 +157,7 @@ class Popper(RuleDiscoveryAlgorithm):
         try:
             head, body = data_str.split(":-")
         except ValueError:
-            print(f"Invalid rule format: {prolog_rule}")
+            logger.warning("Invalid rule format: %s", prolog_rule)
             return None
 
         body = body.split("),") if body.count(")") > 1 else [body]
@@ -168,7 +170,7 @@ class Popper(RuleDiscoveryAlgorithm):
             try:
                 relation, vars_part = attribute.split("(")
             except ValueError:
-                print(f"Invalid attribute format: {attribute}")
+                logger.warning("Invalid attribute format: %s", attribute)
                 continue
             variables = vars_part.split(",")
             attributes_names = self.database.get_attribute_names(relation.strip())
@@ -222,7 +224,7 @@ class Popper(RuleDiscoveryAlgorithm):
 
         tables = self.database.get_table_names()
         if not tables:
-            print("No tables found in the database.")
+            logger.warning("No tables found in the database.")
             return []
 
         max_vars = 3

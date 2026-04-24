@@ -1,25 +1,5 @@
-from abc import ABC, abstractmethod
-
-from mahilda.utils.rules import Rule
-from mahilda.database.alchemy_utility import AlchemyUtility
+from mahilda.algorithms.base_algorithm import BaseAlgorithm
 
 
-class RuleDiscoveryAlgorithm(ABC):
-    def __init__(self, database: AlchemyUtility):
-        """
-        Initialize the algorithm with a database.
-        """
-        self.database = database
-
-    @abstractmethod
-    def discover_rules(self, **kwargs) -> Rule:
-        """
-        Discovers rules from the provided tables and columns using given parameters.
-
-        Args:
-        - **kwargs: Additional parameters required by specific algorithms.
-
-        Returns:
-        - List of discovered rules.
-        """
-        pass
+class RuleDiscoveryAlgorithm(BaseAlgorithm):
+    """Backward-compatible alias for the canonical BaseAlgorithm."""

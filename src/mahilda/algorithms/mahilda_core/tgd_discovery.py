@@ -1074,7 +1074,7 @@ def str_to_predicate(relation_str):
             )
         return predicates
     else:
-        print(f"No match for relation string: {relation_str}")
+        logging.getLogger(__name__).debug("No match for relation string: %s", relation_str)
         return []
 def str_to_tgd(tgd_str,support, confidence):
     # Regular expression pattern to match the TGD format

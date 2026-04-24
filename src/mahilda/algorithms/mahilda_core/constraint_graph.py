@@ -1,6 +1,11 @@
+import logging
+
 from mahilda.database.alchemy_utility import AlchemyUtility
 # import networkx as nx
 # import numpy as np
+
+
+logger = logging.getLogger(__name__)
 
 
 class Attribute:
@@ -514,7 +519,7 @@ class ConstraintGraph:
         # Convert the directed graph to an undirected graph
         G = G.to_undirected()
         if G.number_of_nodes() == 0 or G.number_of_edges() == 0:
-            print("The graph is empty. Cannot compute metrics.")
+            logger.warning("The graph is empty. Cannot compute metrics.")
             return
         # Compute the metrics
         self.metrics = self.compute_graph_metrics(G)

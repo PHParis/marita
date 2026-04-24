@@ -68,23 +68,23 @@
 
 ## Phase 3: Documentation and Repository Hygiene
 
-- [ ] Simplify `.gitignore` so it ignores generated directories and known artifacts instead of broadly ignoring valuable asset types like `*.json`, `*.csv`, `*.db`, and `*.sql`.
-- [ ] Decide on one canonical artifact layout for generated logs, reports, metrics, and run outputs; reflect it consistently in config, code, README, and ignore rules.
-- [ ] Remove duplicate abstraction layers by consolidating `src/mahilda/algorithms/base_algorithm.py` and `src/mahilda/algorithms/rule_discovery_algorithm.py` if they remain functionally identical after Phase 1 and Phase 2.
-- [ ] Audit non-vendored first-party code for stray `print()` calls and replace them with logging or explicit CLI presentation only where appropriate.
-- [ ] Add `docs/architecture.md` describing the current package layout, active modules, command entrypoints, and data flow.
-- [ ] Add `docs/cli.md` describing `mahilda run`, `mahilda benchmark`, `mahilda batch`, `mahilda smoke`, `mahilda test-db`, and MLflow helper behavior.
-- [ ] Add `docs/config.md` describing config resolution, defaults, path normalization, MLflow settings, and CLI override behavior.
-- [ ] Update `README.md` so it stays high level and links to the more detailed docs instead of duplicating operational detail in too many places.
-- [ ] Add a short archive note for `legacy/` and `research/` so readers know these directories are preserved history rather than active implementation targets.
-- [ ] Keep vendored baseline assets documented but do not attempt to lint, type-check, or reformat them as part of normal first-party cleanup.
+- [x] Simplify `.gitignore` so it ignores generated directories and known artifacts instead of broadly ignoring valuable asset types like `*.json`, `*.csv`, `*.db`, and `*.sql`.
+- [x] Decide on one canonical artifact layout for generated logs, reports, metrics, and run outputs; reflect it consistently in config, code, README, and ignore rules.
+- [x] Remove duplicate abstraction layers by consolidating `src/mahilda/algorithms/base_algorithm.py` and `src/mahilda/algorithms/rule_discovery_algorithm.py` if they remain functionally identical after Phase 1 and Phase 2.
+- [x] Audit non-vendored first-party code for stray `print()` calls and replace them with logging or explicit CLI presentation only where appropriate.
+- [x] Add `docs/architecture.md` describing the current package layout, active modules, command entrypoints, and data flow.
+- [x] Add `docs/cli.md` describing `mahilda run`, `mahilda benchmark`, `mahilda batch`, `mahilda smoke`, `mahilda test-db`, and MLflow helper behavior.
+- [x] Add `docs/config.md` describing config resolution, defaults, path normalization, MLflow settings, and CLI override behavior.
+- [x] Update `README.md` so it stays high level and links to the more detailed docs instead of duplicating operational detail in too many places.
+- [x] Add a short archive note for `legacy/` and `research/` so readers know these directories are preserved history rather than active implementation targets.
+- [x] Keep vendored baseline assets documented but do not attempt to lint, type-check, or reformat them as part of normal first-party cleanup.
 
 ## Phase 3 Exit Criteria
 
-- [ ] The repo has a clear separation between active code, vendored code, archived code, and generated artifacts.
-- [ ] README quick start matches actual behavior.
-- [ ] The docs explain the reorganized layout without needing to inspect source files.
-- [ ] `.gitignore` no longer hides potentially important tracked assets by accident.
+- [x] The repo has a clear separation between active code, vendored code, archived code, and generated artifacts.
+- [x] README quick start matches actual behavior.
+- [x] The docs explain the reorganized layout without needing to inspect source files.
+- [x] `.gitignore` no longer hides potentially important tracked assets by accident.
 
 ## Recommended Execution Order
 

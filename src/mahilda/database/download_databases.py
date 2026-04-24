@@ -472,26 +472,26 @@ class Workflow:
                     continue
 
                 if DatabaseConverter.convert_mysql_to_sqlite(sql_file, sqlite_file):
-                    logger.info(f"Conversion reussie pour {db_name}.")
+                    logger.info("Conversion succeeded for %s.", db_name)
                     self.successes.append(db_name)
                 else:
-                    logger.warning(f"Conversion echouee pour {db_name}.")
-                    self.failures.append((db_name, "Echec de la conversion"))
+                    logger.warning("Conversion failed for %s.", db_name)
+                    self.failures.append((db_name, "Conversion failed"))
             except Exception:
                 logger.error(f"Error processing {db_name}: An unknown error occurred.")
-                self.failures.append((db_name, "Erreur inconnue"))
+                self.failures.append((db_name, "Unknown error"))
 
         report = (
-            "Rapport de conversion des bases de donnees\n\n"
-            f"Succes ({len(self.successes)}):\n"
+            "Database conversion report\n\n"
+            f"Succeeded ({len(self.successes)}):\n"
             + "\n".join(self.successes)
-            + f"\n\nEchecs ({len(self.failures)}):\n"
+            + f"\n\nFailed ({len(self.failures)}):\n"
             + "\n".join(f"{db}: {reason}" for db, reason in self.failures)
         )
         report_path = os.path.join(self.downloader.download_path, "conversion_report.txt")
         with open(report_path, "w") as report_file:
             report_file.write(report)
-        logger.info(f"Rapport de conversion genere: {report_path}")
+        logger.info("Conversion report generated: %s", report_path)
 
 
 if __name__ == "__main__":

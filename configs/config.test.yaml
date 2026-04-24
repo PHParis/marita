@@ -10,7 +10,7 @@ logging:
   log_dir: ../logs  # Directory for logs
 
 results:
-  output_dir: ../results_test  # Directory for saving results
+  output_dir: ../results/smoke  # Directory for saving smoke-test results
 
 algorithm:
   name: "MAHILDA"  # Algorithm to use

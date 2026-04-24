@@ -157,14 +157,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = load_typed_config(args.config)
     except ValueError as exc:
-        print(exc)
+        logging.getLogger(__name__).error("%s", exc)
         return 1
 
     baseline_from_config = config.benchmark.baseline or config.algorithm.name
     requested_baseline = args.baseline if args.baseline else baseline_from_config
     baseline_name = normalise_baseline_name(requested_baseline)
     if baseline_name not in {"AMIE3", "SPIDER", "POPPER"}:
-        print("Benchmark baseline must be one of: AMIE3, SPIDER, POPPER")
+        logging.getLogger(__name__).error("Benchmark baseline must be one of: AMIE3, SPIDER, POPPER")
         return 1
 
     database_path = config.database.path

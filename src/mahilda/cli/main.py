@@ -36,11 +36,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Config path (default: configs/config.example.yaml)",
     )
     batch_parser.add_argument("-d", "--directory", default=None)
-    batch_parser.add_argument("-o", "--output", default="results_batch")
-    batch_parser.add_argument("-t", "--timeout", type=int, default=7200)
+    batch_parser.add_argument("-o", "--output", default="results/batch")
+    batch_parser.add_argument("-t", "--timeout", type=int, default=None)
     batch_parser.add_argument("--start-from", type=int, default=0)
     batch_parser.add_argument("--max-databases", type=int, default=None)
-    batch_parser.add_argument("-w", "--workers", type=int, default=3)
+    batch_parser.add_argument("-w", "--workers", type=int, default=None)
 
     smoke_parser = subparsers.add_parser("smoke", help="Run fast local smoke test")
     smoke_parser.add_argument("-v", "--verbose", action="store_true")
@@ -72,13 +72,12 @@ def main(argv: list[str] | None = None) -> int:
             args.config,
             "--output",
             args.output,
-            "--timeout",
-            str(args.timeout),
-            "--start-from",
-            str(args.start_from),
-            "--workers",
-            str(args.workers),
         ]
+        if args.timeout is not None:
+            batch_args.extend(["--timeout", str(args.timeout)])
+        batch_args.extend(["--start-from", str(args.start_from)])
+        if args.workers is not None:
+            batch_args.extend(["--workers", str(args.workers)])
         if args.directory:
             batch_args.extend(["--directory", args.directory])
         if args.max_databases is not None:

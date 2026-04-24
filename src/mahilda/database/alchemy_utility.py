@@ -281,6 +281,9 @@ class AlchemyUtility:
 
 
 if __name__ == "__main__":
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
     db_url = "sqlite:///tests/tpcc.db"
     with AlchemyUtility(db_url, database_path="tests") as alchemy_utility:
-        print(f"Database exported in 'data/{alchemy_utility.base_name}/'.")
+        logging.getLogger(__name__).info("Database exported in 'data/%s/'.", alchemy_utility.base_name)

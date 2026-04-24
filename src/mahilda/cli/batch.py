@@ -244,8 +244,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "-o",
         "--output",
-        default="results_all_databases",
-        help="Output directory for results (default: results_all_databases)",
+        default="results/batch",
+        help="Output directory for results (default: results/batch)",
     )
     parser.add_argument(
         "-t",

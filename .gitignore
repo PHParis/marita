@@ -1,377 +1,52 @@
-# ============================================================================
-# MAHILDA Project - .gitignore Configuration
-# ============================================================================
-
-# ============================================================================
-# PYTHON
-# ============================================================================
-
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# pipenv
-Pipfile.lock
-
-# PEP 582
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
+.venv/
 env/
 venv/
-ENV/
-env.bak/
-venv.bak/
 
-# Spyder project settings
-.spyderproject
-.spyproject
+__pycache__/
+*.py[cod]
 
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
+.pytest_cache/
+.ruff_cache/
 .mypy_cache/
-.dmypy.json
-dmypy.json
+.pyright/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 
-# Pyre type checker
-.pyre/
+build/
+dist/
+*.egg-info/
 
-# ============================================================================
-# IDE AND EDITOR
-# ============================================================================
-
-# PyCharm
 .idea/
-*.iml
-*.iws
-*.ipr
-out/
-
-# VS Code
 .vscode/
-*.code-workspace
-
-# Sublime Text
-*.sublime-project
-*.sublime-workspace
-
-# Vim
+*.iml
 *.swp
-*.swo
 *~
-.vim/
 
-# Emacs
-*~
-\#*\#
-.\#*
-
-# macOS
 .DS_Store
-.AppleDouble
-.LSOverride
-*.swp
-._*
-
-# Windows
 Thumbs.db
-ehthumbs.db
-Desktop.ini
 
-# ============================================================================
-# MLflow TRACKING
-# ============================================================================
-
-# MLflow local storage (auto-generated)
-mlruns/
-.mlflow/
-
-# MLflow artifacts
-artifacts/
-
-# MLflow database
-mlflow.db
-
-# MLflow UI cache
-.mlflow_cache/
-
-# ============================================================================
-# DATA AND DATABASES
-# ============================================================================
-
-# SQLite databases
-*.db
-*.sqlite
-*.sqlite3
-
-# Database dumps
-*.sql
-*.sql.gz
-
-# Data files
-data/
-*.csv
-*.tsv
-*.json
-datasets/
-raw_data/
-
-# Large files
-*.tar
-*.tar.gz
-*.zip
-*.rar
-
-# ============================================================================
-# LOGS AND OUTPUT
-# ============================================================================
-
-# Log files
-logs/
-*.log
-*.log.*
-
-# Output files
-output/
-results/
-results_*/
-reports/
-*.out
-
-# Temporary files
-tmp/
-temp/
-*.tmp
-*.bak
-
-# ============================================================================
-# PROJECT-SPECIFIC
-# ============================================================================
-
-# MAHILDA algorithm outputs
-discovery_results/
-rule_outputs/
-tgd_results/
-
-# Bin outputs
-bins/output/
-bins/*.out
-bins/*.log
-
-# Cache directories
-cache/
-.cache/
-
-# Configuration overrides (local)
-config.local.yaml
-config.dev.yaml
-.config_override
-configs/config.local.yaml
-
-# Downloaded databases
-downloads/
-external_data/
-
-# Experiment tracking
-experiments/
-experiment_logs/
-
-# ============================================================================
-# OS AND SYSTEM
-# ============================================================================
-
-# macOS
-.DS_Store
-.LSOverride
-._*
-.AppleDouble
-
-# Linux
-.directory
-
-# Windows
-Thumbs.db
-ehthumbs.db
-desktop.ini
-
-# Temporary system files
-.TemporaryItems
-.Trashes
-
-# ============================================================================
-# DEVELOPMENT
-# ============================================================================
-
-# Development-only scripts (repo root only)
-/dev_*.py
-/test_*.py
-/scratch_*.py
-
-# Temporary notebooks
-scratch.ipynb
-playground.ipynb
-
-# Local development files
-local/
-.local/
-
-# Node modules (if using any JS tools)
-node_modules/
-
-# ============================================================================
-# SENSITIVE INFORMATION
-# ============================================================================
-
-# Credentials and secrets
-*.pem
-*.key
-*.p12
-*.pfx
-secrets.yaml
-secrets.json
+.env
 .env.local
 .env.*.local
-credentials/
-auth/
+*.pem
+*.key
 
-# ============================================================================
-# ARCHIVES
-# ============================================================================
-
-# Backup files
-*.backup
-*.bk
-*.old
-*.orig
-
-# Version control
-.git/
-.gitmodules
-
-# ============================================================================
-# SPECIAL RULES - EXCEPTIONS
-# ============================================================================
-
-# Keep these files even if they match ignore patterns above
-
-# Important documentation
-!README.md
-!CHANGELOG.md
-!MLFLOW_*.md
-
-# Important configuration
-!configs/config.example.yaml
-!configs/config.test.yaml
-!config_bin_*.yaml
-
-# Important scripts
-!run_*.sh
-
-# Source code
-!src/
-!tests/
-!bins/
-
-# Configuration examples
-!.env.example
-
-old/
+logs/
+mlruns/
+artifacts/
 results/
+results_all_databases/
+results_batch_check/
+results_test/
+
+prolog_tmp/
+SPIDER_temp/
+popper/
+
+test_data/test.db
+config.local.yaml
+configs/config.local.yaml
 AGENTS.md
 resume_last_session.sh
-docs/implementation-plan.md

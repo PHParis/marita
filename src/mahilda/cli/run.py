@@ -324,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = load_typed_config(args.config)
     except ValueError as exc:
-        print(exc)
+        logging.getLogger(__name__).error("%s", exc)
         return 1
 
     # Check verbose/quiet mode from environment

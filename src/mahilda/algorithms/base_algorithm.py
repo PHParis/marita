@@ -22,4 +22,4 @@ class BaseAlgorithm(ABC):
         Returns:
         - List of discovered rules.
         """
-        pass
+        raise NotImplementedError
