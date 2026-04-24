@@ -20,7 +20,7 @@ except ImportError:
 from mahilda.algorithms.mahilda import MAHILDA
 from mahilda.cli.runtime import initialize_directories, mlflow_run_context
 from mahilda.database.alchemy_utility import AlchemyUtility
-from mahilda.utils.config_loader import load_config
+from mahilda.utils.config_loader import load_typed_config
 from mahilda.utils.logging_utils import configure_global_logger
 from mahilda.utils.monitor import ResourceMonitor
 from mahilda.utils.rules import RuleIO
@@ -322,7 +322,7 @@ def main(argv: list[str] | None = None) -> int:
     """Main entry point of the script."""
     args = parse_arguments(argv)
     try:
-        config = load_config(args.config)
+        config = load_typed_config(args.config)
     except ValueError as exc:
         print(exc)
         return 1
@@ -331,13 +331,13 @@ def main(argv: list[str] | None = None) -> int:
     quiet = os.environ.get("MAHILDA_QUIET") == "1"
 
     # Extract configuration with defaults
-    threshold = config.get("monitor", {}).get("memory_threshold", 15 * 1024 * 1024 * 1024)  # 15GB
-    timeout = config.get("monitor", {}).get("timeout", 3600)  # 1 hour
-    database_path = Path(config.get("database", {}).get("path", "test_data"))
-    database_name = Path(config.get("database", {}).get("name", "test.db"))
-    log_dir = Path(config.get("logging", {}).get("log_dir", "logs/"))
-    results_dir = Path(config.get("results", {}).get("output_dir", "results/"))
-    algorithm_name = str(config.get("algorithm", {}).get("name", "MAHILDA")).upper()
+    threshold = config.monitor.memory_threshold  # 15GB
+    timeout = config.monitor.timeout  # 1 hour
+    database_path = config.database.path
+    database_name = config.database.name
+    log_dir = config.logging.log_dir
+    results_dir = config.results.output_dir
+    algorithm_name = config.algorithm.name
 
     # Initialize directories
     initialize_directories(results_dir, log_dir)
@@ -357,11 +357,11 @@ def main(argv: list[str] | None = None) -> int:
     # Determine MLflow usage
     use_mlflow = False
     if MLFLOW_AVAILABLE:
-        use_mlflow = config.get("mlflow", {}).get("use", False)
+        use_mlflow = config.mlflow.use
         if use_mlflow and not quiet:
             logger.info("MLflow is enabled.")
     else:
-        if config.get("mlflow", {}).get("use", False):
+        if config.mlflow.use:
             if not quiet:
                 logger.warning("MLflow is not available. Proceeding without MLflow.")
             use_mlflow = False
@@ -384,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
         results_dir=results_dir,
         logger=logger,
         use_mlflow=use_mlflow,
-        config=config,
+        config=config.raw,
         should_stop=lambda: monitor.should_stop,
     )
 
@@ -392,7 +392,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.info(f"{Fore.CYAN}{Style.BRIGHT}Starting rule discovery process.{Style.RESET_ALL}")
 
     try:
-        with mlflow_run_context(use_mlflow, config):
+        with mlflow_run_context(use_mlflow, config.raw):
             if use_mlflow and not quiet:
                 logger.info("MLflow run started.")
 

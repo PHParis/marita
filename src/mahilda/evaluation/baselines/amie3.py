@@ -1,5 +1,4 @@
 import logging
-import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -22,26 +21,36 @@ class Amie3(RuleDiscoveryAlgorithm):
         current_time = datetime.now()
 
         jar_file = script_dir.parent / "third_party" / "amie3" / "amie-milestone-intKB.jar"
-        output_file = os.path.join(
-            results_path,
-            f"{current_time.strftime('%Y-%m-%d_%H-%M-%S')}_{algorithm_name}.tsv",
-        )
+        output_file = Path(results_path) / f"{current_time.strftime('%Y-%m-%d_%H-%M-%S')}_{algorithm_name}.tsv"
 
-        cmd = (
-            f"java -Xmx15G -jar {jar_file} "
-            f"-mins 0 -minc 0 -minpca 0 -minhc 0 -minis 0 {database_path} > {output_file}"
-        )
+        cmd = [
+            "java",
+            "-Xmx15G",
+            "-jar",
+            str(jar_file),
+            "-mins",
+            "0",
+            "-minc",
+            "0",
+            "-minpca",
+            "0",
+            "-minhc",
+            "0",
+            "-minis",
+            "0",
+            str(database_path),
+        ]
 
-        if not run_cmd(cmd, timeout=300):
+        if not run_cmd(cmd, timeout=300, stdout_path=output_file, logger=logger):
             return []
 
-        with open(output_file) as file:
+        with output_file.open(encoding="utf-8") as file:
             raw_rules = file.read()
 
         rules = self.parse_horn_rules(raw_rules)
 
-        if os.path.exists(output_file):
-            os.remove(output_file)
+        if output_file.exists():
+            output_file.unlink()
 
         return rules
 
@@ -53,9 +62,7 @@ class Amie3(RuleDiscoveryAlgorithm):
             raise ValueError(f"Cannot convert '{value}' to float.") from exc
 
     def parse_horn_rules(self, rules_str: str) -> list[TGDRule]:
-        rule_pattern = re.compile(
-            r"^(?P<body>.+?)\s+=>\s+(?P<head>.+?)\t(?P<confidence>[\d.]+)\t(?P<support>[\d.]+)"
-        )
+        rule_pattern = re.compile(r"^(?P<body>.+?)\s+=>\s+(?P<head>.+?)\t(?P<confidence>[\d.]+)\t(?P<support>[\d.]+)")
 
         rules = []
         nb_transaction = 0

@@ -2,12 +2,15 @@ from abc import ABC, abstractmethod
 
 from mahilda.utils.rules import Rule
 from mahilda.database.alchemy_utility import AlchemyUtility
+
+
 class BaseAlgorithm(ABC):
     def __init__(self, database: AlchemyUtility):
         """
         Initialize the algorithm with a database.
         """
         self.database = database
+
     @abstractmethod
     def discover_rules(self, **kwargs) -> Rule:
         """

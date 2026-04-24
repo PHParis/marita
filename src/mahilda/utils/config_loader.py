@@ -4,6 +4,8 @@ from typing import Any
 
 import yaml
 
+from mahilda.utils.config_types import AppConfig
+
 ALLOWED_ALGORITHMS = {"MAHILDA", "AMIE3", "SPIDER", "POPPER", "ILP"}
 ALLOWED_BASELINES = {"AMIE3", "SPIDER", "POPPER", "ILP"}
 
@@ -16,7 +18,9 @@ def _add_error(errors: list[str], message: str) -> None:
     errors.append(message)
 
 
-def _expect_mapping(config: dict[str, Any], key: str, errors: list[str], *, required: bool = True) -> dict[str, Any] | None:
+def _expect_mapping(
+    config: dict[str, Any], key: str, errors: list[str], *, required: bool = True
+) -> dict[str, Any] | None:
     value = config.get(key)
     if value is None:
         if required:
@@ -191,3 +195,9 @@ def load_config(config_path: str) -> dict:
     validate_config(validated)
     logger.debug("Loaded and validated configuration from %s", resolved_config_path)
     return validated
+
+
+def load_typed_config(config_path: str) -> AppConfig:
+    """Load, validate, and convert configuration into typed dataclasses."""
+    raw_config = load_config(config_path)
+    return AppConfig.from_dict(raw_config)

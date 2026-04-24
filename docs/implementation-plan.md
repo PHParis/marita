@@ -28,8 +28,8 @@
 - [x] Make `src/mahilda/utils/logging_utils.py` idempotent by avoiding repeated root-handler attachment and by returning named loggers instead of mutating the global logger on every call.
 - [ ] Standardize command output across `src/mahilda/cli/run.py`, `src/mahilda/cli/benchmark.py`, `src/mahilda/cli/batch.py`, `src/mahilda/cli/smoke.py`, `src/mahilda/cli/test_data.py`, `src/mahilda/cli/mlflow_start.py`, and `src/mahilda/cli/mlflow_ui.py`; remove mixed English/French output and reduce ad hoc `print()` usage.
 - [x] Wire `src/mahilda/utils/monitor.py` into actual cancellation by passing a stop predicate into `MAHILDA.discover_rules()` from `src/mahilda/cli/run.py`; ensure the monitor is stopped and joined on success, failure, and signal exit.
-- [ ] Replace the fragile shell-string parsing in `src/mahilda/utils/run_cmd.py` with a safer subprocess wrapper that uses structured argv input, explicit redirection, timeout handling, and logger-based error reporting.
-- [ ] Update `src/mahilda/evaluation/baselines/amie3.py`, `src/mahilda/evaluation/baselines/spider.py`, and `src/mahilda/evaluation/baselines/popper.py` to use the safer subprocess wrapper without changing vendored third-party internals.
+- [x] Replace the fragile shell-string parsing in `src/mahilda/utils/run_cmd.py` with a safer subprocess wrapper that uses structured argv input, explicit redirection, timeout handling, and logger-based error reporting.
+- [x] Update `src/mahilda/evaluation/baselines/amie3.py`, `src/mahilda/evaluation/baselines/spider.py`, and `src/mahilda/evaluation/baselines/popper.py` to use the safer subprocess wrapper without changing vendored third-party internals.
 - [ ] Consolidate output and report generation so `run`, `benchmark`, and `batch` write artifacts through a shared, predictable API rather than duplicating path and serialization logic.
 - [x] Normalize environment-variable handling for `MAHILDA_VERBOSE`, `MAHILDA_QUIET`, and `MAHILDA_LOG_DIR` so command chaining inside one Python process does not leak settings across invocations.
 - [x] Keep `mahilda run` restricted to `MAHILDA` and `mahilda benchmark` restricted to baselines, but make the error messages and help text explicit and consistent.
@@ -45,26 +45,26 @@
 ## Phase 2: Validation, Tests, and Tooling
 
 - [x] Add explicit config validation in `src/mahilda/utils/config_loader.py` for required keys, allowed algorithm and baseline names, path fields, worker counts, timeouts, and MLflow configuration shape.
-- [ ] Introduce a typed config representation using stdlib typing or dataclasses so command code stops passing unvalidated `dict` values everywhere.
-- [ ] Add tests for config validation success and failure paths in `tests/`, including missing files, malformed YAML, invalid algorithms, invalid baselines, invalid worker counts, and invalid timeout values.
-- [ ] Add tests for CLI routing and argument behavior across `run`, `benchmark`, `batch`, `smoke`, and `test-db`.
-- [ ] Add tests for logger idempotence and repeated command execution so handler duplication is caught automatically.
-- [ ] Add tests for monitor cancellation wiring so timeout and stop predicates are exercised without requiring long-running real workloads.
-- [ ] Add tests for output and report path generation so all commands write to the expected locations and filenames.
-- [ ] Add tests for `MAHILDA` parameter normalization in `src/mahilda/algorithms/mahilda.py`, including legacy key aliases such as `max_table`, `max_vars`, `nb_occurrence`, and `recursivity`.
-- [ ] Add tests for baseline normalization in `src/mahilda/cli/benchmark.py`, including alias handling such as `ILP -> POPPER`.
-- [ ] Add optional integration tests for Java- and Prolog-dependent baselines behind pytest markers and skips so local fast tests stay fast while integration coverage is still possible.
-- [ ] Reduce Ruff exclusions in `pyproject.toml` by first bringing `src/mahilda/cli/batch.py`, `src/mahilda/utils/logging_utils.py`, `src/mahilda/utils/run_cmd.py`, `src/mahilda/utils/rules.py`, and `src/mahilda/algorithms/mahilda.py` under linting.
-- [ ] Expand Pyright coverage in `pyproject.toml` from the current narrow include list to all first-party non-vendored code, then fix the resulting type issues incrementally.
-- [ ] Add a CI workflow in `.github/workflows/` to run `uv sync`, `uv run ruff check .`, `uv run pyright`, and `uv run pytest` on pull requests and pushes.
-- [ ] Optionally add a lightweight local task runner such as `justfile` or `Makefile`; recommendation: only do this if the team wants shorter aliases for the existing `uv` commands.
+- [x] Introduce a typed config representation using stdlib typing or dataclasses so command code stops passing unvalidated `dict` values everywhere.
+- [x] Add tests for config validation success and failure paths in `tests/`, including missing files, malformed YAML, invalid algorithms, invalid baselines, invalid worker counts, and invalid timeout values.
+- [x] Add tests for CLI routing and argument behavior across `run`, `benchmark`, `batch`, `smoke`, and `test-db`.
+- [x] Add tests for logger idempotence and repeated command execution so handler duplication is caught automatically.
+- [x] Add tests for monitor cancellation wiring so timeout and stop predicates are exercised without requiring long-running real workloads.
+- [x] Add tests for output and report path generation so all commands write to the expected locations and filenames.
+- [x] Add tests for `MAHILDA` parameter normalization in `src/mahilda/algorithms/mahilda.py`, including legacy key aliases such as `max_table`, `max_vars`, `nb_occurrence`, and `recursivity`.
+- [x] Add tests for baseline normalization in `src/mahilda/cli/benchmark.py`, including alias handling such as `ILP -> POPPER`.
+- [x] Add optional integration tests for Java- and Prolog-dependent baselines behind pytest markers and skips so local fast tests stay fast while integration coverage is still possible.
+- [x] Reduce Ruff exclusions in `pyproject.toml` by first bringing `src/mahilda/cli/batch.py`, `src/mahilda/utils/logging_utils.py`, `src/mahilda/utils/run_cmd.py`, `src/mahilda/utils/rules.py`, and `src/mahilda/algorithms/mahilda.py` under linting.
+- [x] Expand Pyright coverage in `pyproject.toml` from the current narrow include list to all first-party non-vendored code, then fix the resulting type issues incrementally.
+- [x] Add a CI workflow in `.github/workflows/` to run `uv sync`, `uv run ruff check .`, `uv run pyright`, and `uv run pytest` on pull requests and pushes.
+- [x] Optionally add a lightweight local task runner such as `justfile` or `Makefile`; recommendation: only do this if the team wants shorter aliases for the existing `uv` commands.
 
 ## Phase 2 Exit Criteria
 
-- [ ] Invalid configs fail early with clear, user-facing messages.
-- [ ] Fast local tests cover CLI routing, config validation, monitor behavior, and output paths.
-- [ ] Ruff and Pyright cover the active first-party codebase except explicitly vendored and archive areas.
-- [ ] CI runs on every PR and blocks regressions in lint, types, and tests.
+- [x] Invalid configs fail early with clear, user-facing messages.
+- [x] Fast local tests cover CLI routing, config validation, monitor behavior, and output paths.
+- [x] Ruff and Pyright cover the active first-party codebase except explicitly vendored and archive areas.
+- [x] CI runs on every PR and blocks regressions in lint, types, and tests.
 
 ## Phase 3: Documentation and Repository Hygiene
 

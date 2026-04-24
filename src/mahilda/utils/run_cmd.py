@@ -1,119 +1,134 @@
+from __future__ import annotations
+
+import logging
 import shlex
 import subprocess
-import psutil
+import threading
 import time
+from collections.abc import Sequence
+from pathlib import Path
+
+import psutil
 
 
-def run_cmd(cmd_string: str, timeout: int = None, memory_limit_gb: float = 30) -> bool:
-    """
-    Run a shell command with optional support for pipes, output redirection, timeout, and memory monitoring.
-
-    Args:
-        cmd_string (str): The shell command to execute.
-        timeout (int, optional): Timeout in seconds for the command. Defaults to None.
-        memory_limit_gb (float, optional): Maximum memory (in GB) allowed for the command. Defaults to None.
-
-    Returns:
-        bool: True if the command executed successfully, False otherwise.
-    """
-    cmd_list = shlex.split(cmd_string)
-
-    try:
-        print(f"Executing command: {cmd_string}")
-
-        # Determine if the command includes a pipe
-        if "|" in cmd_list:
-            pipe_index = cmd_list.index("|")
-            cmd_list1 = cmd_list[:pipe_index]
-            cmd_list2 = cmd_list[pipe_index + 1:]
-
-            # Execute the piped command
-            with subprocess.Popen(cmd_list1, stdout=subprocess.PIPE) as p1, \
-                    subprocess.Popen(cmd_list2, stdin=p1.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p2:
-                p1.stdout.close()  # Allow p1 to receive a SIGPIPE if p2 exits early
-                try:
-                    output, errors = p2.communicate(timeout=timeout)
-                except subprocess.TimeoutExpired:
-                    print("Command timed out. Terminating...")
-                    p2.terminate()
-                    return False
-
-                if p2.returncode == 0:
-                    print(f"Command executed successfully: {cmd_string}")
-                    return True
-                else:
-                    print(f"Command failed with return code {p2.returncode}: {errors.decode()}")
-                    return False
-
-        # Check if the command includes output redirection ('>')
-        elif ">" in cmd_list:
-            output_file_index = cmd_list.index(">") + 1
-            if output_file_index < len(cmd_list):
-                output_file = cmd_list[output_file_index]
-                cmd_list = cmd_list[:cmd_list.index(">")]
-
-                with open(output_file, "w") as f:
-                    process = subprocess.Popen(cmd_list, stdout=f, stderr=subprocess.PIPE)
-                    try:
-                        _, errors = process.communicate(timeout=timeout)
-                    except subprocess.TimeoutExpired:
-                        print("Command timed out. Terminating...")
-                        process.terminate()
-                        return False
-
-                    if process.returncode == 0:
-                        print(f"Command executed successfully: {cmd_string}")
-                        return True
-                    else:
-                        print(f"Command failed with return code {process.returncode}: {errors.decode()}")
-                        return False
-
-        # Standard command execution
-        else:
-            with subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
-                # Monitor memory usage if a memory limit is specified
-                if memory_limit_gb:
-                    monitor_thread = start_memory_monitor(process.pid, memory_limit_gb)
-                try:
-                    output, errors = process.communicate(timeout=timeout)
-                except subprocess.TimeoutExpired:
-                    print("Command timed out. Terminating...")
-                    process.terminate()
-                    return False
-
-                if process.returncode == 0:
-                    print(f"Command executed successfully: {cmd_string}")
-                    return True
-                else:
-                    print(f"Command failed with return code {process.returncode}: {errors.decode()}")
-                    return False
-    except Exception as e:
-        print(f"An error occurred while executing the command: {e}")
+def run_cmd(
+    command: str | Sequence[str],
+    *,
+    timeout: int | None = None,
+    memory_limit_gb: float | None = 30,
+    stdout_path: str | Path | None = None,
+    cwd: str | Path | None = None,
+    logger: logging.Logger | None = None,
+) -> bool:
+    """Run a command with optional timeout, output redirection, and memory monitoring."""
+    command_args, redirected_stdout = _normalise_command(command, stdout_path)
+    if not command_args:
+        _logger(logger).error("Cannot execute an empty command.")
         return False
 
+    active_logger = _logger(logger)
+    active_logger.info("Executing command: %s", " ".join(command_args))
 
-def start_memory_monitor(pid: int, memory_limit_gb: float):
-    """
-    Start a thread to monitor memory usage of a process.
+    stdout_handle = None
+    try:
+        if redirected_stdout is not None:
+            output_file = Path(redirected_stdout)
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            stdout_handle = output_file.open("w", encoding="utf-8")
 
-    Args:
-        pid (int): Process ID to monitor.
-        memory_limit_gb (float): Maximum memory (in GB) allowed for the process.
+        process = subprocess.Popen(
+            command_args,
+            stdout=stdout_handle if stdout_handle else subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(cwd) if cwd else None,
+        )
 
-    Returns:
-        threading.Thread: The thread monitoring the memory.
-    """
-    import threading
+        monitor_thread = _start_memory_monitor(
+            pid=process.pid,
+            process=process,
+            memory_limit_gb=memory_limit_gb,
+            logger=active_logger,
+        )
 
-    def monitor():
-        process = psutil.Process(pid)
-        while process.is_running():
-            memory_usage_gb = process.memory_info().rss / (1024 ** 3)  # Memory usage in GB
-            if memory_usage_gb > memory_limit_gb:
-                print(f"Memory usage exceeded: {memory_usage_gb:.2f} GB. Terminating process...")
-                process.terminate()
-                break
-            time.sleep(1)
+        try:
+            _, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            active_logger.error("Command timed out after %s seconds", timeout)
+            process.terminate()
+            return False
+        finally:
+            if monitor_thread is not None:
+                monitor_thread.join(timeout=1)
+
+        if process.returncode == 0:
+            active_logger.info("Command executed successfully.")
+            return True
+
+        stderr_text = (stderr or "").strip()
+        if stderr_text:
+            active_logger.error("Command failed with return code %s: %s", process.returncode, stderr_text)
+        else:
+            active_logger.error("Command failed with return code %s", process.returncode)
+        return False
+    except Exception:
+        active_logger.exception("Unexpected error while executing command")
+        return False
+    finally:
+        if stdout_handle is not None:
+            stdout_handle.close()
+
+
+def _logger(logger: logging.Logger | None) -> logging.Logger:
+    return logger or logging.getLogger(__name__)
+
+
+def _normalise_command(
+    command: str | Sequence[str],
+    stdout_path: str | Path | None,
+) -> tuple[list[str], str | Path | None]:
+    if isinstance(command, str):
+        command_args = shlex.split(command)
+    else:
+        command_args = [str(arg) for arg in command]
+
+    redirected_stdout = stdout_path
+    if redirected_stdout is None and ">" in command_args:
+        redirect_index = command_args.index(">")
+        if redirect_index + 1 >= len(command_args):
+            return [], None
+        redirected_stdout = command_args[redirect_index + 1]
+        command_args = command_args[:redirect_index]
+
+    return command_args, redirected_stdout
+
+
+def _start_memory_monitor(
+    *,
+    pid: int,
+    process: subprocess.Popen[str],
+    memory_limit_gb: float | None,
+    logger: logging.Logger,
+) -> threading.Thread | None:
+    if memory_limit_gb is None:
+        return None
+
+    def monitor() -> None:
+        try:
+            monitored_process = psutil.Process(pid)
+            while process.poll() is None:
+                memory_usage_gb = monitored_process.memory_info().rss / (1024**3)
+                if memory_usage_gb > memory_limit_gb:
+                    logger.error(
+                        "Memory usage exceeded %.2fGB (current: %.2fGB). Terminating command.",
+                        memory_limit_gb,
+                        memory_usage_gb,
+                    )
+                    process.terminate()
+                    return
+                time.sleep(0.5)
+        except psutil.Error:
+            logger.debug("Could not monitor command memory usage.", exc_info=True)
 
     thread = threading.Thread(target=monitor, daemon=True)
     thread.start()

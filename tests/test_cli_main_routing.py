@@ -1,0 +1,109 @@
+from mahilda.cli.main import main
+
+
+def test_main_routes_run_command(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 17
+
+    monkeypatch.setattr("mahilda.cli.run.main", fake_run_main)
+
+    exit_code = main(["run", "--config", "cfg.yml"])
+
+    assert exit_code == 17
+    assert captured["argv"] == ["--config", "cfg.yml"]
+
+
+def test_main_routes_benchmark_command(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_benchmark_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 18
+
+    monkeypatch.setattr("mahilda.cli.benchmark.main", fake_benchmark_main)
+
+    exit_code = main(["benchmark", "--config", "cfg.yml", "--baseline", "SPIDER"])
+
+    assert exit_code == 18
+    assert captured["argv"] == ["--config", "cfg.yml", "--baseline", "SPIDER"]
+
+
+def test_main_routes_batch_command(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_batch_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 19
+
+    monkeypatch.setattr("mahilda.cli.batch.main", fake_batch_main)
+
+    exit_code = main(
+        [
+            "batch",
+            "--config",
+            "cfg.yml",
+            "--directory",
+            "dbs",
+            "--output",
+            "out",
+            "--timeout",
+            "99",
+            "--workers",
+            "4",
+            "--start-from",
+            "2",
+            "--max-databases",
+            "3",
+        ]
+    )
+
+    assert exit_code == 19
+    assert captured["argv"] == [
+        "--config",
+        "cfg.yml",
+        "--output",
+        "out",
+        "--timeout",
+        "99",
+        "--start-from",
+        "2",
+        "--workers",
+        "4",
+        "--directory",
+        "dbs",
+        "--max-databases",
+        "3",
+    ]
+
+
+def test_main_routes_smoke_command(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_smoke_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 20
+
+    monkeypatch.setattr("mahilda.cli.smoke.main", fake_smoke_main)
+
+    exit_code = main(["smoke", "--config", "cfg.yml", "--verbose"])
+
+    assert exit_code == 20
+    assert captured["argv"] == ["--config", "cfg.yml", "--verbose"]
+
+
+def test_main_routes_test_db_command(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_test_db_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 21
+
+    monkeypatch.setattr("mahilda.cli.test_data.main", fake_test_db_main)
+
+    exit_code = main(["test-db", "--output", "tmp/test.db"])
+
+    assert exit_code == 21
+    assert captured["argv"] == ["--output", "tmp/test.db"]

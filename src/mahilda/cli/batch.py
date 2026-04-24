@@ -20,7 +20,7 @@ from typing import Any
 
 from mahilda.cli.run import DatabaseProcessor
 from mahilda.cli.runtime import initialize_directories
-from mahilda.utils.config_loader import load_config
+from mahilda.utils.config_loader import load_typed_config
 from mahilda.utils.logging_utils import configure_global_logger
 
 try:
@@ -248,24 +248,32 @@ def main(argv: list[str] | None = None) -> int:
         help="Output directory for results (default: results_all_databases)",
     )
     parser.add_argument(
-        "-t", "--timeout", type=int, default=7200, help="Timeout per database in seconds (default: 7200 = 2 hours)"
+        "-t",
+        "--timeout",
+        type=int,
+        default=None,
+        help="Timeout per database in seconds (overrides config batch.timeout)",
     )
     parser.add_argument("--start-from", type=int, default=0, help="Start from database index (default: 0)")
     parser.add_argument(
         "--max-databases", type=int, default=None, help="Maximum number of databases to process (default: all)"
     )
-    parser.add_argument("-w", "--workers", type=int, default=3, help="Number of parallel workers (default: 3)")
+    parser.add_argument(
+        "-w", "--workers", type=int, default=None, help="Number of parallel workers (overrides config batch.workers)"
+    )
 
     args = parser.parse_args(argv)
 
     try:
-        config = load_config(args.config)
+        config = load_typed_config(args.config)
     except ValueError as exc:
         print_error(str(exc))
         return 1
 
-    configured_db_dir = config.get("database", {}).get("path")
+    configured_db_dir = str(config.database.path)
     target_dir = args.directory or configured_db_dir
+    effective_timeout = args.timeout if args.timeout is not None else config.batch.timeout
+    effective_workers = args.workers if args.workers is not None else config.batch.workers
     if not target_dir:
         print_error("No database directory provided. Use --directory or set database.path in config.")
         return 1
@@ -290,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Create results directory
     results_base_dir = Path(args.output)
-    log_dir = Path(config.get("logging", {}).get("log_dir", "logs"))
+    log_dir = config.logging.log_dir
     initialize_directories(results_base_dir, log_dir)
 
     # Print header
@@ -300,8 +308,8 @@ def main(argv: list[str] | None = None) -> int:
     print_info("Database directory", str(db_dir), "📁")
     print_info("Results directory", str(results_base_dir), "📊")
     print_info("Total databases", str(len(db_files)), "💾")
-    print_info("Parallel workers", str(args.workers), "⚡")
-    print_info("Timeout per database", format_duration(args.timeout), "⏱️")
+    print_info("Parallel workers", str(effective_workers), "⚡")
+    print_info("Timeout per database", format_duration(effective_timeout), "⏱️")
     print()
 
     # Track results
@@ -311,13 +319,13 @@ def main(argv: list[str] | None = None) -> int:
     # Process databases in parallel
     print_section("Processing databases in parallel...")
 
-    with ProcessPoolExecutor(max_workers=args.workers) as executor:
+    with ProcessPoolExecutor(max_workers=effective_workers) as executor:
         # Submit all tasks
         future_to_db = {}
         for db_file in db_files:
             db_path = Path(db_file)
             db_name = db_path.stem
-            future = executor.submit(run_database, db_path, db_name, results_base_dir, args.timeout)
+            future = executor.submit(run_database, db_path, db_name, results_base_dir, effective_timeout)
             future_to_db[future] = db_name
 
         # Process completed tasks

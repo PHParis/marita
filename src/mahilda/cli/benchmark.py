@@ -16,7 +16,7 @@ except ImportError:
 from mahilda.cli.runtime import initialize_directories, mlflow_run_context
 from mahilda.database.alchemy_utility import AlchemyUtility
 from mahilda.evaluation.baselines import Amie3, Popper, Spider
-from mahilda.utils.config_loader import load_config
+from mahilda.utils.config_loader import load_typed_config
 from mahilda.utils.logging_utils import configure_global_logger
 from mahilda.utils.rules import RuleIO
 
@@ -155,22 +155,22 @@ Below are the top-5 best rules discovered based on their scores:
 def main(argv: list[str] | None = None) -> int:
     args = parse_arguments(argv)
     try:
-        config = load_config(args.config)
+        config = load_typed_config(args.config)
     except ValueError as exc:
         print(exc)
         return 1
 
-    baseline_from_config = str(config.get("algorithm", {}).get("name", "")).strip()
+    baseline_from_config = config.benchmark.baseline or config.algorithm.name
     requested_baseline = args.baseline if args.baseline else baseline_from_config
     baseline_name = normalise_baseline_name(requested_baseline)
     if baseline_name not in {"AMIE3", "SPIDER", "POPPER"}:
         print("Benchmark baseline must be one of: AMIE3, SPIDER, POPPER")
         return 1
 
-    database_path = Path(config.get("database", {}).get("path", "test_data"))
-    database_name = Path(config.get("database", {}).get("name", "test.db"))
-    log_dir = Path(config.get("logging", {}).get("log_dir", "logs/"))
-    results_dir = Path(config.get("results", {}).get("output_dir", "results/"))
+    database_path = config.database.path
+    database_name = config.database.name
+    log_dir = config.logging.log_dir
+    results_dir = config.results.output_dir
 
     initialize_directories(results_dir, log_dir)
     previous_log_dir = os.environ.get("MAHILDA_LOG_DIR")
@@ -180,8 +180,8 @@ def main(argv: list[str] | None = None) -> int:
 
     use_mlflow = False
     if MLFLOW_AVAILABLE:
-        use_mlflow = config.get("mlflow", {}).get("use", False)
-    elif config.get("mlflow", {}).get("use", False):
+        use_mlflow = config.mlflow.use
+    elif config.mlflow.use:
         logger.warning("MLflow is not available. Proceeding without MLflow.")
 
     processor = BaselineProcessor(
@@ -194,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        with mlflow_run_context(use_mlflow, config):
+        with mlflow_run_context(use_mlflow, config.raw):
             processor.discover_rules()
             processor.clean_up()
     except Exception:

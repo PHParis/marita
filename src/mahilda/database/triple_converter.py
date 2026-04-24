@@ -7,6 +7,8 @@ from sqlalchemy import MetaData, select
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
+
+
 class TripleConverter:
     """
     Converts database tables into RDF-like triples.
@@ -28,9 +30,7 @@ class TripleConverter:
             fk_columns = foreign_keys.get(table_name, {})
 
             if len(pk_columns) == 0 or len(attributes) == 1:
-                self.logger.warning(
-                    f"Table {table_name} has no PK or only one column. Skipping."
-                )
+                self.logger.warning(f"Table {table_name} has no PK or only one column. Skipping.")
                 continue
 
             rows = self._select_query(table_name, attributes)
@@ -54,16 +54,14 @@ class TripleConverter:
                             ref_table, ref_column = fk_columns[attribute]
                             # Skip if foreign key column is missing
                             if ref_column not in row_dict or row_dict[ref_column] is None:
-                                #self.logger.warning(
+                                # self.logger.warning(
                                 #    f"Missing foreign key column '{ref_column}' for row {row_dict}, skipping."
-                                #)
+                                # )
                                 continue
 
                             ref_pk_columns = primary_keys.get(ref_table, [])
                             if not ref_pk_columns:
-                                self.logger.warning(
-                                    f"Referenced table {ref_table} has no PK. Skipping."
-                                )
+                                self.logger.warning(f"Referenced table {ref_table} has no PK. Skipping.")
                                 continue
 
                             # Build FK dict with all available PK columns from current row
@@ -141,9 +139,7 @@ class TripleConverter:
 
     def _generate_rdf_id(self, table: str, primary_keys: list[str], row_dict: dict[str, Any]) -> str:
         try:
-            pk_values = "_".join(
-                self._sanitize_identifier(str(row_dict[pk])) for pk in primary_keys
-            )
+            pk_values = "_".join(self._sanitize_identifier(str(row_dict[pk])) for pk in primary_keys)
         except KeyError as e:
             # Only log at debug level - this is expected for partial FK references
             if self.logger.isEnabledFor(logging.DEBUG):

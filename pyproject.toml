@@ -58,6 +58,11 @@ minversion = "8.0"
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra --strict-markers --strict-config --cov=mahilda --cov-report=term-missing --cov-report=xml --cov-report=html"
+markers = [
+  "integration: marks slow external dependency integration tests",
+  "java_required: marks tests that require Java runtime",
+  "prolog_required: marks tests that require clingo and SWI-Prolog",
+]
 
 [tool.coverage.run]
 branch = true
@@ -81,14 +86,11 @@ extend-exclude = [
   "legacy",
   "research/legacy",
   "src/mahilda/_vendor",
-  "src/mahilda/algorithms",
+  "src/mahilda/algorithms/mahilda_core",
   "src/mahilda/evaluation/third_party",
   "src/mahilda/evaluation/baselines/popper.py",
   "src/mahilda/utils/log_setup.py",
-  "src/mahilda/utils/logging_utils.py",
   "src/mahilda/utils/monitor.py",
-  "src/mahilda/utils/rules.py",
-  "src/mahilda/utils/run_cmd.py",
   "src/mahilda/utils/structure_analysis.py",
 ]
 
@@ -111,6 +113,15 @@ ignore = [
 [tool.ruff.lint.isort]
 known-first-party = ["mahilda"]
 
+[tool.ruff.lint.per-file-ignores]
+"src/mahilda/algorithms/__init__.py" = ["F401"]
+"src/mahilda/algorithms/base_algorithm.py" = ["I001"]
+"src/mahilda/algorithms/rule_discovery_algorithm.py" = ["I001"]
+"src/mahilda/algorithms/mahilda.py" = ["UP", "TC006", "SIM102"]
+"src/mahilda/utils/rules.py" = ["I001", "UP", "SIM102"]
+"src/mahilda/utils/run_cmd.py" = ["TC003"]
+"tests/test_baselines_integration.py" = ["TC003"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
@@ -119,19 +130,22 @@ line-ending = "lf"
 [tool.pyright]
 typeCheckingMode = "basic"
 include = [
-  "src/mahilda/cli",
-  "src/mahilda/utils/config_loader.py",
-  "src/mahilda/database/database_connection_manager.py",
-  "src/mahilda/database/data_exporter.py",
-  "src/mahilda/database/index_manager.py",
-  "src/mahilda/database/triple_converter.py",
-  "src/mahilda/database/query_utility.py",
-  "src/mahilda/database/alchemy_utility.py",
-  "src/mahilda/database/download_databases.py",
+  "src/mahilda",
 ]
 exclude = [
+  "legacy",
+  "research",
+  "**/_vendor/**",
+  "**/evaluation/third_party/**",
   "**/evaluation/third_party/popper/**",
   "**/__pycache__",
+]
+ignore = [
+  "src/mahilda/algorithms/mahilda_core",
+  "src/mahilda/evaluation/baselines/popper.py",
+  "src/mahilda/evaluation/baselines/spider.py",
+  "src/mahilda/evaluation/baselines/amie3.py",
+  "src/mahilda/utils/rules.py",
 ]
 pythonVersion = "3.10"
 venvPath = "."

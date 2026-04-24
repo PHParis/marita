@@ -1,4 +1,5 @@
 import ast
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -6,6 +7,8 @@ from pathlib import Path
 from mahilda.algorithms.base_algorithm import BaseAlgorithm
 from mahilda.utils.rules import InclusionDependency, Rule
 from mahilda.utils.run_cmd import run_cmd
+
+logger = logging.getLogger(__name__)
 
 
 class Spider(BaseAlgorithm):
@@ -18,18 +21,32 @@ class Spider(BaseAlgorithm):
         algorithm_name = "SPIDER"
         class_path = "de.metanome.algorithms.spider.SPIDERFile"
         rule_type = "inds"
-        params = " --table-key INPUT_FILES"
-        csv_files = " ".join([os.path.join(self.database.base_csv_dir, f"{t}") for t in os.listdir(self.database.base_csv_dir)])
+        csv_files = [
+            os.path.join(self.database.base_csv_dir, str(table)) for table in os.listdir(self.database.base_csv_dir)
+        ]
         current_time = datetime.now()
         jar_path = script_dir.parent / "third_party" / "metanome"
         file_name = f"{current_time.strftime('%Y-%m-%d_%H-%M-%S')}_{algorithm_name}"
         output_prefix = os.path.join(results_path, file_name)
-        cmd_string = (
-            f"java -cp {jar_path}/metanome-cli-1.2-SNAPSHOT.jar:{jar_path}/{algorithm_name}-1.2-SNAPSHOT.jar "
-            f"de.metanome.cli.App --algorithm {class_path} --files {csv_files}{params} "
-            f"--separator \",\" --output file:{output_prefix} --header"
-        )
-        if not run_cmd(cmd_string):
+
+        cmd = [
+            "java",
+            "-cp",
+            f"{jar_path}/metanome-cli-1.2-SNAPSHOT.jar:{jar_path}/{algorithm_name}-1.2-SNAPSHOT.jar",
+            "de.metanome.cli.App",
+            "--algorithm",
+            class_path,
+            "--files",
+            *csv_files,
+            "--table-key",
+            "INPUT_FILES",
+            "--separator",
+            ",",
+            "--output",
+            f"file:{output_prefix}",
+            "--header",
+        ]
+        if not run_cmd(cmd, logger=logger):
             return rules
 
         result_file_path = f"{output_prefix}_{rule_type}"

@@ -13,10 +13,7 @@ def test_test_db_command_creates_sqlite_file(tmp_path: Path) -> None:
     assert db_path.exists()
 
     with sqlite3.connect(db_path) as conn:
-        table_names = {
-            row[0]
-            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        }
+        table_names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert "Person" in table_names
 
         row_count = conn.execute("SELECT COUNT(*) FROM Person").fetchone()[0]
