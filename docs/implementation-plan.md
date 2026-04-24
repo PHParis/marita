@@ -26,11 +26,11 @@
 - [x] Extract shared runtime helpers from `src/mahilda/cli/run.py` and `src/mahilda/cli/benchmark.py` into a common module for config loading, directory creation, MLflow setup, logger setup, cleanup, and report/artifact handling.
 - [x] Refactor `src/mahilda/cli/batch.py` to use the same shared runtime path as `run` and `benchmark` instead of maintaining a standalone execution model.
 - [x] Make `src/mahilda/utils/logging_utils.py` idempotent by avoiding repeated root-handler attachment and by returning named loggers instead of mutating the global logger on every call.
-- [ ] Standardize command output across `src/mahilda/cli/run.py`, `src/mahilda/cli/benchmark.py`, `src/mahilda/cli/batch.py`, `src/mahilda/cli/smoke.py`, `src/mahilda/cli/test_data.py`, `src/mahilda/cli/mlflow_start.py`, and `src/mahilda/cli/mlflow_ui.py`; remove mixed English/French output and reduce ad hoc `print()` usage.
+- [x] Standardize command output across `src/mahilda/cli/run.py`, `src/mahilda/cli/benchmark.py`, `src/mahilda/cli/batch.py`, `src/mahilda/cli/smoke.py`, `src/mahilda/cli/test_data.py`, `src/mahilda/cli/mlflow_start.py`, and `src/mahilda/cli/mlflow_ui.py`; remove mixed English/French output and reduce ad hoc `print()` usage.
 - [x] Wire `src/mahilda/utils/monitor.py` into actual cancellation by passing a stop predicate into `MAHILDA.discover_rules()` from `src/mahilda/cli/run.py`; ensure the monitor is stopped and joined on success, failure, and signal exit.
 - [x] Replace the fragile shell-string parsing in `src/mahilda/utils/run_cmd.py` with a safer subprocess wrapper that uses structured argv input, explicit redirection, timeout handling, and logger-based error reporting.
 - [x] Update `src/mahilda/evaluation/baselines/amie3.py`, `src/mahilda/evaluation/baselines/spider.py`, and `src/mahilda/evaluation/baselines/popper.py` to use the safer subprocess wrapper without changing vendored third-party internals.
-- [ ] Consolidate output and report generation so `run`, `benchmark`, and `batch` write artifacts through a shared, predictable API rather than duplicating path and serialization logic.
+- [x] Consolidate output and report generation so `run`, `benchmark`, and `batch` write artifacts through a shared, predictable API rather than duplicating path and serialization logic.
 - [x] Normalize environment-variable handling for `MAHILDA_VERBOSE`, `MAHILDA_QUIET`, and `MAHILDA_LOG_DIR` so command chaining inside one Python process does not leak settings across invocations.
 - [x] Keep `mahilda run` restricted to `MAHILDA` and `mahilda benchmark` restricted to baselines, but make the error messages and help text explicit and consistent.
 
@@ -97,31 +97,31 @@
 
 ## Verification Commands
 
-- [ ] Run `uv sync`.
-- [ ] Run `uv run pytest`.
-- [ ] Run `uv run ruff check .`.
-- [ ] Run `uv run ruff format .`.
-- [ ] Run `uv run pyright`.
-- [ ] Run `uv run mahilda test-db`.
-- [ ] Run `uv run mahilda smoke`.
-- [ ] Run `uv run mahilda run --config configs/config.example.yaml`.
-- [ ] Run `uv run mahilda benchmark --config configs/config.example.yaml --baseline AMIE3` only in environments with Java available.
-- [ ] Run `uv run mahilda benchmark --config configs/config.example.yaml --baseline SPIDER` only in environments with Java available.
+- [x] Run `uv sync`.
+- [x] Run `uv run pytest`.
+- [x] Run `uv run ruff check .`.
+- [x] Run `uv run ruff format .`.
+- [x] Run `uv run pyright`.
+- [x] Run `uv run mahilda test-db`.
+- [x] Run `uv run mahilda smoke`.
+- [x] Run `uv run mahilda run --config configs/config.example.yaml`.
+- [x] Run `uv run mahilda benchmark --config configs/config.example.yaml --baseline AMIE3` only in environments with Java available.
+- [x] Run `uv run mahilda benchmark --config configs/config.example.yaml --baseline SPIDER` only in environments with Java available.
 - [ ] Run `uv run mahilda benchmark --config configs/config.example.yaml --baseline POPPER` only in environments with `clingo` and SWI-Prolog available.
 
 ## Explicit Non-Goals
 
-- [ ] Do not refactor or restyle vendored code in `src/mahilda/evaluation/third_party/**`.
-- [ ] Do not revive `legacy/main_all.py`; treat it as archive material unless a migration task explicitly extracts something from it.
-- [ ] Do not broaden compatibility layers unless there is a confirmed external consumer that still depends on them.
-- [ ] Do not add new framework dependencies for configuration or CLI formatting unless the existing stdlib approach proves insufficient.
+- [x] Do not refactor or restyle vendored code in `src/mahilda/evaluation/third_party/**`.
+- [x] Do not revive `legacy/main_all.py`; treat it as archive material unless a migration task explicitly extracts something from it.
+- [x] Do not broaden compatibility layers unless there is a confirmed external consumer that still depends on them.
+- [x] Do not add new framework dependencies for configuration or CLI formatting unless the existing stdlib approach proves insufficient.
 
 ## Definition of Done
 
-- [ ] No machine-specific defaults remain in active commands or docs.
-- [ ] `run`, `benchmark`, and `batch` share one execution model for setup, logging, config, and outputs.
-- [ ] Logging is deterministic and non-duplicative.
-- [ ] Config errors fail fast and clearly.
-- [ ] Core first-party code is covered by tests, linting, and type checking.
-- [ ] CI enforces the new baseline.
-- [ ] Docs accurately describe the reorganized repository.
+- [x] No machine-specific defaults remain in active commands or docs.
+- [x] `run`, `benchmark`, and `batch` share one execution model for setup, logging, config, and outputs.
+- [x] Logging is deterministic and non-duplicative.
+- [x] Config errors fail fast and clearly.
+- [x] Core first-party code is covered by tests, linting, and type checking.
+- [x] CI enforces the new baseline.
+- [x] Docs accurately describe the reorganized repository.

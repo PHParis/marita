@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import logging
 import os
 import shutil
@@ -18,6 +17,7 @@ except ImportError:
     MLFLOW_AVAILABLE = False
 
 from mahilda.algorithms.mahilda import MAHILDA
+from mahilda.cli.artifacts import build_command_artifacts, write_execution_time_metrics, write_markdown_report
 from mahilda.cli.runtime import initialize_directories, mlflow_run_context
 from mahilda.database.alchemy_utility import AlchemyUtility
 from mahilda.utils.config_loader import load_typed_config
@@ -100,8 +100,8 @@ class DatabaseProcessor:
 
         selected_algorithm = MAHILDA
 
-        unique_results_dir = self.results_dir / f"{self.algorithm_name}_{self.database_name.stem}"
-        unique_results_dir.mkdir(parents=True, exist_ok=True)
+        artifacts = build_command_artifacts(self.results_dir, self.algorithm_name, self.database_name)
+        artifacts.run_dir.mkdir(parents=True, exist_ok=True)
 
         db_file_path = self.database_path / self.database_name
         db_uri = f"sqlite:///{db_file_path}"
@@ -132,7 +132,7 @@ class DatabaseProcessor:
                         self.logger.info("MAHILDA settings: nb_occurrence=3, max_table=3, max_vars=6")
 
                 for rule_count, rule in enumerate(
-                    algo.discover_rules(results_dir=str(unique_results_dir), should_stop=self.should_stop),
+                    algo.discover_rules(results_dir=str(artifacts.run_dir), should_stop=self.should_stop),
                     start=1,
                 ):
                     rules.append(rule)
@@ -162,8 +162,7 @@ class DatabaseProcessor:
                         # Show progress every 10 rules in normal mode
                         self.logger.info(f"{Fore.CYAN}Discovered {rule_count} rules so far...{Style.RESET_ALL}")
 
-                json_file_name = f"{self.algorithm_name}_{self.database_name.stem}_results.json"
-                result_path = unique_results_dir / json_file_name
+                result_path = artifacts.result_json
 
                 if not quiet:
                     self.logger.debug(f"Saving rules to {result_path}")
@@ -214,93 +213,37 @@ class DatabaseProcessor:
         self, number_of_rules: int, result_path: Path, top_rules: list[Any], execution_time: float | None = None
     ) -> None:
         """Generates a report of the run."""
-        # Format execution time
-        time_str = "N/A"
+        artifacts = build_command_artifacts(self.results_dir, self.algorithm_name, self.database_name)
+        write_markdown_report(
+            report_path=artifacts.report_md,
+            report_title="Run Report",
+            subject_label="Algorithm",
+            subject_name=self.algorithm_name,
+            database_name=self.database_name.name,
+            number_of_rules=number_of_rules,
+            result_path=result_path,
+            top_rules=top_rules,
+            execution_time=execution_time,
+        )
+
+        self.logger.info("Generated report: %s", artifacts.report_md)
+
         if execution_time is not None:
-            if execution_time < 1.0:
-                time_str = f"{execution_time * 1000:.2f} ms"
-            elif execution_time < 60:
-                time_str = f"{execution_time:.3f} seconds"
-            elif execution_time < 3600:
-                minutes = int(execution_time // 60)
-                seconds = execution_time % 60
-                time_str = f"{minutes}m {seconds:.1f}s"
-            else:
-                hours = int(execution_time // 3600)
-                minutes = int((execution_time % 3600) // 60)
-                time_str = f"{hours}h {minutes}m"
-
-        report_content = f"""
-# Run Report
-
-**Date:** {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-**Algorithm:** {self.algorithm_name}
-**Database:** {self.database_name.name}
-**Number of Rules Discovered:** {number_of_rules}
-**Execution Time:** {time_str}
-**Results Path:** {result_path}
-
-## Summary
-- **Algorithm:** {self.algorithm_name}
-- **Database:** {self.database_name.name}
-- **Number of Rules Discovered:** {number_of_rules}
-- **Execution Time:** {time_str}
-- **Results Path:** {result_path}
-
-## Top 5 Best Rules
-Below are the top-5 best rules discovered based on their scores:
-
-| Rank | Rule Description | Support  | Confidence |
-|------|------------------|----------| -----------|
-"""
-
-        # Add top-5 rules to the report
-        for idx, rule in enumerate(top_rules, start=1):
-            rule_desc = rule.display.replace("\n", " ").replace("|", "\\|")  # Escape pipes for markdown tables
-            report_content += f"| {idx} | {rule_desc} | {rule.accuracy:.3f} | {rule.confidence:.3f} |\n"
-
-        report_content += """
-
-## Details
-The rule discovery process was completed successfully. The discovered rules have been saved to the specified results path.
-
-    """
-
-        report_file_name = f"report_{self.algorithm_name}_{self.database_name.stem}.md"
-        report_path = self.results_dir / report_file_name
-
-        with report_path.open("w") as report_file:
-            report_file.write(report_content)
-
-        self.logger.info(f"Generated report: {report_path}")
-
-        # Save execution time metrics to JSON file
-        if execution_time is not None:
-            import json
-
-            time_metrics_file = (
-                self.results_dir
-                / f"MAHILDA_{self.database_name.stem}"
-                / f"execution_time_{self.database_name.stem}.json"
-            )
-            time_metrics = {
-                "database": self.database_name.stem,
-                "execution_time_seconds": execution_time,
-                "execution_time_ms": execution_time * 1000,
-                "timestamp": datetime.datetime.now().isoformat(),
-                "algorithm": self.algorithm_name,
-                "rules_count": number_of_rules,
-            }
-
             try:
-                with open(time_metrics_file, "w") as f:
-                    json.dump(time_metrics, f, indent=2)
-                self.logger.info(f"Saved execution time metrics: {time_metrics_file}")
+                write_execution_time_metrics(
+                    metrics_path=artifacts.execution_time_json,
+                    database_stem=self.database_name.stem,
+                    execution_time=execution_time,
+                    status="success",
+                    rules_count=number_of_rules,
+                    algorithm_name=self.algorithm_name,
+                )
+                self.logger.info("Saved execution time metrics: %s", artifacts.execution_time_json)
             except Exception as e:
-                self.logger.warning(f"Failed to save time metrics: {e}")
+                self.logger.warning("Failed to save time metrics: %s", e)
 
         if self.use_mlflow:
-            mlflow.log_artifact(str(report_path))
+            mlflow.log_artifact(str(artifacts.report_md))
             self.logger.info("Logged report as MLflow artifact.")
 
 

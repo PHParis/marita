@@ -46,6 +46,7 @@ SPIDER_temp/
 popper/
 
 test_data/test.db
+test_data/*/
 config.local.yaml
 configs/config.local.yaml
 AGENTS.md

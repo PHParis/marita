@@ -1,9 +1,12 @@
 import argparse
+import logging
 import os
 import time
 from pathlib import Path
 
 from mahilda.cli import run as run_cli
+
+logger = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -35,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
 
     config_path = Path(args.config)
     if not config_path.exists():
-        print(f"Config not found: {config_path}")
+        logger.error("Config not found: %s", config_path)
         return 1
 
     try:
@@ -54,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
             os.environ["MAHILDA_QUIET"] = previous_quiet
 
     if not args.quiet:
-        print(f"Smoke test finished in {elapsed:.2f}s")
+        logger.info("Smoke test finished in %.2fs", elapsed)
     return exit_code
 
 

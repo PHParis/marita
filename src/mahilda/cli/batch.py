@@ -18,6 +18,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from mahilda.cli.artifacts import (
+    build_command_artifacts,
+    format_duration,
+    write_batch_summary,
+    write_execution_time_metrics,
+)
 from mahilda.cli.run import DatabaseProcessor
 from mahilda.cli.runtime import initialize_directories
 from mahilda.utils.config_loader import load_typed_config
@@ -85,20 +91,6 @@ def print_warning(message: str):
     print(f"{Fore.YELLOW}⚠ {message}{Style.RESET_ALL}")
 
 
-def format_duration(seconds: float) -> str:
-    """Format duration in human readable format."""
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-    elif seconds < 3600:
-        minutes = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"{minutes}m {secs}s"
-    else:
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        return f"{hours}h {minutes}m"
-
-
 def run_database(db_path: Path, db_name: str, results_base_dir: Path, timeout: int = 7200) -> dict:
     """
     Run MAHILDA on a single database.
@@ -112,9 +104,6 @@ def run_database(db_path: Path, db_name: str, results_base_dir: Path, timeout: i
     Returns:
         dict with status, duration, rules_count, error
     """
-    # Import here to avoid issues with multiprocessing
-    import json
-
     result = {
         "database": db_name,
         "status": "running",
@@ -125,9 +114,8 @@ def run_database(db_path: Path, db_name: str, results_base_dir: Path, timeout: i
         "end_time": None,
     }
 
-    # Create results directory for this database
-    results_dir = results_base_dir / f"MAHILDA_{db_name}"
-    results_dir.mkdir(parents=True, exist_ok=True)
+    artifacts = build_command_artifacts(results_base_dir, "MAHILDA", db_path)
+    artifacts.run_dir.mkdir(parents=True, exist_ok=True)
 
     # Create logs directory
     log_dir = Path("logs") / db_name
@@ -203,21 +191,17 @@ def run_database(db_path: Path, db_name: str, results_base_dir: Path, timeout: i
     result["end_time"] = datetime.now()
     result["duration"] = end_time - start_time
 
-    # Save execution time metrics to JSON file
-    time_metrics_file = results_dir / f"execution_time_{db_name}.json"
-    time_metrics = {
-        "database": db_name,
-        "execution_time_seconds": result["duration"],
-        "execution_time_ms": result["duration"] * 1000,
-        "start_time": result["start_time"].isoformat() if result["start_time"] else None,
-        "end_time": result["end_time"].isoformat() if result["end_time"] else None,
-        "status": result["status"],
-        "rules_count": result["rules_count"],
-    }
-
     try:
-        with open(time_metrics_file, "w") as f:
-            json.dump(time_metrics, f, indent=2)
+        write_execution_time_metrics(
+            metrics_path=artifacts.execution_time_json,
+            database_stem=db_name,
+            execution_time=float(result["duration"]),
+            status=str(result["status"]),
+            rules_count=int(result["rules_count"]),
+            algorithm_name="MAHILDA",
+            start_time=result["start_time"],
+            end_time=result["end_time"],
+        )
     except Exception as e:
         logger.warning(f"Failed to save time metrics: {e}")
 
@@ -413,34 +397,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  • {Fore.RED}{r['database']}{Style.RESET_ALL}: {r['error']}")
         print()
 
-    # Save summary to file
     summary_file = results_base_dir / "summary.txt"
-    with open(summary_file, "w") as f:
-        f.write("=" * 80 + "\n")
-        f.write("MAHILDA Batch Processing Summary\n")
-        f.write("=" * 80 + "\n\n")
-        f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"Total databases: {len(all_results)}\n")
-        f.write(f"Successful: {len(successful)}\n")
-        f.write(f"Timeouts: {len(timeouts)}\n")
-        f.write(f"Errors: {len(errors)}\n")
-        f.write(f"Total duration: {format_duration(total_duration)}\n\n")
-
-        if successful:
-            f.write(f"Total rules: {sum(r['rules_count'] for r in successful)}\n")
-            f.write(f"Average duration: {format_duration(avg_duration)}\n\n")
-
-        f.write("\nDetailed Results:\n")
-        f.write("-" * 80 + "\n\n")
-        for r in all_results:
-            f.write(f"Database: {r['database']}\n")
-            f.write(f"Status: {r['status']}\n")
-            f.write(f"Duration: {format_duration(r['duration'])}\n")
-            if r["status"] == "success":
-                f.write(f"Rules: {r['rules_count']}\n")
-            elif r["error"]:
-                f.write(f"Error: {r['error']}\n")
-            f.write("\n")
+    write_batch_summary(summary_file, all_results, total_duration)
 
     print_success(f"Summary saved to {summary_file}")
     print()

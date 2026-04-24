@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import logging
 import os
 import shutil
@@ -13,6 +12,7 @@ try:
 except ImportError:
     MLFLOW_AVAILABLE = False
 
+from mahilda.cli.artifacts import build_command_artifacts, write_markdown_report
 from mahilda.cli.runtime import initialize_directories, mlflow_run_context
 from mahilda.database.alchemy_utility import AlchemyUtility
 from mahilda.evaluation.baselines import Amie3, Popper, Spider
@@ -70,8 +70,8 @@ class BaselineProcessor:
         if selected_baseline is None:
             raise ValueError(f"Unsupported baseline: {self.baseline_name}")
 
-        unique_results_dir = self.results_dir / f"{self.baseline_name}_{self.database_name.stem}"
-        unique_results_dir.mkdir(parents=True, exist_ok=True)
+        artifacts = build_command_artifacts(self.results_dir, self.baseline_name, self.database_name)
+        artifacts.run_dir.mkdir(parents=True, exist_ok=True)
 
         db_file_path = self.database_path / self.database_name
         db_uri = f"sqlite:///{db_file_path}"
@@ -85,15 +85,14 @@ class BaselineProcessor:
             create_tsv=True,
         ) as db_util:
             algo = selected_baseline(db_util)
-            raw_rules = algo.discover_rules(results_dir=str(unique_results_dir))
+            raw_rules = algo.discover_rules(results_dir=str(artifacts.run_dir))
 
             if isinstance(raw_rules, dict):
                 rules = list(raw_rules.keys())
             else:
                 rules = list(raw_rules)
 
-            json_file_name = f"{self.baseline_name}_{self.database_name.stem}_results.json"
-            result_path = unique_results_dir / json_file_name
+            result_path = artifacts.result_json
             number_of_rules = RuleIO.save_rules_to_json(rules, str(result_path))
 
             top_rules = [rule for rule in rules if hasattr(rule, "accuracy") and hasattr(rule, "confidence")]
@@ -120,36 +119,22 @@ class BaselineProcessor:
                 self.logger.info("Cleaned up temporary directory: %s", directory)
 
     def generate_report(self, number_of_rules: int, result_path: Path, top_rules: list[Any]) -> None:
-        report_content = f"""
-# Baseline Run Report
+        artifacts = build_command_artifacts(self.results_dir, self.baseline_name, self.database_name)
+        write_markdown_report(
+            report_path=artifacts.report_md,
+            report_title="Baseline Run Report",
+            subject_label="Baseline",
+            subject_name=self.baseline_name,
+            database_name=self.database_name.name,
+            number_of_rules=number_of_rules,
+            result_path=result_path,
+            top_rules=top_rules,
+        )
 
-**Date:** {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-**Baseline:** {self.baseline_name}
-**Database:** {self.database_name.name}
-**Number of Rules Discovered:** {number_of_rules}
-**Results Path:** {result_path}
-
-## Top 5 Best Rules
-Below are the top-5 best rules discovered based on their scores:
-
-| Rank | Rule Description | Support | Confidence |
-|------|------------------|---------|------------|
-"""
-
-        for idx, rule in enumerate(top_rules, start=1):
-            rule_desc = rule.display.replace("\n", " ").replace("|", "\\|")
-            report_content += f"| {idx} | {rule_desc} | {rule.accuracy:.3f} | {rule.confidence:.3f} |\n"
-
-        report_file_name = f"report_{self.baseline_name}_{self.database_name.stem}.md"
-        report_path = self.results_dir / report_file_name
-
-        with report_path.open("w") as report_file:
-            report_file.write(report_content)
-
-        self.logger.info("Generated report: %s", report_path)
+        self.logger.info("Generated report: %s", artifacts.report_md)
 
         if self.use_mlflow:
-            mlflow.log_artifact(str(report_path))
+            mlflow.log_artifact(str(artifacts.report_md))
 
 
 def main(argv: list[str] | None = None) -> int:

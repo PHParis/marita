@@ -4,8 +4,11 @@ This creates a SQLite database with sample relational data.
 """
 
 import argparse
+import logging
 import sqlite3
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def create_test_database(db_path: str = "test_data/test.db"):
@@ -46,10 +49,9 @@ def create_test_database(db_path: str = "test_data/test.db"):
     conn.commit()
     conn.close()
 
-    print(f"✓ Test database created successfully at: {db_path}")
-    print("  - 2 persons")
-    print("\nTable created:")
-    print("  - Person(id, name)")
+    logger.info("Test database created successfully at: %s", db_path)
+    logger.info("Rows inserted: 2")
+    logger.info("Table created: Person(id, name)")
 
 
 def main(argv: list[str] | None = None) -> int:
