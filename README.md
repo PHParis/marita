@@ -28,6 +28,7 @@ This repository uses `uv` + `pyproject.toml` for reproducible Python environment
 
 ```bash
 uv sync
+uv run mahilda test-db
 ```
 
 ## Main Entrypoints
@@ -65,10 +66,11 @@ uv run mahilda benchmark --config configs/config.example.yaml --baseline POPPER
 ### 4) Batch processing
 
 ```bash
+uv run mahilda batch -c configs/config.example.yaml -o <results_dir> [--workers N --timeout SEC --max-databases K --start-from I]
 uv run mahilda batch -d <db_dir> -o <results_dir> [--workers N --timeout SEC --max-databases K --start-from I]
 ```
 
-Note: the batch command default input directory is `/Volumes/backup_mac_1/data_mahilda_3`; override it on other machines.
+`batch` uses `database.path` from config when `-d/--directory` is not provided.
 
 ### 5) MLflow helpers
 

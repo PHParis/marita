@@ -29,8 +29,14 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     batch_parser = subparsers.add_parser("batch", help="Run batch processing across many databases")
-    batch_parser.add_argument("-d", "--directory", default="/Volumes/backup_mac_1/data_mahilda_3")
-    batch_parser.add_argument("-o", "--output", default="results_all_databases")
+    batch_parser.add_argument(
+        "-c",
+        "--config",
+        default="configs/config.example.yaml",
+        help="Config path (default: configs/config.example.yaml)",
+    )
+    batch_parser.add_argument("-d", "--directory", default=None)
+    batch_parser.add_argument("-o", "--output", default="results_batch")
     batch_parser.add_argument("-t", "--timeout", type=int, default=7200)
     batch_parser.add_argument("--start-from", type=int, default=0)
     batch_parser.add_argument("--max-databases", type=int, default=None)
@@ -62,8 +68,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "batch":
         batch_args: list[str] = [
-            "--directory",
-            args.directory,
+            "--config",
+            args.config,
             "--output",
             args.output,
             "--timeout",
@@ -73,6 +79,8 @@ def main(argv: list[str] | None = None) -> int:
             "--workers",
             str(args.workers),
         ]
+        if args.directory:
+            batch_args.extend(["--directory", args.directory])
         if args.max_databases is not None:
             batch_args.extend(["--max-databases", str(args.max_databases)])
         return batch.main(batch_args)

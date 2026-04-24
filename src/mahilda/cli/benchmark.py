@@ -3,7 +3,6 @@ import datetime
 import logging
 import os
 import shutil
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -14,32 +13,12 @@ try:
 except ImportError:
     MLFLOW_AVAILABLE = False
 
+from mahilda.cli.runtime import initialize_directories, mlflow_run_context
 from mahilda.database.alchemy_utility import AlchemyUtility
 from mahilda.evaluation.baselines import Amie3, Popper, Spider
 from mahilda.utils.config_loader import load_config
 from mahilda.utils.logging_utils import configure_global_logger
 from mahilda.utils.rules import RuleIO
-
-
-@contextmanager
-def mlflow_run_context(use_mlflow: bool, config: dict):
-    if use_mlflow:
-        mlflow_tracking_uri = config.get("mlflow", {}).get("tracking_uri", "http://localhost:5000")
-        mlflow_experiment = config.get("mlflow", {}).get("experiment_name", "Rule Discovery")
-        mlflow.set_tracking_uri(mlflow_tracking_uri)
-        mlflow.set_experiment(mlflow_experiment)
-        mlflow.start_run()
-        try:
-            yield
-        finally:
-            mlflow.end_run()
-    else:
-        yield
-
-
-def initialize_directories(results_dir: Path, log_dir: Path) -> None:
-    results_dir.mkdir(parents=True, exist_ok=True)
-    log_dir.mkdir(parents=True, exist_ok=True)
 
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
@@ -193,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
     results_dir = Path(config.get("results", {}).get("output_dir", "results/"))
 
     initialize_directories(results_dir, log_dir)
+    previous_log_dir = os.environ.get("MAHILDA_LOG_DIR")
     os.environ["MAHILDA_LOG_DIR"] = str(log_dir)
 
     logger = configure_global_logger(str(log_dir))
@@ -219,6 +199,11 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         logger.error("An error occurred during baseline benchmark execution.", exc_info=True)
         return 1
+    finally:
+        if previous_log_dir is None:
+            os.environ.pop("MAHILDA_LOG_DIR", None)
+        else:
+            os.environ["MAHILDA_LOG_DIR"] = previous_log_dir
 
     return 0
 

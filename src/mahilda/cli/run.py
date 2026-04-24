@@ -6,7 +6,7 @@ import shutil
 import signal
 import sys
 import threading
-from contextlib import contextmanager
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +18,7 @@ except ImportError:
     MLFLOW_AVAILABLE = False
 
 from mahilda.algorithms.mahilda import MAHILDA
+from mahilda.cli.runtime import initialize_directories, mlflow_run_context
 from mahilda.database.alchemy_utility import AlchemyUtility
 from mahilda.utils.config_loader import load_config
 from mahilda.utils.logging_utils import configure_global_logger
@@ -46,25 +47,6 @@ except ImportError:
     Style = _FallbackStyle()
 
 
-@contextmanager
-def mlflow_run_context(use_mlflow: bool, config: dict):
-    """
-    Context manager to handle MLflow runs.
-    """
-    if use_mlflow:
-        mlflow_tracking_uri = config.get("mlflow", {}).get("tracking_uri", "http://localhost:5000")
-        mlflow_experiment = config.get("mlflow", {}).get("experiment_name", "Rule Discovery")
-        mlflow.set_tracking_uri(mlflow_tracking_uri)
-        mlflow.set_experiment(mlflow_experiment)
-        mlflow.start_run()
-        try:
-            yield
-        finally:
-            mlflow.end_run()
-    else:
-        yield
-
-
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     """
     Parses command-line arguments.
@@ -79,14 +61,6 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def initialize_directories(results_dir: Path, log_dir: Path) -> None:
-    """
-    Ensures that results and logs directories exist.
-    """
-    results_dir.mkdir(parents=True, exist_ok=True)
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-
 class DatabaseProcessor:
     """Handles database rule discovery and result logging."""
 
@@ -99,6 +73,7 @@ class DatabaseProcessor:
         logger: logging.Logger,
         use_mlflow: bool = False,
         config: dict | None = None,
+        should_stop: Callable[[], bool] | None = None,
     ):
         if algorithm_name.upper() != "MAHILDA":
             msg = (
@@ -113,6 +88,7 @@ class DatabaseProcessor:
         self.logger = logger
         self.use_mlflow = use_mlflow
         self.config = config or {}
+        self.should_stop = should_stop
 
     def discover_rules(self) -> int:
         """Runs the rule discovery algorithm synchronously."""
@@ -155,7 +131,10 @@ class DatabaseProcessor:
                     if self.algorithm_name.upper() == "MAHILDA":
                         self.logger.info("MAHILDA settings: nb_occurrence=3, max_table=3, max_vars=6")
 
-                for rule_count, rule in enumerate(algo.discover_rules(results_dir=str(unique_results_dir)), start=1):
+                for rule_count, rule in enumerate(
+                    algo.discover_rules(results_dir=str(unique_results_dir), should_stop=self.should_stop),
+                    start=1,
+                ):
                     rules.append(rule)
 
                     # Beautiful rule display
@@ -205,9 +184,12 @@ class DatabaseProcessor:
                     mlflow.log_metric("execution_time_seconds", elapsed)
                 if not quiet:
                     self.logger.info(
-                        f"{Fore.MAGENTA}{Style.BRIGHT}{self.algorithm_name} terminé en {elapsed:.2f} secondes "
-                        f"avec {number_of_rules} règles.{Style.RESET_ALL}"
+                        f"{Fore.MAGENTA}{Style.BRIGHT}{self.algorithm_name} finished in {elapsed:.2f} seconds "
+                        f"with {number_of_rules} rules.{Style.RESET_ALL}"
                     )
+
+                if self.should_stop and self.should_stop():
+                    raise RuntimeError("Rule discovery stopped because resource limits were reached.")
                 return number_of_rules
 
         except Exception as e:
@@ -358,6 +340,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Initialize directories
     initialize_directories(results_dir, log_dir)
+    previous_log_dir = os.environ.get("MAHILDA_LOG_DIR")
     os.environ["MAHILDA_LOG_DIR"] = str(log_dir)
 
     # Configure logger
@@ -401,6 +384,7 @@ def main(argv: list[str] | None = None) -> int:
         logger=logger,
         use_mlflow=use_mlflow,
         config=config,
+        should_stop=lambda: monitor.should_stop,
     )
 
     if not quiet:
@@ -422,6 +406,12 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("An error occurred during the rule discovery process.", exc_info=True)
         return 1
     finally:
+        monitor.stop()
+        monitor_thread.join(timeout=2)
+        if previous_log_dir is None:
+            os.environ.pop("MAHILDA_LOG_DIR", None)
+        else:
+            os.environ["MAHILDA_LOG_DIR"] = previous_log_dir
         if use_mlflow and MLFLOW_AVAILABLE:
             try:
                 import mlflow
@@ -431,7 +421,7 @@ def main(argv: list[str] | None = None) -> int:
                     if not quiet:
                         logger.info("MLflow run ended.")
             except Exception:
-                logger.warning("Impossible de terminer le run MLflow proprement.")
+                logger.warning("Could not end MLflow run cleanly.")
 
     return 0
 

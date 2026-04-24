@@ -5,6 +5,7 @@ import logging
 import threading
 from datetime import datetime
 
+
 class ResourceMonitor:
     """Monitors memory usage and timeout constraints."""
 
@@ -13,7 +14,7 @@ class ResourceMonitor:
         self.timeout = timeout
         self.start_time = time.time()
         self.process = psutil.Process()
-        self.logger = logging.getLogger()
+        self.logger = logging.getLogger("mahilda")
         self.should_stop = False
         self._stop_event = threading.Event()
         self._timed_out = False
@@ -27,11 +28,11 @@ class ResourceMonitor:
                 for child in self.process.children(recursive=True):
                     memory_usage += child.memory_info().rss
 
-                memory_usage_gb = memory_usage / (1024 ** 3)
+                memory_usage_gb = memory_usage / (1024**3)
 
                 self.logger.debug(f"Total Memory Usage: {memory_usage_gb:.2f} GB, Elapsed Time: {elapsed_time:.1f}s")
 
-                if memory_usage_gb > (self.memory_threshold / (1024 ** 3)):
+                if memory_usage_gb > (self.memory_threshold / (1024**3)):
                     self.logger.error(f"Memory usage exceeded: {memory_usage_gb:.2f} GB")
                     self.should_stop = True
                     break
@@ -70,11 +71,11 @@ class ResourceMonitor:
             for child in self.process.children(recursive=True):
                 memory_usage += child.memory_info().rss
 
-            memory_usage_gb = memory_usage / (1024 ** 3)
+            memory_usage_gb = memory_usage / (1024**3)
 
             self.logger.debug(f"Total Memory Usage: {memory_usage_gb:.2f} GB")
 
-            if memory_usage_gb > (self.memory_threshold / (1024 ** 3)):
+            if memory_usage_gb > (self.memory_threshold / (1024**3)):
                 self.logger.error(f"Memory usage exceeded: {memory_usage_gb:.2f} GB")
                 raise MemoryError("Memory usage exceeded threshold.")
 

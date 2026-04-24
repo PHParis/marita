@@ -11,7 +11,6 @@ Features:
 """
 
 import argparse
-import glob
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -20,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 from mahilda.cli.run import DatabaseProcessor
+from mahilda.cli.runtime import initialize_directories
+from mahilda.utils.config_loader import load_config
 from mahilda.utils.logging_utils import configure_global_logger
 
 try:
@@ -132,6 +133,9 @@ def run_database(db_path: Path, db_name: str, results_base_dir: Path, timeout: i
     log_dir = Path("logs") / db_name
     log_dir.mkdir(parents=True, exist_ok=True)
 
+    previous_log_dir = os.environ.get("MAHILDA_LOG_DIR")
+    previous_quiet = os.environ.get("MAHILDA_QUIET")
+
     # Configure logger
     logger = configure_global_logger(str(log_dir))
     os.environ["MAHILDA_LOG_DIR"] = str(log_dir)
@@ -185,8 +189,15 @@ def run_database(db_path: Path, db_name: str, results_base_dir: Path, timeout: i
 
     finally:
         # Clean environment
-        if "MAHILDA_QUIET" in os.environ:
-            del os.environ["MAHILDA_QUIET"]
+        if previous_quiet is None:
+            os.environ.pop("MAHILDA_QUIET", None)
+        else:
+            os.environ["MAHILDA_QUIET"] = previous_quiet
+
+        if previous_log_dir is None:
+            os.environ.pop("MAHILDA_LOG_DIR", None)
+        else:
+            os.environ["MAHILDA_LOG_DIR"] = previous_log_dir
 
     end_time = time.time()
     result["end_time"] = datetime.now()
@@ -219,10 +230,16 @@ def main(argv: list[str] | None = None) -> int:
         description="Run MAHILDA on all databases in a directory", formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
+        "-c",
+        "--config",
+        default="configs/config.example.yaml",
+        help="Path to config file (default: configs/config.example.yaml)",
+    )
+    parser.add_argument(
         "-d",
         "--directory",
-        default="/Volumes/backup_mac_1/data_mahilda_3",
-        help="Directory containing database files (default: /Volumes/backup_mac_1/data_mahilda_3)",
+        default=None,
+        help="Directory containing database files (overrides config database.path)",
     )
     parser.add_argument(
         "-o",
@@ -241,14 +258,24 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    config = load_config(args.config)
+    if not config:
+        return 1
+
+    configured_db_dir = config.get("database", {}).get("path")
+    target_dir = args.directory or configured_db_dir
+    if not target_dir:
+        print_error("No database directory provided. Use --directory or set database.path in config.")
+        return 1
+
     # Get database directory
-    db_dir = Path(args.directory)
+    db_dir = Path(target_dir)
     if not db_dir.exists():
         print_error(f"Directory not found: {db_dir}")
         return 1
 
     # Find all .db files
-    db_files = sorted(glob.glob(str(db_dir / "*.db")))
+    db_files = sorted(str(path) for path in db_dir.glob("*.db"))
     if not db_files:
         print_error(f"No .db files found in {db_dir}")
         return 1
@@ -261,7 +288,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # Create results directory
     results_base_dir = Path(args.output)
-    results_base_dir.mkdir(parents=True, exist_ok=True)
+    log_dir = Path(config.get("logging", {}).get("log_dir", "logs"))
+    initialize_directories(results_base_dir, log_dir)
 
     # Print header
     print()
