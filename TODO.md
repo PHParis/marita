@@ -53,7 +53,7 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ---
 
-## [P1] Make MLflow UI Port Configurable
+## [Done][P1] Make MLflow UI Port Configurable
 
 **File:** `src/mahilda/cli/mlflow_ui.py`
 

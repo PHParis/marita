@@ -122,3 +122,18 @@ def test_main_routes_mlflow_start_command(monkeypatch) -> None:
 
     assert exit_code == 22
     assert captured["argv"] == []
+
+
+def test_main_routes_mlflow_ui_command(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_mlflow_ui_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 23
+
+    monkeypatch.setattr("mahilda.cli.mlflow_ui.main", fake_mlflow_ui_main)
+
+    exit_code = main(["mlflow", "ui", "--port", "6001"])
+
+    assert exit_code == 23
+    assert captured["argv"] == ["--port", "6001"]

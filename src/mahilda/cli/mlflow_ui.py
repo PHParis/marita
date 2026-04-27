@@ -4,6 +4,7 @@ MLflow UI server launcher.
 Provides a web interface for viewing experiments without gunicorn worker issues.
 """
 
+import argparse
 import importlib.util
 import logging
 import os
@@ -17,6 +18,10 @@ logger = logging.getLogger(__name__)
 
 def main(argv: list[str] | None = None) -> int:
     """Start MLflow UI server."""
+
+    parser = argparse.ArgumentParser(description="Launch MLflow UI.")
+    parser.add_argument("--port", type=int, default=5000, help="Port to bind MLflow UI (default: 5000)")
+    args = parser.parse_args(argv)
 
     # Get the mlruns directory
     mlruns_dir = Path("mlruns").absolute()
@@ -47,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # Launch MLflow UI
         host = "127.0.0.1"
-        port = 5000
+        port = args.port
 
         logger.info(f"MLflow UI will be available at: http://{host}:{port}")
         logger.info("")

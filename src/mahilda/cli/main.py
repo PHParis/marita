@@ -53,7 +53,8 @@ def main(argv: list[str] | None = None) -> int:
     mlflow_parser = subparsers.add_parser("mlflow", help="MLflow helper commands")
     mlflow_subparsers = mlflow_parser.add_subparsers(dest="mlflow_command", required=True)
     mlflow_subparsers.add_parser("start", help="Start local MLflow tracking server")
-    mlflow_subparsers.add_parser("ui", help="Launch MLflow UI")
+    mlflow_ui_parser = mlflow_subparsers.add_parser("ui", help="Launch MLflow UI")
+    mlflow_ui_parser.add_argument("--port", type=int, default=5000, help="Port to bind MLflow UI")
 
     args = parser.parse_args(argv)
 
@@ -99,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.mlflow_command == "start":
             return mlflow_start.main([])
         if args.mlflow_command == "ui":
-            return mlflow_ui.main([])
+            return mlflow_ui.main(["--port", str(args.port)])
 
     parser.error("Unknown command")
     return 2
