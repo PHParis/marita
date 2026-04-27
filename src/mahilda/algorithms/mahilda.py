@@ -147,7 +147,7 @@ class MAHILDA(BaseAlgorithm):
             if candidate > 0:
                 return candidate
         except (TypeError, ValueError):
-            pass
+            return fallback
         return fallback
 
     @staticmethod

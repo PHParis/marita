@@ -101,7 +101,7 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ---
 
-## [P3] Refactor Bare `pass` in `_coerce_positive_int`
+## [Done][P3] Refactor Bare `pass` in `_coerce_positive_int`
 
 **File:** `src/mahilda/algorithms/mahilda.py:150`
 
