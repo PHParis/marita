@@ -1,0 +1,35 @@
+monitor:
+  memory_threshold: 16106127360  # 15GB in bytes
+  timeout: 1800  # 30 minutes
+
+database:
+  path: ../data/yago
+  name: yago_tiny_core.db
+
+logging:
+  log_dir: ../logs/yago_core
+
+results:
+  output_dir: ../results/yago_core
+
+algorithm:
+  name: MAHILDA
+  parameters:
+    walk_length: 3
+    max_tables: 3
+    max_variables: 6
+    timeout: 1800
+    disjoint_semantics: false
+
+benchmark:
+  baseline: AMIE3
+  input_tsv: ../data/yago/yago_tiny_core.tsv
+
+batch:
+  workers: 1
+  timeout: 1800
+
+mlflow:
+  use: false
+  tracking_uri: file:../mlruns
+  experiment_name: YAGO Core Benchmark

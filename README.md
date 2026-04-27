@@ -34,6 +34,7 @@ See `docs/config.md` for full path-resolution behavior and overrides.
 - `docs/config.md`: configuration schema, defaults, normalization, and precedence
 - `docs/archive.md`: archive notes for `legacy/` and `research/`
 - `docs/yago-rdf-benchmark-protocol.md`: RDF-to-SQLite benchmark protocol for YAGO-derived datasets
+- `docs/yago-rdf-test-readiness.md`: remaining steps before full YAGO benchmark runs
 - `docs/implementation-plan.md`: tracked implementation phases
 
 ## Development

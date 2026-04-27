@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import rdflib
 from rdflib import BNode, Graph, Literal, URIRef
+from tqdm import tqdm
 
 if TYPE_CHECKING:
     from rdflib.term import Node
@@ -265,6 +266,7 @@ def import_rdf_benchmark(
     output_dir: str | Path,
     variants: list[str] | None = None,
     dataset_name: str | None = None,
+    progress: bool = False,
 ) -> RDFImportResult:
     """Parse an RDF/Turtle file and write benchmark archive, SQLite, TSV, and report artifacts."""
     source_path = Path(input_path).expanduser().resolve()
@@ -274,16 +276,20 @@ def import_rdf_benchmark(
     selected_variants = _resolve_variants(variants)
     name = dataset_name or _sanitize_dataset_name(source_path.stem)
 
+    _status(progress, f"Parsing RDF/Turtle input: {source_path}")
     graph = Graph()
     graph.parse(source_path, format="turtle")
+    _status(progress, f"Parsed {len(graph):,} RDF statements.")
 
+    _status(progress, "Computing input checksum and extracting SHACL metadata.")
     input_sha256 = _file_sha256(source_path)
     shape_terms = _collect_shape_terms(graph)
     property_shapes = _extract_property_shapes(graph)
     registry = _TermRegistry()
-    records = _build_statement_records(graph, registry, shape_terms)
+    records = _build_statement_records(graph, registry, shape_terms, progress=progress)
 
     full_db = destination / f"{name}_full.db"
+    _status(progress, f"Writing full archive database: {full_db}")
     _write_archive_db(
         db_path=full_db,
         graph=graph,
@@ -303,8 +309,10 @@ def import_rdf_benchmark(
         selected_records = _select_records(records, variant)
         variant_db = destination / f"{name}_{variant.stem}.db"
         variant_tsv = destination / f"{name}_{variant.stem}.tsv"
-        materialization = _write_variant_db(variant_db, registry, selected_records, variant)
-        tsv_report = _write_variant_tsv(variant_tsv, registry, selected_records)
+        _status(progress, f"Materializing variant '{variant.name}' with {len(selected_records):,} statements.")
+        materialization = _write_variant_db(variant_db, registry, selected_records, variant, progress=progress)
+        _status(progress, f"Exporting AMIE3 TSV for variant '{variant.name}': {variant_tsv}")
+        tsv_report = _write_variant_tsv(variant_tsv, registry, selected_records, progress=progress)
         variant_dbs[variant.name] = variant_db
         variant_tsvs[variant.name] = variant_tsv
         variant_reports[variant.name] = {
@@ -339,8 +347,11 @@ def import_rdf_benchmark(
 
     manifest_path = destination / f"{name}_manifest.json"
     report_path = destination / f"{name}_report.md"
+    _status(progress, f"Writing manifest: {manifest_path}")
     _write_json(manifest_path, manifest)
+    _status(progress, f"Writing report: {report_path}")
     _write_report(report_path, manifest)
+    _status(progress, "RDF import completed.")
 
     return RDFImportResult(
         artifacts=RDFImportArtifacts(
@@ -371,9 +382,17 @@ def _resolve_variants(variants: list[str] | None) -> list[RDFImportVariant]:
     return resolved
 
 
-def _build_statement_records(graph: Graph, registry: _TermRegistry, shape_terms: set[str]) -> list[StatementRecord]:
+def _build_statement_records(
+    graph: Graph,
+    registry: _TermRegistry,
+    shape_terms: set[str],
+    *,
+    progress: bool = False,
+) -> list[StatementRecord]:
     records: list[StatementRecord] = []
-    for statement_id, (subject, predicate, obj) in enumerate(_sorted_triples(graph), start=1):
+    triples = _sorted_triples(graph)
+    iterator = tqdm(triples, desc="Classifying RDF statements", unit="stmt", disable=not progress)
+    for statement_id, (subject, predicate, obj) in enumerate(iterator, start=1):
         subject_id = registry.term_id(subject)
         predicate_id = registry.term_id(predicate)
         category = _classify_statement(subject, predicate, obj, shape_terms)
@@ -640,6 +659,7 @@ def _write_variant_db(
     registry: _TermRegistry,
     records: list[StatementRecord],
     variant: RDFImportVariant,
+    progress: bool = False,
 ) -> dict[str, Any]:
     _replace_file(db_path)
     predicate_tables: dict[str, str] = {}
@@ -710,7 +730,12 @@ def _write_variant_db(
                 [(record.statement_id, record.subject_id, record.object_id) for record in hierarchy_records],
             )
 
-        for record in object_records:
+        for record in tqdm(
+            object_records,
+            desc=f"Writing {variant.name} object relations",
+            unit="stmt",
+            disable=not progress,
+        ):
             predicate_value = registry.term_by_id(record.predicate_id).value
             table_name = _predicate_table_name(predicate_value, "object", predicate_tables, used_table_names)
             _ensure_object_table(conn, table_name)
@@ -719,7 +744,12 @@ def _write_variant_db(
                 (record.statement_id, record.subject_id, record.object_id),
             )
 
-        for record in literal_records:
+        for record in tqdm(
+            literal_records,
+            desc=f"Writing {variant.name} literal relations",
+            unit="stmt",
+            disable=not progress,
+        ):
             predicate_value = registry.term_by_id(record.predicate_id).value
             table_name = _predicate_table_name(predicate_value, "literal", predicate_tables, used_table_names)
             _ensure_literal_table(conn, table_name)
@@ -839,9 +869,15 @@ def _create_variant_indexes(conn: sqlite3.Connection, table_names: list[str], va
             )
 
 
-def _write_variant_tsv(path: Path, registry: _TermRegistry, records: list[StatementRecord]) -> dict[str, Any]:
+def _write_variant_tsv(
+    path: Path,
+    registry: _TermRegistry,
+    records: list[StatementRecord],
+    *,
+    progress: bool = False,
+) -> dict[str, Any]:
     with path.open("w", encoding="utf-8", newline="") as handle:
-        for record in records:
+        for record in tqdm(records, desc="Writing AMIE3 TSV", unit="stmt", disable=not progress):
             subject = registry.term_by_id(record.subject_id).value
             predicate = registry.term_by_id(record.predicate_id).value
             if record.object_kind == "literal":
@@ -1023,3 +1059,8 @@ def _write_report(path: Path, manifest: dict[str, Any]) -> None:
         lines.extend(f"- {warning}" for warning in manifest["warnings"])
         lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _status(enabled: bool, message: str) -> None:
+    if enabled:
+        print(f"[import-rdf] {message}")

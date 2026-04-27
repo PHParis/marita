@@ -33,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=Path(args.output_dir),
             variants=variants,
             dataset_name=args.dataset_name,
+            progress=True,
         )
     except Exception as exc:
         logger.error("RDF import failed: %s", exc, exc_info=True)
