@@ -75,13 +75,14 @@ class DatabaseProcessor:
         config: dict | None = None,
         should_stop: Callable[[], bool] | None = None,
     ):
-        if algorithm_name.upper() != "MAHILDA":
+        normalized_algorithm = algorithm_name.upper()
+        if normalized_algorithm != "MAHILDA":
             msg = (
                 "`mahilda run` only supports the MAHILDA algorithm. "
                 "Use `mahilda benchmark --baseline ...` for competitor baselines."
             )
             raise ValueError(msg)
-        self.algorithm_name = "MAHILDA"
+        self.algorithm_name = normalized_algorithm
         self.database_name = database_name
         self.database_path = database_path
         self.results_dir = results_dir
@@ -199,11 +200,12 @@ class DatabaseProcessor:
 
     def clean_up(self, temp_dirs: list[Path] | None = None) -> None:
         """Cleans up temporary directories synchronously."""
-        temp_dirs = temp_dirs or [
-            self.database_path / "prolog_tmp",
-            self.database_path / "SPIDER_temp",
-            self.database_path / "popper",
-        ]
+        if temp_dirs is None:
+            temp_dirs = [self.database_path / "prolog_tmp"]
+            if self.algorithm_name == "SPIDER":
+                temp_dirs.append(self.database_path / "SPIDER_temp")
+            if self.algorithm_name == "POPPER":
+                temp_dirs.append(self.database_path / "popper")
         for directory in temp_dirs:
             if directory.exists() and directory.is_dir():
                 shutil.rmtree(directory)

@@ -68,7 +68,7 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ---
 
-## [P2] Clean Up `clean_up()` Hardcoded Temp Directories
+## [Done][P2] Clean Up `clean_up()` Hardcoded Temp Directories
 
 **Files:** `src/mahilda/cli/run.py:200-210`, `src/mahilda/cli/benchmark.py:109-118`
 

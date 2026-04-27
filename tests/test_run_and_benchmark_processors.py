@@ -157,3 +157,26 @@ def test_benchmark_report_path_generation(tmp_path: Path) -> None:
     processor.generate_report(number_of_rules=0, result_path=results_dir / "foo.json", top_rules=[])
 
     assert (results_dir / "report_SPIDER_demo.md").exists()
+
+
+def test_run_processor_cleanup_only_removes_mahilda_temp_dir(tmp_path: Path) -> None:
+    prolog_dir = tmp_path / "prolog_tmp"
+    spider_dir = tmp_path / "SPIDER_temp"
+    popper_dir = tmp_path / "popper"
+    prolog_dir.mkdir()
+    spider_dir.mkdir()
+    popper_dir.mkdir()
+
+    processor = run_cli.DatabaseProcessor(
+        algorithm_name="MAHILDA",
+        database_name=Path("demo.db"),
+        database_path=tmp_path,
+        results_dir=tmp_path / "results",
+        logger=logging.getLogger("test_run_cleanup"),
+    )
+
+    processor.clean_up()
+
+    assert not prolog_dir.exists()
+    assert spider_dir.exists()
+    assert popper_dir.exists()
