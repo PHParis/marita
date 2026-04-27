@@ -91,7 +91,6 @@ extend-exclude = [
   "src/mahilda/evaluation/baselines/popper.py",
   "src/mahilda/utils/log_setup.py",
   "src/mahilda/utils/monitor.py",
-  "src/mahilda/utils/structure_analysis.py",
 ]
 
 [tool.ruff.lint]
