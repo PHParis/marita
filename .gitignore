@@ -51,3 +51,5 @@ config.local.yaml
 configs/config.local.yaml
 AGENTS.md
 resume_last_session.sh
+data/yago-tiny.ttl
+CLAUDE.md
