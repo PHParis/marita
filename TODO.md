@@ -20,7 +20,7 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ---
 
-## [P0] Fix `mlflow start` — Currently a No-Op
+## [Done][P0] Fix `mlflow start` — Currently a No-Op
 
 **File:** `src/mahilda/cli/mlflow_start.py`
 

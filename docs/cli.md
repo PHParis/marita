@@ -86,5 +86,5 @@ uv run mahilda mlflow start
 uv run mahilda mlflow ui
 ```
 
-- `start`: initializes local file-backed tracking setup.
+- `start`: launches a local file-backed MLflow tracking server.
 - `ui`: launches MLflow web UI for local experiments.

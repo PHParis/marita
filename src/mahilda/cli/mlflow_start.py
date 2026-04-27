@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""
-Simple MLflow tracking server launcher.
-Uses a built-in server without gunicorn workers to avoid SIGSEGV crashes.
-"""
+"""MLflow tracking server launcher."""
 
+import importlib.util
 import logging
 import os
+import subprocess
 from pathlib import Path
 
 # Configure logging
@@ -15,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 def main(argv: list[str] | None = None) -> int:
     """Start MLflow tracking server with file backend."""
+    del argv
 
     # Create mlruns directory if it doesn't exist
     mlruns_dir = Path("mlruns")
@@ -31,62 +31,51 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("")
 
     try:
-        # Import MLflow
-        import mlflow
+        if importlib.util.find_spec("mlflow") is None:
+            raise ImportError
 
-        logger.info("MLflow loaded successfully")
-
-        # Configure MLflow to use file backend
         os.environ["MLFLOW_BACKEND_STORE_URI"] = tracking_uri
-        os.environ["MLFLOW_DEFAULT_ARTIFACT_ROOT"] = str(mlruns_dir.absolute() / "artifacts")
 
-        # Create artifact directory
         artifact_dir = mlruns_dir / "artifacts"
         artifact_dir.mkdir(exist_ok=True)
+        artifact_root = str(artifact_dir.absolute())
+        os.environ["MLFLOW_DEFAULT_ARTIFACT_ROOT"] = artifact_root
 
-        # Set MLflow tracking URI
-        mlflow.set_tracking_uri(tracking_uri)
+        host = "127.0.0.1"
+        port = 5000
+        cmd = [
+            "mlflow",
+            "server",
+            "--backend-store-uri",
+            tracking_uri,
+            "--default-artifact-root",
+            artifact_root,
+            "--host",
+            host,
+            "--port",
+            str(port),
+        ]
 
-        # Create default experiment if it doesn't exist
-        mlflow.set_experiment("Rule Discovery")
+        logger.info("Launching MLflow tracking server...")
+        logger.info(f"MLflow Tracking URI: {tracking_uri}")
+        logger.info(f"MLflow UI URL: http://{host}:{port}")
+        logger.info("Press Ctrl+C to stop the server")
 
-        logger.info("MLflow configured successfully")
-        logger.info("")
-        logger.info("You can now use MLflow tracking in your scripts:")
-        logger.info("")
-        logger.info("  import mlflow")
-        logger.info("  mlflow.set_tracking_uri('file://$(pwd)/mlruns')")
-        logger.info("  mlflow.set_experiment('Rule Discovery')")
-        logger.info("  mlflow.start_run()")
-        logger.info("  mlflow.log_param('param_name', param_value)")
-        logger.info("  mlflow.log_metric('metric_name', metric_value)")
-        logger.info("  mlflow.end_run()")
-        logger.info("")
-        logger.info("=" * 60)
-        logger.info("MLflow server is ready!")
-        logger.info("=" * 60)
-        logger.info("")
-        logger.info("To view your experiments, run:")
-        logger.info(f"  mlflow ui --backend-store-uri {tracking_uri}")
-        logger.info("")
-        logger.info("Or use the simple MLflow UI server:")
-        logger.info("  uv run mahilda mlflow ui")
-        logger.info("")
-        logger.info("Press Ctrl+C to exit")
-        logger.info("=" * 60)
-
-        # Keep the process running
-        import time
-
+        process = subprocess.Popen(cmd)
         try:
-            while True:
-                time.sleep(1)
+            return process.wait()
         except KeyboardInterrupt:
-            logger.info("\nMLflow server stopped.")
-        return 0
+            logger.info("\nStopping MLflow server...")
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            logger.info("MLflow server stopped.")
+            return 0
 
-    except ImportError as e:
-        logger.error(f"Import error: {e}")
+    except ImportError:
         logger.error("MLflow is not installed. Install it with: pip install mlflow")
         return 1
     except Exception as e:

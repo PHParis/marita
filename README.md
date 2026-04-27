@@ -15,7 +15,7 @@ uv run mahilda smoke
 - `uv run mahilda run --config configs/config.example.yaml` runs `MAHILDA` on one database.
 - `uv run mahilda benchmark --config configs/config.example.yaml --baseline {AMIE3|SPIDER|POPPER}` runs one baseline.
 - `uv run mahilda batch -c configs/config.example.yaml -d <db_dir> -o results/batch` processes many databases.
-- `uv run mahilda mlflow start` and `uv run mahilda mlflow ui` start local MLflow helpers.
+- `uv run mahilda mlflow start` launches a local MLflow tracking server; `uv run mahilda mlflow ui` launches the local MLflow UI.
 
 ## Artifact Layout
 

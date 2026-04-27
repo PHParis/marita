@@ -107,3 +107,18 @@ def test_main_routes_test_db_command(monkeypatch) -> None:
 
     assert exit_code == 21
     assert captured["argv"] == ["--output", "tmp/test.db"]
+
+
+def test_main_routes_mlflow_start_command(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_mlflow_start_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 22
+
+    monkeypatch.setattr("mahilda.cli.mlflow_start.main", fake_mlflow_start_main)
+
+    exit_code = main(["mlflow", "start"])
+
+    assert exit_code == 22
+    assert captured["argv"] == []

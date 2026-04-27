@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
 
     mlflow_parser = subparsers.add_parser("mlflow", help="MLflow helper commands")
     mlflow_subparsers = mlflow_parser.add_subparsers(dest="mlflow_command", required=True)
-    mlflow_subparsers.add_parser("start", help="Start MLflow local tracking helper")
+    mlflow_subparsers.add_parser("start", help="Start local MLflow tracking server")
     mlflow_subparsers.add_parser("ui", help="Launch MLflow UI")
 
     args = parser.parse_args(argv)
