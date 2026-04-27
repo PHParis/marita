@@ -37,7 +37,7 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ---
 
-## [P1] Fix Config Defaults Masking Validation Errors
+## [Done][P1] Fix Config Defaults Masking Validation Errors
 
 **File:** `src/mahilda/utils/config_types.py`
 

@@ -69,13 +69,32 @@ class AppConfig:
             return value
         return {}
 
+    @staticmethod
+    def _require_mapping(config: dict[str, Any], key: str) -> dict[str, Any]:
+        value = config.get(key)
+        if not isinstance(value, dict):
+            raise ValueError(f"Missing required section: '{key}'.")
+        return value
+
+    @staticmethod
+    def _require_non_empty_string(section: dict[str, Any], section_name: str, key: str) -> str:
+        value = section.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Missing required key: '{section_name}.{key}'.")
+        return value
+
     @classmethod
     def from_dict(cls, config: dict[str, Any]) -> AppConfig:
+        required_database = cls._require_mapping(config, "database")
+        required_logging = cls._require_mapping(config, "logging")
+        required_results = cls._require_mapping(config, "results")
+        required_algorithm = cls._require_mapping(config, "algorithm")
+
         monitor = cls._as_mapping(config.get("monitor"))
-        database = cls._as_mapping(config.get("database"))
-        logging_cfg = cls._as_mapping(config.get("logging"))
-        results = cls._as_mapping(config.get("results"))
-        algorithm = cls._as_mapping(config.get("algorithm"))
+        database = cls._as_mapping(required_database)
+        logging_cfg = cls._as_mapping(required_logging)
+        results = cls._as_mapping(required_results)
+        algorithm = cls._as_mapping(required_algorithm)
         benchmark = cls._as_mapping(config.get("benchmark"))
         batch = cls._as_mapping(config.get("batch"))
         mlflow = cls._as_mapping(config.get("mlflow"))
@@ -87,17 +106,17 @@ class AppConfig:
                 timeout=int(monitor.get("timeout", 3600)),
             ),
             database=DatabaseConfig(
-                path=Path(str(database.get("path", "test_data"))),
-                name=Path(str(database.get("name", "test.db"))),
+                path=Path(cls._require_non_empty_string(database, "database", "path")),
+                name=Path(cls._require_non_empty_string(database, "database", "name")),
             ),
             logging=LoggingConfig(
-                log_dir=Path(str(logging_cfg.get("log_dir", "logs"))),
+                log_dir=Path(cls._require_non_empty_string(logging_cfg, "logging", "log_dir")),
             ),
             results=ResultsConfig(
-                output_dir=Path(str(results.get("output_dir", "results"))),
+                output_dir=Path(cls._require_non_empty_string(results, "results", "output_dir")),
             ),
             algorithm=AlgorithmConfig(
-                name=str(algorithm.get("name", "MAHILDA")).strip().upper(),
+                name=cls._require_non_empty_string(algorithm, "algorithm", "name").strip().upper(),
                 parameters=algorithm_parameters,
             ),
             benchmark=BenchmarkConfig(

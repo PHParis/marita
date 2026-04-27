@@ -73,7 +73,7 @@ def validate_config(config: dict[str, Any]) -> None:
     database = _expect_mapping(config, "database", errors)
     if database is not None:
         _expect_non_empty_string(database, "database", "path", errors)
-        _expect_non_empty_string(database, "database", "name", errors, required=False)
+        _expect_non_empty_string(database, "database", "name", errors)
 
     logging_section = _expect_mapping(config, "logging", errors)
     if logging_section is not None:

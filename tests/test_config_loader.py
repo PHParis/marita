@@ -223,7 +223,7 @@ def test_load_typed_config_builds_dataclass_view(tmp_path: Path) -> None:
     assert config.database.name.name == "my.db"
 
 
-def test_load_typed_config_defaults_database_name_when_omitted(tmp_path: Path) -> None:
+def test_load_typed_config_rejects_missing_database_name(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         "\n".join(
@@ -241,9 +241,33 @@ def test_load_typed_config_defaults_database_name_when_omitted(tmp_path: Path) -
         encoding="utf-8",
     )
 
-    config = load_typed_config(str(config_path))
+    with pytest.raises(ValueError, match="database.name"):
+        load_typed_config(str(config_path))
 
-    assert config.database.name.name == "test.db"
+
+def test_load_config_rejects_missing_required_keys(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "database: {}",
+                "logging: {}",
+                "results: {}",
+                "algorithm:",
+                "  name: MAHILDA",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        load_config(str(config_path))
+
+    error_text = str(exc_info.value)
+    assert "database.path" in error_text
+    assert "database.name" in error_text
+    assert "logging.log_dir" in error_text
+    assert "results.output_dir" in error_text
 
 
 def test_load_config_rejects_blank_database_name(tmp_path: Path) -> None:
