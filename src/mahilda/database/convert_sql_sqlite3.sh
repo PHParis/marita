@@ -2,6 +2,13 @@
 
 # Authors: @esperlu, @artemyk, @gkuenning, @dumblob
 
+# NOTE (mahilda): This script is vendored from upstream and includes known
+# limitations marked as FIXME comments. These limitations are accepted for
+# current project usage:
+# - Empty input file handling
+# - ON UPDATE CURRENT_TIMESTAMP handling
+# - CONSTRAINT foreign key handling
+
 # FIXME detect empty input file and issue a warning
 
 function printerr( s ){ print s | "cat >&2" }

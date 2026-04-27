@@ -125,7 +125,7 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ---
 
-## [P3] Document Shell Script FIXMEs
+## [Done][P3] Document Shell Script FIXMEs
 
 **File:** `src/mahilda/database/convert_sql_sqlite3.sh:5,183,223`
 
