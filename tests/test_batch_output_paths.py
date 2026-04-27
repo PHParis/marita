@@ -96,3 +96,45 @@ def test_run_database_restores_env_vars(monkeypatch, tmp_path: Path) -> None:
         assert os.environ.get("MAHILDA_QUIET") == previous_quiet
         os.environ.pop("MAHILDA_LOG_DIR", None)
         os.environ.pop("MAHILDA_QUIET", None)
+
+
+def test_run_database_timeout_fallback_without_sigalrm(monkeypatch, tmp_path: Path) -> None:
+    observed: dict[str, bool] = {"cleaned": False, "cancelled": False}
+
+    class FakeProcessor:
+        def __init__(self, *args, **kwargs) -> None:
+            del args, kwargs
+
+        def discover_rules(self) -> int:
+            raise KeyboardInterrupt
+
+        def clean_up(self) -> None:
+            observed["cleaned"] = True
+
+    class FakeTimer:
+        def __init__(self, interval: float, callback) -> None:
+            del interval
+            self._callback = callback
+            self.daemon = False
+
+        def start(self) -> None:
+            self._callback()
+
+        def cancel(self) -> None:
+            observed["cancelled"] = True
+
+    monkeypatch.setattr(batch, "DatabaseProcessor", FakeProcessor)
+    monkeypatch.delattr(batch.signal, "SIGALRM", raising=False)
+    monkeypatch.setattr(batch.threading, "Timer", FakeTimer)
+    monkeypatch.setattr(batch._thread, "interrupt_main", lambda: None)
+
+    db_path = tmp_path / "demo.db"
+    db_path.write_text("", encoding="utf-8")
+    results_base = tmp_path / "results"
+
+    result = batch.run_database(db_path, "demo", results_base, timeout=10, log_root=tmp_path / "logs")
+
+    assert result["status"] == "timeout"
+    assert result["error"] == "Execution exceeded 10 seconds"
+    assert observed["cleaned"] is True
+    assert observed["cancelled"] is True

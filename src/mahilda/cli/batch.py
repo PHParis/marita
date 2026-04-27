@@ -10,9 +10,13 @@ Features:
 - Summary report at the end
 """
 
+import _thread
 import argparse
+import signal
+import threading
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -143,25 +147,46 @@ def run_database(
                 use_mlflow=False,
             )
 
-            import signal
-
             def timeout_handler(signum, frame):
+                del signum, frame
                 raise TimeoutError(f"Execution exceeded {timeout} seconds")
 
-            if hasattr(signal, "SIGALRM"):
+            timed_out = False
+
+            def interrupt_main() -> None:
+                nonlocal timed_out
+                timed_out = True
+                _thread.interrupt_main()
+
+            use_sigalrm = hasattr(signal, "SIGALRM")
+            timeout_timer: threading.Timer | None = None
+
+            if use_sigalrm:
                 signal.signal(signal.SIGALRM, timeout_handler)
                 signal.alarm(timeout)
+            else:
+                timeout_timer = threading.Timer(timeout, interrupt_main)
+                timeout_timer.daemon = True
+                timeout_timer.start()
 
             try:
                 rules_count = processor.discover_rules()
                 result["rules_count"] = rules_count
                 result["status"] = "success"
-            except TimeoutError as e:
+            except (TimeoutError, FuturesTimeoutError) as e:
                 result["status"] = "timeout"
                 result["error"] = str(e)
+            except KeyboardInterrupt:
+                if timed_out:
+                    result["status"] = "timeout"
+                    result["error"] = f"Execution exceeded {timeout} seconds"
+                else:
+                    raise
             finally:
-                if hasattr(signal, "SIGALRM"):
+                if use_sigalrm:
                     signal.alarm(0)
+                if timeout_timer is not None:
+                    timeout_timer.cancel()
                 processor.clean_up()
 
     except Exception as e:

@@ -84,7 +84,7 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ---
 
-## [P2] Improve Signal Handler Portability in Batch Worker
+## [Done][P2] Improve Signal Handler Portability in Batch Worker
 
 **File:** `src/mahilda/cli/batch.py:146-164`
 
