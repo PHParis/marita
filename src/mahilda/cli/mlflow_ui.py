@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
             "mlflow",
         ]
 
-        subprocess.run(cmd, check=False)
+        subprocess.run(cmd, check=True)
         return 0
 
     except ImportError:

@@ -1,3 +1,5 @@
+import subprocess
+
 from mahilda.cli import mlflow_ui
 
 
@@ -18,7 +20,7 @@ def test_mlflow_ui_launches_with_default_port(monkeypatch, tmp_path) -> None:
 
     expected_tracking_uri = f"file://{(tmp_path / 'mlruns').absolute()}"
     assert exit_code == 0
-    assert captured["check"] is False
+    assert captured["check"] is True
     assert captured["cmd"] == [
         "mlflow",
         "ui",
@@ -67,6 +69,21 @@ def test_mlflow_ui_launches_with_custom_port(monkeypatch, tmp_path) -> None:
 def test_mlflow_ui_errors_when_mlflow_missing(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("mahilda.cli.mlflow_ui.importlib.util.find_spec", lambda _name: None)
+
+    exit_code = mlflow_ui.main([])
+
+    assert exit_code == 1
+
+
+def test_mlflow_ui_returns_error_on_subprocess_failure(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("mahilda.cli.mlflow_ui.importlib.util.find_spec", lambda _name: object())
+
+    def fake_run(cmd: list[str], check: bool) -> None:
+        del check
+        raise subprocess.CalledProcessError(returncode=2, cmd=cmd)
+
+    monkeypatch.setattr("mahilda.cli.mlflow_ui.subprocess.run", fake_run)
 
     exit_code = mlflow_ui.main([])
 

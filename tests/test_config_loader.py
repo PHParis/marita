@@ -127,6 +127,27 @@ def test_load_config_rejects_missing_required_sections(tmp_path: Path) -> None:
         load_config(str(config_path))
 
 
+def test_load_config_reports_missing_logging_section(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "database:",
+                "  path: ./data",
+                "  name: test.db",
+                "results:",
+                "  output_dir: ./results",
+                "algorithm:",
+                "  name: MAHILDA",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Missing required section: 'logging'"):
+        load_config(str(config_path))
+
+
 def test_load_config_rejects_missing_file(tmp_path: Path) -> None:
     missing = tmp_path / "missing.yaml"
     with pytest.raises(ValueError, match="Configuration file not found"):

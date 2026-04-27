@@ -156,19 +156,19 @@ def _resolve_file_uri(base_dir: Path, tracking_uri: Any) -> Any:
 
 
 def _normalise_relative_paths(config: dict, config_dir: Path) -> dict:
-    database_config = config.setdefault("database", {})
+    database_config = config.get("database")
     if isinstance(database_config, dict) and "path" in database_config:
         database_config["path"] = _resolve_path(config_dir, database_config["path"])
 
-    logging_config = config.setdefault("logging", {})
+    logging_config = config.get("logging")
     if isinstance(logging_config, dict) and "log_dir" in logging_config:
         logging_config["log_dir"] = _resolve_path(config_dir, logging_config["log_dir"])
 
-    results_config = config.setdefault("results", {})
+    results_config = config.get("results")
     if isinstance(results_config, dict) and "output_dir" in results_config:
         results_config["output_dir"] = _resolve_path(config_dir, results_config["output_dir"])
 
-    mlflow_config = config.setdefault("mlflow", {})
+    mlflow_config = config.get("mlflow")
     if isinstance(mlflow_config, dict) and "tracking_uri" in mlflow_config:
         mlflow_config["tracking_uri"] = _resolve_file_uri(config_dir, mlflow_config["tracking_uri"])
 
