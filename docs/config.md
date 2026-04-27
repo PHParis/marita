@@ -30,6 +30,7 @@
 ## `benchmark`
 
 - `baseline` (optional): one of `AMIE3`, `SPIDER`, `POPPER`, `ILP`
+- `input_tsv` (optional): prebuilt TSV path for AMIE3 direct graph input
 
 ## `batch`
 
@@ -54,6 +55,7 @@
 Command-line flags override config values when provided:
 
 - `benchmark --baseline` overrides `benchmark.baseline` / `algorithm.name`
+- `benchmark --input-tsv` overrides `benchmark.input_tsv`
 - `batch --directory` overrides `database.path`
 - `batch --workers` overrides `batch.workers`
 - `batch --timeout` overrides `batch.timeout`

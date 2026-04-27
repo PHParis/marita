@@ -105,6 +105,7 @@ def validate_config(config: dict[str, Any]) -> None:
             elif baseline_name.strip().upper() not in ALLOWED_BASELINES:
                 allowed = ", ".join(sorted(ALLOWED_BASELINES))
                 _add_error(errors, f"Key 'benchmark.baseline' must be one of: {allowed}.")
+        _expect_non_empty_string(benchmark, "benchmark", "input_tsv", errors, required=False)
 
     monitor = _expect_mapping(config, "monitor", errors, required=False)
     if monitor is not None:
@@ -171,6 +172,10 @@ def _normalise_relative_paths(config: dict, config_dir: Path) -> dict:
     mlflow_config = config.get("mlflow")
     if isinstance(mlflow_config, dict) and "tracking_uri" in mlflow_config:
         mlflow_config["tracking_uri"] = _resolve_file_uri(config_dir, mlflow_config["tracking_uri"])
+
+    benchmark_config = config.get("benchmark")
+    if isinstance(benchmark_config, dict) and "input_tsv" in benchmark_config:
+        benchmark_config["input_tsv"] = _resolve_path(config_dir, benchmark_config["input_tsv"])
 
     return config
 

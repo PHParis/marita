@@ -24,6 +24,8 @@ def test_load_config_resolves_paths_relative_to_config_file(tmp_path: Path) -> N
                 "  name: MAHILDA",
                 "mlflow:",
                 "  tracking_uri: file:../mlruns",
+                "benchmark:",
+                "  input_tsv: ../data/kg.tsv",
             ]
         ),
         encoding="utf-8",
@@ -35,6 +37,7 @@ def test_load_config_resolves_paths_relative_to_config_file(tmp_path: Path) -> N
     assert loaded["logging"]["log_dir"] == str((config_dir / "../logs").resolve())
     assert loaded["results"]["output_dir"] == str((config_dir / "../results").resolve())
     assert loaded["mlflow"]["tracking_uri"] == f"file:{(config_dir / '../mlruns').resolve()}"
+    assert loaded["benchmark"]["input_tsv"] == str((config_dir / "../data/kg.tsv").resolve())
 
 
 def test_load_config_rejects_invalid_algorithm_name(tmp_path: Path) -> None:

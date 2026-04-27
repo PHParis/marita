@@ -17,7 +17,8 @@ class Amie3(RuleDiscoveryAlgorithm):
         results_path = kwargs.get("results_dir", "results")
         script_dir = Path(__file__).resolve().parent
 
-        database_path = self.database.database_path_tsv
+        input_tsv = kwargs.get("input_tsv")
+        database_path = Path(input_tsv) if input_tsv else Path(self.database.database_path_tsv)
         current_time = datetime.now()
 
         jar_file = script_dir.parent / "third_party" / "amie3" / "amie-milestone-intKB.jar"

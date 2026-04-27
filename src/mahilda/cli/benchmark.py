@@ -32,6 +32,10 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "--baseline",
         help="Baseline to run (AMIE3, SPIDER, POPPER). Overrides config algorithm.name.",
     )
+    parser.add_argument(
+        "--input-tsv",
+        help="Prebuilt TSV input for AMIE3; skips relational triple export when provided.",
+    )
     return parser.parse_args(argv)
 
 
@@ -51,6 +55,7 @@ class BaselineProcessor:
         results_dir: Path,
         logger: logging.Logger,
         use_mlflow: bool = False,
+        input_tsv: Path | None = None,
     ):
         self.baseline_name = normalise_baseline_name(baseline_name)
         self.database_name = database_name
@@ -58,6 +63,7 @@ class BaselineProcessor:
         self.results_dir = results_dir
         self.logger = logger
         self.use_mlflow = use_mlflow
+        self.input_tsv = input_tsv
 
     def discover_rules(self) -> int:
         baseline_map = {
@@ -76,15 +82,19 @@ class BaselineProcessor:
         db_uri = f"sqlite:///{db_file_path}"
         self.logger.info("Using database URI: %s", db_uri)
 
+        direct_amie3_tsv = self.baseline_name == "AMIE3" and self.input_tsv is not None
         with AlchemyUtility(
             db_uri,
             database_path=str(self.database_path),
             create_index=False,
-            create_csv=True,
-            create_tsv=True,
+            create_csv=not direct_amie3_tsv,
+            create_tsv=not direct_amie3_tsv,
         ) as db_util:
             algo = selected_baseline(db_util)
-            raw_rules = algo.discover_rules(results_dir=str(artifacts.run_dir))
+            discover_kwargs: dict[str, Any] = {"results_dir": str(artifacts.run_dir)}
+            if self.input_tsv is not None:
+                discover_kwargs["input_tsv"] = self.input_tsv
+            raw_rules = algo.discover_rules(**discover_kwargs)
 
             if isinstance(raw_rules, dict):
                 rules = list(raw_rules.keys())
@@ -155,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     database_name = config.database.name
     log_dir = config.logging.log_dir
     results_dir = config.results.output_dir
+    input_tsv = Path(args.input_tsv) if args.input_tsv else config.benchmark.input_tsv
 
     initialize_directories(results_dir, log_dir)
     logger = configure_global_logger(str(log_dir))
@@ -172,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         results_dir=results_dir,
         logger=logger,
         use_mlflow=use_mlflow,
+        input_tsv=input_tsv,
     )
 
     try:

@@ -1,6 +1,6 @@
 import argparse
 
-from mahilda.cli import batch, benchmark, mlflow_start, mlflow_ui, run, smoke, test_data
+from mahilda.cli import batch, benchmark, import_rdf, mlflow_start, mlflow_ui, run, smoke, test_data
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,6 +27,17 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Benchmark baseline to run (AMIE3, SPIDER, POPPER)",
     )
+    benchmark_parser.add_argument(
+        "--input-tsv",
+        default=None,
+        help="Prebuilt TSV input for AMIE3; skips relational triple export when provided",
+    )
+
+    import_rdf_parser = subparsers.add_parser("import-rdf", help="Import RDF/Turtle into benchmark artifacts")
+    import_rdf_parser.add_argument("--input", required=True)
+    import_rdf_parser.add_argument("--output-dir", required=True)
+    import_rdf_parser.add_argument("--variants", default="core,ontology-lite")
+    import_rdf_parser.add_argument("--dataset-name", default=None)
 
     batch_parser = subparsers.add_parser("batch", help="Run batch processing across many databases")
     batch_parser.add_argument(
@@ -65,7 +76,15 @@ def main(argv: list[str] | None = None) -> int:
         benchmark_args: list[str] = ["--config", args.config]
         if args.baseline:
             benchmark_args.extend(["--baseline", args.baseline])
+        if args.input_tsv:
+            benchmark_args.extend(["--input-tsv", args.input_tsv])
         return benchmark.main(benchmark_args)
+
+    if args.command == "import-rdf":
+        import_args = ["--input", args.input, "--output-dir", args.output_dir, "--variants", args.variants]
+        if args.dataset_name:
+            import_args.extend(["--dataset-name", args.dataset_name])
+        return import_rdf.main(import_args)
 
     if args.command == "batch":
         batch_args: list[str] = [

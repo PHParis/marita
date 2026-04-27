@@ -36,6 +36,7 @@ class AlgorithmConfig:
 @dataclass(frozen=True)
 class BenchmarkConfig:
     baseline: str | None
+    input_tsv: Path | None
 
 
 @dataclass(frozen=True)
@@ -121,6 +122,7 @@ class AppConfig:
             ),
             benchmark=BenchmarkConfig(
                 baseline=(str(benchmark.get("baseline")).strip().upper() if benchmark.get("baseline") else None),
+                input_tsv=(Path(str(benchmark["input_tsv"])) if "input_tsv" in benchmark else None),
             ),
             batch=BatchConfig(
                 workers=int(batch.get("workers", 3)),

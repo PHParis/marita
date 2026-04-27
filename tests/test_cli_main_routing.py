@@ -31,6 +31,57 @@ def test_main_routes_benchmark_command(monkeypatch) -> None:
     assert captured["argv"] == ["--config", "cfg.yml", "--baseline", "SPIDER"]
 
 
+def test_main_routes_benchmark_input_tsv(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_benchmark_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 18
+
+    monkeypatch.setattr("mahilda.cli.benchmark.main", fake_benchmark_main)
+
+    exit_code = main(["benchmark", "--config", "cfg.yml", "--baseline", "AMIE3", "--input-tsv", "kg.tsv"])
+
+    assert exit_code == 18
+    assert captured["argv"] == ["--config", "cfg.yml", "--baseline", "AMIE3", "--input-tsv", "kg.tsv"]
+
+
+def test_main_routes_import_rdf_command(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_import_rdf_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 24
+
+    monkeypatch.setattr("mahilda.cli.import_rdf.main", fake_import_rdf_main)
+
+    exit_code = main(
+        [
+            "import-rdf",
+            "--input",
+            "data/yago-tiny.ttl",
+            "--output-dir",
+            "data/yago",
+            "--variants",
+            "core",
+            "--dataset-name",
+            "yago_tiny",
+        ]
+    )
+
+    assert exit_code == 24
+    assert captured["argv"] == [
+        "--input",
+        "data/yago-tiny.ttl",
+        "--output-dir",
+        "data/yago",
+        "--variants",
+        "core",
+        "--dataset-name",
+        "yago_tiny",
+    ]
+
+
 def test_main_routes_batch_command(monkeypatch) -> None:
     captured: dict[str, list[str]] = {}
 

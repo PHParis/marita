@@ -26,10 +26,24 @@ Runs one competitor baseline on a single database.
 uv run mahilda benchmark --config configs/config.example.yaml --baseline AMIE3
 uv run mahilda benchmark --config configs/config.example.yaml --baseline SPIDER
 uv run mahilda benchmark --config configs/config.example.yaml --baseline POPPER
+uv run mahilda benchmark --config configs/config.example.yaml --baseline AMIE3 --input-tsv data/yago/yago_tiny_core.tsv
 ```
 
 - Allowed baselines: `AMIE3`, `SPIDER`, `POPPER` (`ILP` is normalized to `POPPER`).
 - Baseline selection comes from `--baseline` first, then `benchmark.baseline`, then `algorithm.name`.
+- `--input-tsv` lets AMIE3 consume a prebuilt RDF benchmark TSV directly.
+
+## `import-rdf`
+
+Imports an RDF/Turtle knowledge graph into auditable benchmark artifacts.
+
+```bash
+uv run mahilda import-rdf --input data/yago-tiny.ttl --output-dir data/yago --variants core,ontology-lite
+```
+
+- Writes a full archive DB, variant SQLite DBs, AMIE3 TSV exports, manifest JSON, and report markdown.
+- The `core` variant contains ABox object facts, ABox datatype facts, and instance `rdf:type` facts.
+- The `ontology-lite` variant adds explicit `rdfs:subClassOf` statements.
 
 ## `batch`
 
