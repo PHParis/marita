@@ -14,6 +14,7 @@ dependencies = [
   "setuptools>=69",
   "PyYAML>=6.0",
   "SQLAlchemy>=2.0",
+  "rdflib>=7.0",
   "psutil>=5.9",
   "tqdm>=4.66",
   "colorama>=0.4.6",
