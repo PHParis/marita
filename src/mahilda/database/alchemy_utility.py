@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import psutil
 from sqlalchemy import select, text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from mahilda.database.data_exporter import DataExporter
 from mahilda.database.database_connection_manager import DatabaseConnectionManager
@@ -16,9 +15,6 @@ from mahilda.database.index_manager import IndexManager
 from mahilda.database.query_utility import QueryUtility
 from mahilda.database.triple_converter import TripleConverter
 from mahilda.utils.log_setup import setup_loggers
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncEngine
 
 
 class AlchemyUtility:
@@ -84,8 +80,6 @@ class AlchemyUtility:
             self.database_path_tsv = os.path.join(self.database_path, self.base_name, "tsv")
 
         self.tables_data = self._extract_table_data() if get_data else {}
-        self.async_engine: AsyncEngine | None = None
-        self.async_session: AsyncSession | None = None
 
     def _setup_sqlite(self, create_index: bool) -> None:
         conn = self.db_manager.conn
@@ -176,8 +170,7 @@ class AlchemyUtility:
         count_over: list[list[tuple[str, int, str]]] | None = None,
         flag: str = "",
     ) -> int:
-        _ = flag
-        return self.query_utility.get_join_row_count(join_conditions, disjoint_semantics, distinct, count_over)
+        return self.query_utility.get_join_row_count(join_conditions, disjoint_semantics, distinct, count_over, flag)
 
     def get_attribute_values(self, table_name: str, attribute_name: str) -> list[Any]:
         try:
@@ -267,18 +260,6 @@ class AlchemyUtility:
 
     def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
         self.close()
-
-    async def __aenter__(self) -> AlchemyUtility:
-        self.async_engine = create_async_engine(self.db_url)
-        session_factory = async_sessionmaker(self.async_engine, expire_on_commit=False)
-        self.async_session = session_factory()
-        return self
-
-    async def __aexit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
-        if self.async_session is not None:
-            await self.async_session.close()
-        if self.async_engine is not None:
-            await self.async_engine.dispose()
 
 
 if __name__ == "__main__":

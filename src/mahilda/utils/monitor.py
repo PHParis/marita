@@ -2,7 +2,6 @@ import psutil
 import time
 import logging
 import threading
-from datetime import datetime
 
 
 class ResourceMonitor:

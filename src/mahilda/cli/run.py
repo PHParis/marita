@@ -17,6 +17,7 @@ except ImportError:
     MLFLOW_AVAILABLE = False
 
 from mahilda.algorithms.mahilda import MAHILDA
+from mahilda.cli._color import Fore, Style
 from mahilda.cli.artifacts import build_command_artifacts, write_execution_time_metrics, write_markdown_report
 from mahilda.cli.runtime import initialize_directories, mlflow_run_context, scoped_env_vars
 from mahilda.database.alchemy_utility import AlchemyUtility
@@ -24,27 +25,6 @@ from mahilda.utils.config_loader import load_typed_config
 from mahilda.utils.logging_utils import configure_global_logger
 from mahilda.utils.monitor import ResourceMonitor
 from mahilda.utils.rules import RuleIO
-
-try:
-    from colorama import Fore as ColorFore
-    from colorama import Style as ColorStyle
-    from colorama import init
-
-    init(autoreset=True)
-    COLORS_AVAILABLE = True
-    Fore: Any = ColorFore
-    Style: Any = ColorStyle
-except ImportError:
-    COLORS_AVAILABLE = False
-
-    class _FallbackFore:
-        GREEN = YELLOW = BLUE = CYAN = RED = MAGENTA = WHITE = RESET = ""
-
-    class _FallbackStyle:
-        BRIGHT = DIM = NORMAL = RESET_ALL = ""
-
-    Fore = _FallbackFore()
-    Style = _FallbackStyle()
 
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
@@ -111,23 +91,18 @@ class DatabaseProcessor:
                 self.logger.info(f"Using database URI: {db_uri}")
             start = time.time()
 
-            # Disable CSV/TSV generation for MAHILDA (not needed, saves time and disk space)
-            is_mahilda = self.algorithm_name.upper() == "MAHILDA"
             with AlchemyUtility(
                 db_uri,
                 database_path=str(self.database_path),
                 create_index=False,
-                create_csv=not is_mahilda,
-                create_tsv=not is_mahilda,
+                create_csv=False,
+                create_tsv=False,
             ) as db_util:
                 algo = selected_algorithm(db_util, config=self.config)
                 rules = []
 
                 if not quiet:
                     self.logger.debug("Starting rule discovery...")
-                    # DEBUG: log settings for MAHILDA
-                    if self.algorithm_name.upper() == "MAHILDA":
-                        self.logger.info("MAHILDA settings: nb_occurrence=3, max_table=3, max_vars=6")
 
                 for rule_count, rule in enumerate(
                     algo.discover_rules(results_dir=str(artifacts.run_dir), should_stop=self.should_stop),
@@ -199,10 +174,6 @@ class DatabaseProcessor:
         """Cleans up temporary directories synchronously."""
         if temp_dirs is None:
             temp_dirs = [self.database_path / "prolog_tmp"]
-            if self.algorithm_name == "SPIDER":
-                temp_dirs.append(self.database_path / "SPIDER_temp")
-            if self.algorithm_name == "POPPER":
-                temp_dirs.append(self.database_path / "popper")
         for directory in temp_dirs:
             if directory.exists() and directory.is_dir():
                 shutil.rmtree(directory)
@@ -348,16 +319,6 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         monitor.stop()
         monitor_thread.join(timeout=2)
-        if use_mlflow and MLFLOW_AVAILABLE:
-            try:
-                import mlflow
-
-                if mlflow.active_run():
-                    mlflow.end_run()
-                    if not quiet:
-                        logger.info("MLflow run ended.")
-            except Exception:
-                logger.warning("Could not end MLflow run cleanly.")
 
     return 0
 

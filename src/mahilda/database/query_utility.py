@@ -87,6 +87,7 @@ class QueryUtility:
         disjoint_semantics: bool = False,
         distinct: bool = False,
         count_over: list[list[tuple[str, int, str]]] | None = None,
+        flag: str = "",
     ) -> int:
         query, _, _ = self._construct_count_query(join_conditions, disjoint_semantics, distinct, count_over)
         if query is None:
@@ -96,7 +97,7 @@ class QueryUtility:
             with self.engine.connect() as conn:
                 result_sqlite = conn.execute(query).scalar()
         except Exception as err:
-            self.logger_query_time.error(f"Error executing query: {err}")
+            self.logger_query_time.error(f"Error executing count query for flag '{flag}': {err}")
             return 0
         return int(result_sqlite) if result_sqlite is not None else 0
 
@@ -309,11 +310,9 @@ class QueryUtility:
         count_over: list[list[tuple[str, int, str]]] | None = None,
         aliases: dict[str, Any] | None = None,
     ) -> Any:
-        if count_over and not aliases:
-            raise ValueError("Aliases must be provided when count_over is specified.")
-
         if count_over:
-            assert aliases is not None
+            if not aliases:
+                raise ValueError("Aliases must be provided when count_over is specified.")
             count_over_clause = []
             for x_class in count_over:
                 for table_name, occurrence, attribute_name in x_class:

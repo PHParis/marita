@@ -26,7 +26,9 @@ class IndexManager:
             for table in self.metadata.tables.values():
                 for column in table.columns:
                     index_name = f"idx_{table.name}_{column.name}"
-                    self.conn.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table.name} ({column.name});"))
+                    self.conn.execute(
+                        text(f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table.name}" ("{column.name}");')
+                    )
 
     def create_composed_indexes(self, cols_list: list[tuple[str, str, str, str]]) -> None:
         """Create composed indexes for tuples of columns."""

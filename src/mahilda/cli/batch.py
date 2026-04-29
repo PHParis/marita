@@ -19,8 +19,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
+from mahilda.cli._color import Fore, Style
 from mahilda.cli.artifacts import (
     build_command_artifacts,
     format_duration,
@@ -31,27 +31,6 @@ from mahilda.cli.run import DatabaseProcessor
 from mahilda.cli.runtime import initialize_directories, scoped_env_vars
 from mahilda.utils.config_loader import load_typed_config
 from mahilda.utils.logging_utils import configure_global_logger
-
-try:
-    from colorama import Fore as ColorFore
-    from colorama import Style as ColorStyle
-    from colorama import init
-
-    init(autoreset=True)
-    COLORS_AVAILABLE = True
-    Fore: Any = ColorFore
-    Style: Any = ColorStyle
-except ImportError:
-    COLORS_AVAILABLE = False
-
-    class _FallbackFore:
-        GREEN = YELLOW = BLUE = CYAN = RED = MAGENTA = WHITE = RESET = ""
-
-    class _FallbackStyle:
-        BRIGHT = DIM = NORMAL = RESET_ALL = ""
-
-    Fore = _FallbackFore()
-    Style = _FallbackStyle()
 
 
 def print_banner(title: str, char: str = "═", width: int = 80, color: str = ""):
