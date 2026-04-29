@@ -51,3 +51,26 @@ def test_filter_predicates_drops_isolated_variables() -> None:
     other = factory._create_predicates_from_relation("S(c,d)")
     filtered = factory._filter_predicates(preds, other)
     assert filtered == []
+
+
+def test_create_from_ilp_display_logs_empty_body_and_filtered_warnings(caplog) -> None:
+    caplog.set_level("WARNING")
+    rule = TGDRuleFactory.create_from_ilp_display("Head(x):- .", accuracy=0.2)
+    assert rule.display.startswith("Head")
+    assert "No body relations extracted" in caplog.text
+    assert "no valid" in caplog.text.lower()
+
+
+def test_create_from_ilp_display_logs_empty_head(monkeypatch, caplog) -> None:
+    caplog.set_level("WARNING")
+
+    original = TGDRuleFactory._create_predicates_from_relation
+
+    def patched(self, relation_str: str):
+        if relation_str.startswith("Head"):
+            return []
+        return original(self, relation_str)
+
+    monkeypatch.setattr(TGDRuleFactory, "_create_predicates_from_relation", patched)
+    _ = TGDRuleFactory.create_from_ilp_display("Head(x):-Body(x,y).", accuracy=0.3)
+    assert "No head predicates extracted" in caplog.text

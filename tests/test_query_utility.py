@@ -3,7 +3,7 @@ import logging
 import pytest
 from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, create_engine
 
-from mahilda.database.query_utility import QueryUtility
+from mahilda.database.query_utility import ColorFormatter, QueryUtility
 
 
 def _build_db() -> tuple:
@@ -108,3 +108,55 @@ def test_metadata_helpers_and_foreign_keys() -> None:
 
     fk = util._get_foreign_keys()
     assert fk["a"]["b_id"] == ("b", "id")
+
+
+def test_color_formatter_wraps_message() -> None:
+    fmt = ColorFormatter("%(message)s")
+    record = logging.LogRecord("x", logging.INFO, __file__, 1, "hello", args=(), exc_info=None)
+    out = fmt.format(record)
+    assert "hello" in out
+
+
+def test_get_or_create_alias_invalid_table_raises() -> None:
+    engine, metadata, _a, _b = _build_db()
+    util = _utility(engine, metadata)
+    with pytest.raises(ValueError):
+        util._get_or_create_alias({}, "missing", 0)
+
+
+def test_construct_join_empty_and_where_constraint_branch() -> None:
+    engine, metadata, _a, _b = _build_db()
+    util = _utility(engine, metadata)
+    join_base, constraints = util._construct_join([], {}, set())
+    assert join_base is None
+    assert constraints == []
+
+    groups = util._organize_join_conditions([("a", 0, "id", "a", 0, "id")])
+    join_bases, aliases, used_aliases, _ = util._process_join_conditions(groups, disjoint_semantics=False)
+    assert used_aliases == {"a_0"}
+    join_base2, constraints2 = util._construct_join(join_bases, aliases, used_aliases)
+    assert join_base2 is not None
+    assert constraints2
+
+
+def test_construct_primary_key_conditions_for_multiple_occurrences() -> None:
+    engine, metadata, _a, _b = _build_db()
+    util = _utility(engine, metadata)
+    aliases = {
+        "a_0": util._get_or_create_alias({}, "a", 0),
+        "a_1": util._get_or_create_alias({}, "a", 1),
+    }
+    conds = util._construct_primary_key_conditions({"a": {0, 1}}, aliases, {"a_0", "a_1"})
+    assert len(conds) == 1
+
+
+def test_count_over_alias_missing_raises() -> None:
+    engine, metadata, _a, _b = _build_db()
+    util = _utility(engine, metadata)
+    with pytest.raises(ValueError):
+        util._construct_select_query(
+            join_base=metadata.tables["a"],
+            distinct=False,
+            count_over=[[("missing", 0, "id")]],
+            aliases={"a_0": util._get_or_create_alias({}, "a", 0)},
+        )
