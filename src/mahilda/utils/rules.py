@@ -168,7 +168,7 @@ class PredicateUtils:
     def sort_and_rename_variables(lst: List[Predicate], skip: int = 0) -> List[Predicate]:
         try:
             lst.sort(key=lambda x: x.relation)
-        except Exception:
+        except TypeError:
             return lst
 
         variable_mapping = {}
@@ -366,13 +366,10 @@ class RuleIO:
 
     @staticmethod
     def save_rules_to_json(rules: List[Rule], filepath: str) -> int:
-        try:
-            rules_generated = [RuleIO.rule_to_dict(rule) for rule in rules]
-            with open(filepath, "w") as f:
-                json.dump(rules_generated, f, indent=4)
-            return len(rules_generated)
-        except Exception as e:
-            raise e
+        rules_generated = [RuleIO.rule_to_dict(rule) for rule in rules]
+        with open(filepath, "w") as f:
+            json.dump(rules_generated, f, indent=4)
+        return len(rules_generated)
 
     @staticmethod
     def save_yielded_rule_to_json(rule: Rule, filepath: str) -> None:

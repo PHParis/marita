@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from typing import TYPE_CHECKING, Any
 
 from colorama import Fore, Style
@@ -75,7 +74,6 @@ class QueryUtility:
         if query is None:
             raise ValueError(f"Invalid join conditions or query construction failed for flag: {flag}")
 
-        _start = time.time()
         try:
             with self.engine.connect() as conn:
                 result = conn.execute(query).scalar()
@@ -94,7 +92,6 @@ class QueryUtility:
         if query is None:
             return 0
 
-        _start = time.time()
         try:
             with self.engine.connect() as conn:
                 result_sqlite = conn.execute(query).scalar()
@@ -147,7 +144,7 @@ class QueryUtility:
                 condition_groups,
                 disjoint_semantics,
             )
-        except Exception as err:
+        except ValueError as err:
             self.logger_query_time.error(f"Error processing join conditions: {err}")
             return None, None, None
 

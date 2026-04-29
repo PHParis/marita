@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 import psutil
 from sqlalchemy import select, text
 from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from mahilda.database.data_exporter import DataExporter
@@ -101,7 +102,7 @@ class AlchemyUtility:
             try:
                 self.index_manager.create_indexes()
                 conn.commit()
-            except Exception as err:
+            except SQLAlchemyError as err:
                 self.logger_query_time.error(f"Error creating indexes: {err}")
                 conn.rollback()
 
@@ -142,7 +143,7 @@ class AlchemyUtility:
         try:
             with self.db_manager.engine.connect() as conn:
                 return [tuple(row) for row in conn.execute(query).fetchall()]
-        except Exception as err:
+        except SQLAlchemyError as err:
             self.logger_query_time.error(f"Error executing select query on '{table_name}': {err}")
             return []
 
@@ -182,7 +183,7 @@ class AlchemyUtility:
         try:
             rows = self._select_query(table_name, [attribute_name])
             return [row[0] for row in rows if row and row[0] is not None]
-        except Exception as err:
+        except SQLAlchemyError as err:
             self.logger_query_time.error(f"Error getting values for {table_name}.{attribute_name}: {err}")
             return []
 

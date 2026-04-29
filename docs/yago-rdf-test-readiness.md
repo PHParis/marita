@@ -31,17 +31,9 @@ data/yago/yago_tiny_manifest.json
 data/yago/yago_tiny_report.md
 ```
 
-## Main Remaining MAHILDA Fix
+## Main MAHILDA Fix (Implemented)
 
-MAHILDA compatibility discovery currently checks only one foreign-key direction in `src/mahilda/algorithms/mahilda_core/constraint_graph.py`:
-
-```python
-return db_inspector.check_foreign_key_silently(self.table, self.name, other_attribute.table, other_attribute.name)
-```
-
-The generated YAGO relational DB is predicate-centric. Predicate tables such as `schema_birthPlace(subject_id, object_id)` reference `entity(entity_id)`. Because MAHILDA iterates attributes in sorted table order, it may compare `entity.entity_id` to `schema_birthPlace.subject_id` before the reverse comparison and miss the FK edge.
-
-Recommended fix:
+MAHILDA compatibility discovery now checks both foreign-key directions in `src/mahilda/algorithms/mahilda_core/constraint_graph.py`:
 
 ```python
 return (
@@ -50,11 +42,11 @@ return (
 )
 ```
 
-Until this is fixed, MAHILDA may run on `yago_tiny_core.db` but produce too few or zero compatible attributes, making the result hard to interpret.
+The generated YAGO relational DB is predicate-centric. Predicate tables such as `schema_birthPlace(subject_id, object_id)` reference `entity(entity_id)`. Without this fix, MAHILDA would miss FK edges when iterating attributes in sorted table order. The fix ensures both directions are checked.
 
 ## Recommended MAHILDA Smoke Run
 
-After generating artifacts and fixing symmetric FK compatibility:
+After generating artifacts:
 
 ```bash
 uv run mahilda run --config configs/config.yago-core.yaml
@@ -116,12 +108,11 @@ Remaining caveats:
 
 1. Generate artifacts with `import-rdf`.
 2. Inspect `data/yago/yago_tiny_manifest.json` and `data/yago/yago_tiny_report.md`.
-3. Apply symmetric FK compatibility fix for MAHILDA.
-4. Run `uv run mahilda run --config configs/config.yago-core.yaml`.
-5. Run AMIE3 with `--input-tsv`.
-6. Run SPIDER against the generated SQLite DB.
-7. Attempt POPPER only after confirming table count and dependency availability.
+3. Run `uv run mahilda run --config configs/config.yago-core.yaml`.
+4. Run AMIE3 with `--input-tsv`.
+5. Run SPIDER against the generated SQLite DB.
+6. Attempt POPPER only after confirming table count and dependency availability.
 
 ## Short Answer
 
-The import architecture and AMIE3 fair-input path are ready. A full comparative YAGO benchmark is not fully ready until MAHILDA's FK compatibility check is symmetric and the generated YAGO artifacts have been smoke-tested.
+The import architecture, AMIE3 fair-input path, and MAHILDA symmetric FK compatibility check are all in place. A full comparative YAGO benchmark is ready to run once the YAGO artifacts have been generated and smoke-tested.

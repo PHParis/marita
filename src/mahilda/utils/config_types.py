@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+_DEFAULT_MEMORY_THRESHOLD_BYTES = 15 * 1024 * 1024 * 1024  # 15 GB
+_DEFAULT_MONITOR_TIMEOUT_SECONDS = 3600  # 1 hour
+
 
 @dataclass(frozen=True)
 class MonitorConfig:
@@ -104,8 +107,8 @@ class AppConfig:
 
         return cls(
             monitor=MonitorConfig(
-                memory_threshold=int(monitor.get("memory_threshold", 15 * 1024 * 1024 * 1024)),
-                timeout=int(monitor.get("timeout", 3600)),
+                memory_threshold=int(monitor.get("memory_threshold", _DEFAULT_MEMORY_THRESHOLD_BYTES)),
+                timeout=int(monitor.get("timeout", _DEFAULT_MONITOR_TIMEOUT_SECONDS)),
             ),
             database=DatabaseConfig(
                 path=Path(cls._require_non_empty_string(database, "database", "path")),
