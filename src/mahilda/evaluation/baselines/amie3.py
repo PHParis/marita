@@ -18,6 +18,7 @@ class Amie3(RuleDiscoveryAlgorithm):
         script_dir = Path(__file__).resolve().parent
 
         input_tsv = kwargs.get("input_tsv")
+        timeout = int(kwargs.get("timeout", 300))
         database_path = Path(input_tsv) if input_tsv else Path(self.database.database_path_tsv)
         current_time = datetime.now()
 
@@ -42,7 +43,7 @@ class Amie3(RuleDiscoveryAlgorithm):
             str(database_path),
         ]
 
-        if not run_cmd(cmd, timeout=300, stdout_path=output_file, logger=logger):
+        if not run_cmd(cmd, timeout=timeout, stdout_path=output_file, logger=logger):
             return []
 
         with output_file.open(encoding="utf-8") as file:

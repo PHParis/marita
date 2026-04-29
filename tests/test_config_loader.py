@@ -217,6 +217,31 @@ def test_load_config_rejects_invalid_timeout_values(tmp_path: Path) -> None:
         load_config(str(config_path))
 
 
+def test_load_config_rejects_invalid_benchmark_timeout(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "database:",
+                "  path: ./data",
+                "  name: test.db",
+                "logging:",
+                "  log_dir: ./logs",
+                "results:",
+                "  output_dir: ./results",
+                "algorithm:",
+                "  name: MAHILDA",
+                "benchmark:",
+                "  timeout: 0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="benchmark.timeout"):
+        load_config(str(config_path))
+
+
 def test_load_typed_config_builds_dataclass_view(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
@@ -234,6 +259,8 @@ def test_load_typed_config_builds_dataclass_view(tmp_path: Path) -> None:
                 "batch:",
                 "  workers: 5",
                 "  timeout: 88",
+                "benchmark:",
+                "  timeout: 99",
             ]
         ),
         encoding="utf-8",
@@ -244,6 +271,7 @@ def test_load_typed_config_builds_dataclass_view(tmp_path: Path) -> None:
     assert config.algorithm.name == "MAHILDA"
     assert config.batch.workers == 5
     assert config.batch.timeout == 88
+    assert config.benchmark.timeout == 99
     assert config.database.name.name == "my.db"
 
 

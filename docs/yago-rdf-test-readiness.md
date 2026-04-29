@@ -81,7 +81,12 @@ Closest to ready. Use direct TSV input:
 uv run mahilda benchmark --config configs/config.yago-core.yaml --baseline AMIE3 --input-tsv data/yago/yago_tiny_core.tsv
 ```
 
-Remaining caveat: `src/mahilda/evaluation/baselines/amie3.py` currently uses a hardcoded `300` second timeout. YAGO may need this to be configurable for real benchmark runs.
+YAGO runs can raise the AMIE3 subprocess timeout in `configs/config.yago-core.yaml`:
+
+```yaml
+benchmark:
+  timeout: 1800
+```
 
 ### SPIDER
 

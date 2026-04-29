@@ -56,6 +56,7 @@ class BaselineProcessor:
         logger: logging.Logger,
         use_mlflow: bool = False,
         input_tsv: Path | None = None,
+        timeout: int = 300,
     ):
         self.baseline_name = normalise_baseline_name(baseline_name)
         self.database_name = database_name
@@ -64,6 +65,7 @@ class BaselineProcessor:
         self.logger = logger
         self.use_mlflow = use_mlflow
         self.input_tsv = input_tsv
+        self.timeout = timeout
 
     def discover_rules(self) -> int:
         baseline_map = {
@@ -94,6 +96,8 @@ class BaselineProcessor:
             discover_kwargs: dict[str, Any] = {"results_dir": str(artifacts.run_dir)}
             if self.input_tsv is not None:
                 discover_kwargs["input_tsv"] = self.input_tsv
+            if self.baseline_name == "AMIE3":
+                discover_kwargs["timeout"] = self.timeout
             raw_rules = algo.discover_rules(**discover_kwargs)
 
             if isinstance(raw_rules, dict):
@@ -184,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
         logger=logger,
         use_mlflow=use_mlflow,
         input_tsv=input_tsv,
+        timeout=config.benchmark.timeout,
     )
 
     try:

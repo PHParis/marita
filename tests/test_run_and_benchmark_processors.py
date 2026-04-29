@@ -125,6 +125,39 @@ def test_benchmark_processor_uses_expected_output_paths(monkeypatch, tmp_path: P
     assert captured["json_path"].endswith("SPIDER_demo_results.json")
 
 
+def test_benchmark_processor_passes_timeout_to_amie3(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeAmie3:
+        def __init__(self, db_util) -> None:
+            del db_util
+
+        def discover_rules(self, *, results_dir: str, timeout: int):
+            captured["results_dir"] = results_dir
+            captured["timeout"] = timeout
+            return []
+
+    monkeypatch.setattr(benchmark_cli, "Amie3", FakeAmie3)
+    monkeypatch.setattr(benchmark_cli, "AlchemyUtility", _FakeAlchemyUtility)
+    monkeypatch.setattr(benchmark_cli.RuleIO, "save_rules_to_json", lambda rules, path: len(rules))
+    monkeypatch.setattr(benchmark_cli.BaselineProcessor, "generate_report", lambda *args, **kwargs: None)
+
+    processor = benchmark_cli.BaselineProcessor(
+        baseline_name="AMIE3",
+        database_name=Path("demo.db"),
+        database_path=tmp_path,
+        results_dir=tmp_path / "results",
+        logger=logging.getLogger("test_benchmark_timeout"),
+        timeout=1800,
+    )
+
+    count = processor.discover_rules()
+
+    assert count == 0
+    assert captured["timeout"] == 1800
+    assert str(captured["results_dir"]).endswith("AMIE3_demo")
+
+
 def test_run_report_path_generation(tmp_path: Path) -> None:
     results_dir = tmp_path / "results"
     results_dir.mkdir(parents=True, exist_ok=True)

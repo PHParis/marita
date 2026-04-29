@@ -31,6 +31,7 @@
 
 - `baseline` (optional): one of `AMIE3`, `SPIDER`, `POPPER`, `ILP`
 - `input_tsv` (optional): prebuilt TSV path for AMIE3 direct graph input
+- `timeout` (optional positive number): AMIE3 subprocess timeout in seconds, default `300`
 
 ## `batch`
 

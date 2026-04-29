@@ -24,6 +24,7 @@ algorithm:
 benchmark:
   baseline: AMIE3
   input_tsv: ../data/yago/yago_tiny_core.tsv
+  timeout: 1800
 
 batch:
   workers: 1

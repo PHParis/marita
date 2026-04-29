@@ -106,6 +106,7 @@ def validate_config(config: dict[str, Any]) -> None:
                 allowed = ", ".join(sorted(ALLOWED_BASELINES))
                 _add_error(errors, f"Key 'benchmark.baseline' must be one of: {allowed}.")
         _expect_non_empty_string(benchmark, "benchmark", "input_tsv", errors, required=False)
+        _expect_positive_number(benchmark, "benchmark", "timeout", errors)
 
     monitor = _expect_mapping(config, "monitor", errors, required=False)
     if monitor is not None:

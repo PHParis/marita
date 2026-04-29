@@ -37,6 +37,7 @@ class AlgorithmConfig:
 class BenchmarkConfig:
     baseline: str | None
     input_tsv: Path | None
+    timeout: int
 
 
 @dataclass(frozen=True)
@@ -123,6 +124,7 @@ class AppConfig:
             benchmark=BenchmarkConfig(
                 baseline=(str(benchmark.get("baseline")).strip().upper() if benchmark.get("baseline") else None),
                 input_tsv=(Path(str(benchmark["input_tsv"])) if "input_tsv" in benchmark else None),
+                timeout=int(benchmark.get("timeout", 300)),
             ),
             batch=BatchConfig(
                 workers=int(batch.get("workers", 3)),
