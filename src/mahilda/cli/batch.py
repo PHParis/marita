@@ -27,7 +27,7 @@ from mahilda.cli.artifacts import (
     write_batch_summary,
     write_execution_time_metrics,
 )
-from mahilda.cli.run import DatabaseProcessor
+from mahilda.cli.processors import DatabaseProcessor
 from mahilda.cli.runtime import initialize_directories, scoped_env_vars
 from mahilda.utils.config_loader import load_typed_config
 from mahilda.utils.logging_utils import configure_global_logger

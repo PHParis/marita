@@ -9,7 +9,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import List, Optional
 
-from mahilda.algorithms.rule_discovery_algorithm import RuleDiscoveryAlgorithm
+from mahilda.algorithms.base_algorithm import BaseAlgorithm
 from mahilda.utils.rules import HornRule, Predicate, Rule, TGDRule
 
 warnings.filterwarnings("ignore")
@@ -21,7 +21,7 @@ def import_and_reload_package(package_name: str) -> ModuleType:
     importlib.reload(package)
     return package
 
-class Popper(RuleDiscoveryAlgorithm):
+class Popper(BaseAlgorithm):
     def discover_rules(self, **kwargs) -> List[Rule]:
         # Copy vendored Popper sources to a runtime package path.
         script_dir = Path(__file__).resolve().parent

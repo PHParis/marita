@@ -11,7 +11,8 @@ from typing import Any, Callable, Dict, Generator, Iterable, Optional, Tuple, ca
 import mahilda.algorithms.mahilda_core.tgd_discovery as mahilda_core
 from mahilda.algorithms.base_algorithm import BaseAlgorithm
 from mahilda.algorithms.mahilda_core.tgd_discovery import dfs, init, instantiate_tgd, path_pruning
-from mahilda.utils.rules import Predicate, TGDRule, TGDRuleFactory
+from mahilda.utils.rules import Predicate, TGDRule
+from mahilda.utils.tgd_factory import TGDRuleFactory
 
 logger = logging.getLogger(__name__)
 

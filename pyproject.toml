@@ -84,7 +84,6 @@ src = ["src"]
 extend-exclude = [
   "legacy",
   "research/legacy",
-  "src/mahilda/_vendor",
   "src/mahilda/algorithms/mahilda_core",
   "src/mahilda/evaluation/third_party",
   "src/mahilda/evaluation/baselines/popper.py",
@@ -114,8 +113,7 @@ known-first-party = ["mahilda"]
 [tool.ruff.lint.per-file-ignores]
 "src/mahilda/algorithms/__init__.py" = ["F401"]
 "src/mahilda/algorithms/base_algorithm.py" = ["I001"]
-"src/mahilda/algorithms/rule_discovery_algorithm.py" = ["I001"]
-"src/mahilda/algorithms/mahilda.py" = ["UP", "TC006", "SIM102"]
+"src/mahilda/algorithms/mahilda.py" = ["UP", "TC001", "TC006", "SIM102"]
 "src/mahilda/utils/rules.py" = ["I001", "UP", "SIM102"]
 "src/mahilda/utils/run_cmd.py" = ["TC003"]
 "tests/test_baselines_integration.py" = ["TC003"]
@@ -133,7 +131,6 @@ include = [
 exclude = [
   "legacy",
   "research",
-  "**/_vendor/**",
   "**/evaluation/third_party/**",
   "**/evaluation/third_party/popper/**",
   "**/__pycache__",
@@ -144,6 +141,8 @@ ignore = [
   "src/mahilda/evaluation/baselines/spider.py",
   "src/mahilda/evaluation/baselines/amie3.py",
   "src/mahilda/utils/rules.py",
+  "src/mahilda/utils/rule_io.py",
+  "src/mahilda/utils/tgd_factory.py",
 ]
 pythonVersion = "3.10"
 venvPath = "."

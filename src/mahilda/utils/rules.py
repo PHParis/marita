@@ -1,9 +1,7 @@
 import json
-from dataclasses import asdict, dataclass
-from typing import Dict, List, NamedTuple, Tuple, Union, Optional
 import re
-import logging
-from collections import Counter
+from dataclasses import asdict, dataclass
+from typing import List, NamedTuple, Optional, Tuple, Union
 
 
 @dataclass(frozen=True)
@@ -208,7 +206,6 @@ class PredicateUtils:
             if links1 == links2:
                 return True
 
-        # Complex comparison logic for variable equivalences
         for skip in range(len(list1)):
             list2 = PredicateUtils.sort_and_rename_variables(list2, skip)
             links1 = [(p.variable1, p.relation, p.variable2) for p in list1]
@@ -250,19 +247,16 @@ class PredicateUtils:
     def str_to_predicate(s: str) -> Predicate:
         s = s.strip()
 
-        # 1. Try the old format: Predicate(variable1='x', relation='relates_to', variable2='y')
         match = re.match(r"Predicate\(variable1='(.*?)', relation='(.*?)', variable2='(.*?)'\)", s)
         if match:
             variable1, relation, variable2 = match.groups()
             return Predicate(variable1, relation, variable2)
 
-        # 2. Try the new format with argument names: relates_to(arg1=x, arg2=y)
         match = re.match(r"^([A-Za-z0-9_]+)\(([^=]+)=([^)]*)\)$", s)
         if match:
             relation, variable1, variable2 = match.groups()
             return Predicate(variable1.strip(), relation.strip(), variable2.strip())
 
-        # 3. Try the alternate new format: rel1(x, y)
         match = re.match(r"^([A-Za-z0-9_]+)\(([^,]+),\s*([^)]+)\)$", s)
         if match:
             relation, variable1, variable2 = match.groups()
@@ -271,228 +265,6 @@ class PredicateUtils:
         raise ValueError(f"Invalid Predicate string: {s}")
 
 
-class RuleIO:
-    @staticmethod
-    def rule_to_dict(rule: Rule) -> Dict:
-        if isinstance(rule, InclusionDependency):
-            return {"type": "InclusionDependency", **asdict(rule)}
-        elif isinstance(rule, FunctionalDependency):
-            return {"type": "FunctionalDependency", **asdict(rule)}
-        elif isinstance(rule, DenialConstraint):
-            return {
-                "type": "DenialConstraint",
-                "table": rule.table,
-                "conditions": [str(cond) for cond in rule.conditions],
-                "correct": rule.correct,
-                "compatible": rule.compatible,
-            }
-        elif isinstance(rule, HornRule):
-            return {
-                "type": "HornRule",
-                "body": [str(pred) for pred in rule.body],
-                "head": str(rule.head),
-                "display": rule.display,
-                "correct": rule.correct,
-                "compatible": rule.compatible,
-            }
-        elif isinstance(rule, TGDRule):
-            return {
-                "type": "TGDRule",
-                "body": [str(pred) for pred in rule.body],
-                "head": [str(pred) for pred in rule.head],
-                "display": rule.display,
-                "accuracy": rule.accuracy,
-                "confidence": rule.confidence,
-                "correct": rule.correct,
-                "compatible": rule.compatible,
-            }
-        else:
-            raise ValueError("Unknown rule type")
-
-    @staticmethod
-    def rule_from_dict(d: Dict) -> Rule:
-        rule_type = d.get("type", "TGDRule")
-
-        try:
-            if "table_dependant" in d or "columns_dependant" in d or "table_referenced" in d:
-                return InclusionDependency(
-                    table_dependant=d["table_dependant"],
-                    columns_dependant=tuple(d["columns_dependant"]),
-                    table_referenced=d["table_referenced"],
-                    columns_referenced=tuple(d["columns_referenced"]),
-                    display=d.get("display"),  # Added this line
-                    correct=d.get("correct"),
-                    compatible=d.get("compatible"),
-                )
-            elif rule_type == "FunctionalDependency":
-                # Create a copy of the dictionary and remove the 'type' key
-                rule_data = d.copy()
-                rule_data.pop("type", None)
-                return FunctionalDependency(**rule_data)
-            elif rule_type == "DenialConstraint":
-                # For simplicity, not fully implemented since reconstruction of DCCondition was not specified.
-                raise NotImplementedError("DenialConstraint reconstruction not fully implemented.")
-            elif rule_type == "HornRule":
-                if "body" not in d or "head" not in d:
-                    raise ValueError("Missing 'body' or 'head' in HornRule.")
-                body = tuple(PredicateUtils.str_to_predicate(pred) for pred in d["body"])
-                head = PredicateUtils.str_to_predicate(d["head"])
-                return HornRule(
-                    body=body,
-                    head=head,
-                    display=d.get("display"),
-                    correct=d.get("correct"),
-                    compatible=d.get("compatible"),
-                )
-            elif rule_type == "TGDRule":
-                if "body" not in d or "head" not in d:
-                    raise ValueError("Missing 'body' or 'head' in TGDRule.")
-                body = tuple(PredicateUtils.str_to_predicate(pred) for pred in d["body"])
-                head = tuple(PredicateUtils.str_to_predicate(pred) for pred in d["head"])
-                return TGDRule(
-                    body=body,
-                    head=head,
-                    display=d.get("display"),
-                    accuracy=d.get("accuracy", 0.0),
-                    confidence=d.get("confidence", 0.0),
-                    correct=d.get("correct"),
-                    compatible=d.get("compatible"),
-                )
-            else:
-                raise ValueError(f"Unknown rule type: {rule_type}")
-        except Exception as e:
-            logging.error(f"Error converting rule from dict: {e}. Rule data: {d}")
-            raise
-
-    @staticmethod
-    def save_rules_to_json(rules: List[Rule], filepath: str) -> int:
-        rules_generated = [RuleIO.rule_to_dict(rule) for rule in rules]
-        with open(filepath, "w") as f:
-            json.dump(rules_generated, f, indent=4)
-        return len(rules_generated)
-
-    @staticmethod
-    def save_yielded_rule_to_json(rule: Rule, filepath: str) -> None:
-        try:
-            with open(filepath, "r") as f:
-                data = json.load(f)
-        except FileNotFoundError:
-            data = []
-
-        data.append(RuleIO.rule_to_dict(rule))
-
-        with open(filepath, "w") as f:
-            json.dump(data, f, indent=4)
-
-    @staticmethod
-    def load_rules_from_json(filepath: str) -> List[Rule]:
-        with open(filepath, "r") as f:
-            return [RuleIO.rule_from_dict(d) for d in json.load(f)]
-
-
-class TGDRuleFactory:
-    """
-    A factory class for creating TGDRule objects from ILP display strings.
-    """
-
-    @staticmethod
-    def str_to_tgd(tgd_str: str, support: float, confidence: float) -> TGDRule:
-        # Regular expression pattern to match the TGD format
-        pattern = r"∀ (.*): (.*?) ⇒ (∃.*:)?(.*?)$"
-        match = re.match(pattern, tgd_str)
-
-        if match:
-            variables_str, body_str, variables_head_str, head_str = match.groups()
-
-            # Process the body
-            body_predicates = []
-            for split in body_str.split(" \u2227 "):
-                # Each 'split' should represent a single predicate string
-                body_pred = PredicateUtils.str_to_predicate(split)
-                body_predicates.append(body_pred)
-            body = tuple(body_predicates)
-
-            # Process the head
-            head_predicates = []
-            for split in head_str.split(" \u2227 "):
-                head_pred = PredicateUtils.str_to_predicate(split)
-                head_predicates.append(head_pred)
-            head = tuple(head_predicates)
-
-            # Create and return the TGDRule object
-            return TGDRule(body=body, head=head, display=tgd_str, accuracy=support, confidence=confidence)
-        else:
-            raise ValueError(f"Invalid TGD string format: {tgd_str}")
-
-    @classmethod
-    def create_from_ilp_display(cls, display: str, accuracy: float) -> TGDRule:
-        factory = cls()
-        head_str, body_str = factory._get_head_body(display)
-
-        head_predicates = factory._create_predicates_from_relation(head_str)
-        if not head_predicates:
-            logging.warning(f"No head predicates extracted from: {head_str}")
-
-        body_pattern = r"\b\w+\([^)]*\)"
-        body_relations = re.findall(body_pattern, body_str)
-        if not body_relations:
-            logging.warning(f"No body relations extracted from: {body_str}")
-
-        body_predicates = []
-        for relation_str in body_relations:
-            body_predicates.extend(factory._create_predicates_from_relation(relation_str))
-
-        body_predicates = factory._filter_predicates(body_predicates, head_predicates)
-        head_predicates = factory._filter_predicates(head_predicates, body_predicates)
-
-        if not head_predicates:
-            logging.warning("After filtering, no valid head predicates remain.")
-        if not body_predicates:
-            logging.warning("After filtering, no valid body predicates remain.")
-
-        return TGDRule(
-            body=tuple(body_predicates), head=tuple(head_predicates), display=display, accuracy=accuracy, confidence=float("nan")
-        )
-
-    def _get_head_body(self, disp: str) -> Tuple[str, str]:
-        if ":-" not in disp:
-            raise ValueError(f"Invalid rule display, expected ':-' in: {disp}")
-        head_str, body_str = disp.split(":-")
-        head_str = head_str.strip()
-        body_str = body_str.strip()
-        if body_str.endswith("."):
-            body_str = body_str[:-1].strip()
-        return head_str, body_str
-
-    def _create_predicates_from_relation(self, relation_str: str) -> List[Predicate]:
-        sep_relation_variable = "___sep___"
-        match = re.match(r"(\w+)\(([^)]*)\)", relation_str.strip())
-        if not match:
-            raise ValueError(f"Invalid relation string: {relation_str}")
-        relation, vars_str = match.groups()
-        variables = [v.strip() for v in vars_str.split(",")]
-
-        predicates = []
-        for i, variable in enumerate(variables):
-            column = f"column_{i}"
-            predicates.append(
-                Predicate(variable1="id", relation=relation + sep_relation_variable + column, variable2=variable)
-            )
-        return predicates
-
-    def _filter_predicates(self, preds: List[Predicate], other_preds: List[Predicate]) -> List[Predicate]:
-        variable_counts = Counter()
-
-        for predicate in preds:
-            variable_counts[predicate.variable1] += 1
-            variable_counts[predicate.variable2] += 1
-        for predicate in other_preds:
-            variable_counts[predicate.variable1] += 1
-            variable_counts[predicate.variable2] += 1
-
-        filtered = [
-            predicate
-            for predicate in preds
-            if variable_counts[predicate.variable1] >= 2 and variable_counts[predicate.variable2] >= 2
-        ]
-        return filtered
+# Re-export for backward compatibility — callers should import from the specific modules.
+from mahilda.utils.rule_io import RuleIO as RuleIO  # noqa: E402, F401
+from mahilda.utils.tgd_factory import TGDRuleFactory as TGDRuleFactory  # noqa: E402, F401

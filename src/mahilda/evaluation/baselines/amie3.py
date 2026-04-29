@@ -3,7 +3,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from mahilda.algorithms.rule_discovery_algorithm import RuleDiscoveryAlgorithm
+from mahilda.algorithms.base_algorithm import BaseAlgorithm
 from mahilda.utils.rules import Predicate, TGDRule
 from mahilda.utils.run_cmd import run_cmd
 
@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class Amie3(RuleDiscoveryAlgorithm):
+class Amie3(BaseAlgorithm):
     def discover_rules(self, **kwargs) -> list[TGDRule]:
         algorithm_name = "amie3"
         results_path = kwargs.get("results_dir", "results")

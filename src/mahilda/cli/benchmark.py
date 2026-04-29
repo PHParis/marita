@@ -1,23 +1,17 @@
 import argparse
 import logging
-import shutil
 from pathlib import Path
-from typing import Any
 
 try:
-    import mlflow
-
     MLFLOW_AVAILABLE = True
+    import mlflow  # noqa: F401 — checked at runtime via MLFLOW_AVAILABLE
 except ImportError:
     MLFLOW_AVAILABLE = False
 
-from mahilda.cli.artifacts import build_command_artifacts, write_markdown_report
+from mahilda.cli.processors import BaselineProcessor, normalise_baseline_name
 from mahilda.cli.runtime import initialize_directories, mlflow_run_context, scoped_env_vars
-from mahilda.database.alchemy_utility import AlchemyUtility
-from mahilda.evaluation.baselines import Amie3, Popper, Spider
 from mahilda.utils.config_loader import load_typed_config
 from mahilda.utils.logging_utils import configure_global_logger
-from mahilda.utils.rules import RuleIO
 
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
@@ -37,117 +31,6 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         help="Prebuilt TSV input for AMIE3; skips relational triple export when provided.",
     )
     return parser.parse_args(argv)
-
-
-def normalise_baseline_name(name: str) -> str:
-    cleaned = name.strip().upper()
-    if cleaned == "ILP":
-        return "POPPER"
-    return cleaned
-
-
-class BaselineProcessor:
-    def __init__(
-        self,
-        baseline_name: str,
-        database_name: Path,
-        database_path: Path,
-        results_dir: Path,
-        logger: logging.Logger,
-        use_mlflow: bool = False,
-        input_tsv: Path | None = None,
-        timeout: int = 300,
-    ):
-        self.baseline_name = normalise_baseline_name(baseline_name)
-        self.database_name = database_name
-        self.database_path = database_path
-        self.results_dir = results_dir
-        self.logger = logger
-        self.use_mlflow = use_mlflow
-        self.input_tsv = input_tsv
-        self.timeout = timeout
-
-    def discover_rules(self) -> int:
-        baseline_map = {
-            "AMIE3": Amie3,
-            "SPIDER": Spider,
-            "POPPER": Popper,
-        }
-        selected_baseline = baseline_map.get(self.baseline_name)
-        if selected_baseline is None:
-            raise ValueError(f"Unsupported baseline: {self.baseline_name}")
-
-        artifacts = build_command_artifacts(self.results_dir, self.baseline_name, self.database_name)
-        artifacts.run_dir.mkdir(parents=True, exist_ok=True)
-
-        db_file_path = self.database_path / self.database_name
-        db_uri = f"sqlite:///{db_file_path}"
-        self.logger.info("Using database URI: %s", db_uri)
-
-        direct_amie3_tsv = self.baseline_name == "AMIE3" and self.input_tsv is not None
-        with AlchemyUtility(
-            db_uri,
-            database_path=str(self.database_path),
-            create_index=False,
-            create_csv=not direct_amie3_tsv,
-            create_tsv=not direct_amie3_tsv,
-        ) as db_util:
-            algo = selected_baseline(db_util)
-            discover_kwargs: dict[str, Any] = {"results_dir": str(artifacts.run_dir)}
-            if self.input_tsv is not None:
-                discover_kwargs["input_tsv"] = self.input_tsv
-            if self.baseline_name == "AMIE3":
-                discover_kwargs["timeout"] = self.timeout
-            raw_rules = algo.discover_rules(**discover_kwargs)
-
-            if isinstance(raw_rules, dict):
-                rules = list(raw_rules.keys())
-            else:
-                rules = list(raw_rules)
-
-            result_path = artifacts.result_json
-            number_of_rules = RuleIO.save_rules_to_json(rules, str(result_path))
-
-            top_rules = [rule for rule in rules if hasattr(rule, "accuracy") and hasattr(rule, "confidence")]
-            top_rules_sorted = sorted(top_rules, key=lambda rule: -float(rule.accuracy))[:5]
-            self.generate_report(number_of_rules, result_path, top_rules_sorted)
-
-            if self.use_mlflow:
-                mlflow.log_param("algorithm", self.baseline_name)
-                mlflow.log_param("database", self.database_name.name)
-                mlflow.log_metric("number_of_rules", number_of_rules)
-
-            self.logger.info("Discovered %s rules with %s.", number_of_rules, self.baseline_name)
-            return number_of_rules
-
-    def clean_up(self, temp_dirs: list[Path] | None = None) -> None:
-        temp_dirs = temp_dirs or [
-            self.database_path / "prolog_tmp",
-            self.database_path / "SPIDER_temp",
-            self.database_path / "popper",
-        ]
-        for directory in temp_dirs:
-            if directory.exists() and directory.is_dir():
-                shutil.rmtree(directory)
-                self.logger.info("Cleaned up temporary directory: %s", directory)
-
-    def generate_report(self, number_of_rules: int, result_path: Path, top_rules: list[Any]) -> None:
-        artifacts = build_command_artifacts(self.results_dir, self.baseline_name, self.database_name)
-        write_markdown_report(
-            report_path=artifacts.report_md,
-            report_title="Baseline Run Report",
-            subject_label="Baseline",
-            subject_name=self.baseline_name,
-            database_name=self.database_name.name,
-            number_of_rules=number_of_rules,
-            result_path=result_path,
-            top_rules=top_rules,
-        )
-
-        self.logger.info("Generated report: %s", artifacts.report_md)
-
-        if self.use_mlflow:
-            mlflow.log_artifact(str(artifacts.report_md))
 
 
 def main(argv: list[str] | None = None) -> int:

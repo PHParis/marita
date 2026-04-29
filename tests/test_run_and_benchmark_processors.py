@@ -5,7 +5,9 @@ from types import SimpleNamespace
 import pytest
 
 from mahilda.cli import benchmark as benchmark_cli
+from mahilda.cli import processors as processors_cli
 from mahilda.cli import run as run_cli
+from mahilda.cli.processors import BaselineProcessor, DatabaseProcessor
 
 
 class _FakeAlchemyUtility:
@@ -31,12 +33,12 @@ def test_run_processor_wires_should_stop_predicate(monkeypatch, tmp_path: Path) 
             captured["should_stop_value"] = should_stop()
             return iter([])
 
-    monkeypatch.setattr(run_cli, "MAHILDA", FakeMahilda)
-    monkeypatch.setattr(run_cli, "AlchemyUtility", _FakeAlchemyUtility)
-    monkeypatch.setattr(run_cli.RuleIO, "save_rules_to_json", lambda rules, path: 0)
-    monkeypatch.setattr(run_cli.DatabaseProcessor, "generate_report", lambda *args, **kwargs: None)
+    monkeypatch.setattr(processors_cli, "MAHILDA", FakeMahilda)
+    monkeypatch.setattr(processors_cli, "AlchemyUtility", _FakeAlchemyUtility)
+    monkeypatch.setattr(processors_cli.RuleIO, "save_rules_to_json", lambda rules, path: 0)
+    monkeypatch.setattr(DatabaseProcessor, "generate_report", lambda *args, **kwargs: None)
 
-    processor = run_cli.DatabaseProcessor(
+    processor = DatabaseProcessor(
         algorithm_name="MAHILDA",
         database_name=Path("demo.db"),
         database_path=tmp_path,
@@ -69,12 +71,12 @@ def test_run_processor_uses_expected_output_paths(monkeypatch, tmp_path: Path) -
         captured["json_path"] = path
         return len(rules)
 
-    monkeypatch.setattr(run_cli, "MAHILDA", FakeMahilda)
-    monkeypatch.setattr(run_cli, "AlchemyUtility", _FakeAlchemyUtility)
-    monkeypatch.setattr(run_cli.RuleIO, "save_rules_to_json", fake_save_rules)
-    monkeypatch.setattr(run_cli.DatabaseProcessor, "generate_report", lambda *args, **kwargs: None)
+    monkeypatch.setattr(processors_cli, "MAHILDA", FakeMahilda)
+    monkeypatch.setattr(processors_cli, "AlchemyUtility", _FakeAlchemyUtility)
+    monkeypatch.setattr(processors_cli.RuleIO, "save_rules_to_json", fake_save_rules)
+    monkeypatch.setattr(DatabaseProcessor, "generate_report", lambda *args, **kwargs: None)
 
-    processor = run_cli.DatabaseProcessor(
+    processor = DatabaseProcessor(
         algorithm_name="MAHILDA",
         database_name=Path("demo.db"),
         database_path=tmp_path,
@@ -105,12 +107,12 @@ def test_benchmark_processor_uses_expected_output_paths(monkeypatch, tmp_path: P
         captured["json_path"] = path
         return len(rules)
 
-    monkeypatch.setattr(benchmark_cli, "Spider", FakeSpider)
-    monkeypatch.setattr(benchmark_cli, "AlchemyUtility", _FakeAlchemyUtility)
-    monkeypatch.setattr(benchmark_cli.RuleIO, "save_rules_to_json", fake_save_rules)
-    monkeypatch.setattr(benchmark_cli.BaselineProcessor, "generate_report", lambda *args, **kwargs: None)
+    monkeypatch.setattr(processors_cli, "Spider", FakeSpider)
+    monkeypatch.setattr(processors_cli, "AlchemyUtility", _FakeAlchemyUtility)
+    monkeypatch.setattr(processors_cli.RuleIO, "save_rules_to_json", fake_save_rules)
+    monkeypatch.setattr(BaselineProcessor, "generate_report", lambda *args, **kwargs: None)
 
-    processor = benchmark_cli.BaselineProcessor(
+    processor = BaselineProcessor(
         baseline_name="SPIDER",
         database_name=Path("demo.db"),
         database_path=tmp_path,
@@ -137,12 +139,12 @@ def test_benchmark_processor_passes_timeout_to_amie3(monkeypatch, tmp_path: Path
             captured["timeout"] = timeout
             return []
 
-    monkeypatch.setattr(benchmark_cli, "Amie3", FakeAmie3)
-    monkeypatch.setattr(benchmark_cli, "AlchemyUtility", _FakeAlchemyUtility)
-    monkeypatch.setattr(benchmark_cli.RuleIO, "save_rules_to_json", lambda rules, path: len(rules))
-    monkeypatch.setattr(benchmark_cli.BaselineProcessor, "generate_report", lambda *args, **kwargs: None)
+    monkeypatch.setattr(processors_cli, "Amie3", FakeAmie3)
+    monkeypatch.setattr(processors_cli, "AlchemyUtility", _FakeAlchemyUtility)
+    monkeypatch.setattr(processors_cli.RuleIO, "save_rules_to_json", lambda rules, path: len(rules))
+    monkeypatch.setattr(BaselineProcessor, "generate_report", lambda *args, **kwargs: None)
 
-    processor = benchmark_cli.BaselineProcessor(
+    processor = BaselineProcessor(
         baseline_name="AMIE3",
         database_name=Path("demo.db"),
         database_path=tmp_path,
@@ -162,7 +164,7 @@ def test_run_report_path_generation(tmp_path: Path) -> None:
     results_dir = tmp_path / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    processor = run_cli.DatabaseProcessor(
+    processor = DatabaseProcessor(
         algorithm_name="MAHILDA",
         database_name=Path("demo.db"),
         database_path=tmp_path,
@@ -179,7 +181,7 @@ def test_benchmark_report_path_generation(tmp_path: Path) -> None:
     results_dir = tmp_path / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    processor = benchmark_cli.BaselineProcessor(
+    processor = BaselineProcessor(
         baseline_name="SPIDER",
         database_name=Path("demo.db"),
         database_path=tmp_path,
@@ -200,7 +202,7 @@ def test_run_processor_cleanup_only_removes_mahilda_temp_dir(tmp_path: Path) -> 
     spider_dir.mkdir()
     popper_dir.mkdir()
 
-    processor = run_cli.DatabaseProcessor(
+    processor = DatabaseProcessor(
         algorithm_name="MAHILDA",
         database_name=Path("demo.db"),
         database_path=tmp_path,
@@ -213,3 +215,12 @@ def test_run_processor_cleanup_only_removes_mahilda_temp_dir(tmp_path: Path) -> 
     assert not prolog_dir.exists()
     assert spider_dir.exists()
     assert popper_dir.exists()
+
+
+# Verify the public API is still reachable via the CLI modules for backward compatibility
+def test_database_processor_importable_via_run_cli() -> None:
+    assert run_cli.DatabaseProcessor is DatabaseProcessor
+
+
+def test_baseline_processor_importable_via_benchmark_cli() -> None:
+    assert benchmark_cli.BaselineProcessor is BaselineProcessor
