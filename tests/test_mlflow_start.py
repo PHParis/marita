@@ -125,3 +125,18 @@ def test_mlflow_start_kills_after_shutdown_timeout(monkeypatch, tmp_path) -> Non
     assert exit_code == 0
     assert process.terminated is True
     assert process.killed is True
+
+
+def test_mlflow_start_returns_error_on_unexpected_exception(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("mahilda.cli.mlflow_start.importlib.util.find_spec", lambda _name: object())
+
+    def fake_popen(cmd: list[str]):
+        del cmd
+        raise OSError("cannot launch")
+
+    monkeypatch.setattr("mahilda.cli.mlflow_start.subprocess.Popen", fake_popen)
+
+    exit_code = mlflow_start.main([])
+
+    assert exit_code == 1

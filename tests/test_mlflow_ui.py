@@ -88,3 +88,18 @@ def test_mlflow_ui_returns_error_on_subprocess_failure(monkeypatch, tmp_path) ->
     exit_code = mlflow_ui.main([])
 
     assert exit_code == 1
+
+
+def test_mlflow_ui_handles_keyboard_interrupt(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("mahilda.cli.mlflow_ui.importlib.util.find_spec", lambda _name: object())
+
+    def fake_run(cmd: list[str], check: bool) -> None:
+        del cmd, check
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("mahilda.cli.mlflow_ui.subprocess.run", fake_run)
+
+    exit_code = mlflow_ui.main([])
+
+    assert exit_code == 0
