@@ -247,7 +247,6 @@ class PredicateUtils:
         return False
 
     @staticmethod
-    @staticmethod
     def str_to_predicate(s: str) -> Predicate:
         s = s.strip()
 
@@ -366,18 +365,6 @@ class RuleIO:
             raise
 
     @staticmethod
-    def save_yieled_rules_to_json(rule: Rule, filepath: str) -> None:
-        try:
-            with open(filepath, "r") as f:
-                data = json.load(f)
-        except Exception:
-            data = []
-
-        data.append(RuleIO.rule_to_dict(rule))
-        with open(filepath, "w") as f:
-            json.dump(data, f, indent=4)
-
-    @staticmethod
     def save_rules_to_json(rules: List[Rule], filepath: str) -> int:
         try:
             rules_generated = [RuleIO.rule_to_dict(rule) for rule in rules]
@@ -467,7 +454,7 @@ class TGDRuleFactory:
             logging.warning("After filtering, no valid body predicates remain.")
 
         return TGDRule(
-            body=tuple(body_predicates), head=tuple(head_predicates), display=display, accuracy=accuracy, confidence=-1
+            body=tuple(body_predicates), head=tuple(head_predicates), display=display, accuracy=accuracy, confidence=float("nan")
         )
 
     def _get_head_body(self, disp: str) -> Tuple[str, str]:

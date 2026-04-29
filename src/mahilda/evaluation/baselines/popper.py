@@ -149,10 +149,6 @@ class Popper(RuleDiscoveryAlgorithm):
         return predicates
 
     def convert_prologrule_to_rule(self, prolog_rule: str, precision: float, recall: float) -> TGDRule:
-        def get_random_id():
-            import random
-            return f"id-{random.randint(0, 10000)}"
-
         data_str = prolog_rule.replace(".", "")
         try:
             head, body = data_str.split(":-")
@@ -179,7 +175,7 @@ class Popper(RuleDiscoveryAlgorithm):
                     attribute_name = f"attribute{i}"
                 else:
                     attribute_name = attributes_names[i]
-                pred_id = get_random_id()
+                pred_id = self.get_random_id()
                 new_body.append(Predicate(pred_id, f"{relation}{self.relation_attribute_sep}{attribute_name}", var))
                 variables_usage[var] = variables_usage.get(var, 0) + 1
 
@@ -192,7 +188,7 @@ class Popper(RuleDiscoveryAlgorithm):
                 attribute_name = f"attribute{i}"
             else:
                 attribute_name = attributes_names[i]
-            pred_id = get_random_id()
+            pred_id = self.get_random_id()
             new_head.append(Predicate(pred_id, f"{head_relation}{self.relation_attribute_sep}{attribute_name}", var))
             variables_usage[var] = variables_usage.get(var, 0) + 1
 

@@ -120,10 +120,7 @@ class DatabaseProcessor:
                 create_csv=not is_mahilda,
                 create_tsv=not is_mahilda,
             ) as db_util:
-                if selected_algorithm is MAHILDA:
-                    algo = selected_algorithm(db_util, config=self.config)
-                else:
-                    algo = selected_algorithm(db_util)
+                algo = selected_algorithm(db_util, config=self.config)
                 rules = []
 
                 if not quiet:

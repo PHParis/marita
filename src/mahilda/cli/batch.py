@@ -283,6 +283,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # Apply filters
     if args.start_from > 0:
+        if args.start_from >= len(db_files):
+            print_error(f"--start-from {args.start_from} is out of range (only {len(db_files)} databases found)")
+            return 1
         db_files = db_files[args.start_from :]
     if args.max_databases:
         db_files = db_files[: args.max_databases]

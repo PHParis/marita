@@ -1,5 +1,4 @@
 import psutil
-import asyncio
 import time
 import logging
 import threading
@@ -62,28 +61,6 @@ class ResourceMonitor:
         """Reset the start time for timeout calculation."""
         self.start_time = time.time()
         self._timed_out = False
-
-    async def monitor_async(self):
-        """Asynchronous version of monitor for backward compatibility."""
-        while not self.should_stop:
-            elapsed_time = time.time() - self.start_time
-            memory_usage = self.process.memory_info().rss
-            for child in self.process.children(recursive=True):
-                memory_usage += child.memory_info().rss
-
-            memory_usage_gb = memory_usage / (1024**3)
-
-            self.logger.debug(f"Total Memory Usage: {memory_usage_gb:.2f} GB")
-
-            if memory_usage_gb > (self.memory_threshold / (1024**3)):
-                self.logger.error(f"Memory usage exceeded: {memory_usage_gb:.2f} GB")
-                raise MemoryError("Memory usage exceeded threshold.")
-
-            if elapsed_time > self.timeout:
-                self.logger.error("Execution timeout exceeded.")
-                raise TimeoutError("Execution timeout exceeded.")
-
-            await asyncio.sleep(5)
 
     def is_timed_out(self) -> bool:
         """Return True if the last stop was due to timeout."""

@@ -12,7 +12,7 @@ class BaseAlgorithm(ABC):
         self.database = database
 
     @abstractmethod
-    def discover_rules(self, **kwargs) -> Rule:
+    def discover_rules(self, **kwargs) -> list[Rule]:
         """
         Discovers rules from the provided tables and columns using given parameters.
 

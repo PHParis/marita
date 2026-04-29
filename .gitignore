@@ -53,3 +53,4 @@ AGENTS.md
 resume_last_session.sh
 data/yago-tiny.ttl
 CLAUDE.md
+data/*

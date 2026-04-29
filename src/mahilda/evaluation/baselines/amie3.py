@@ -84,10 +84,11 @@ class Amie3(RuleDiscoveryAlgorithm):
             body_str = match.group("body")
             head_str = match.group("head")
             confidence = self.safe_float_conversion(match.group("confidence"))
-            _ = self.safe_float_conversion(match.group("support")) / nb_transaction
+            support = self.safe_float_conversion(match.group("support"))
+            accuracy = support / nb_transaction if nb_transaction > 0 else 0.0
 
             body_predicates = self._parse_predicates(body_str)
-            head_predicates = self._parse_predicates(head_str, is_head=True)
+            head_predicates = self._parse_predicates(head_str)
 
             if not body_predicates or not head_predicates:
                 continue
@@ -96,15 +97,14 @@ class Amie3(RuleDiscoveryAlgorithm):
                 body=body_predicates,
                 head=head_predicates,
                 display=line,
-                accuracy=-1,
+                accuracy=accuracy,
                 confidence=confidence,
             )
             rules.append(horn_rule)
 
         return rules
 
-    def _parse_predicates(self, predicate_str: str, is_head: bool = False) -> list[Predicate]:
-        del is_head
+    def _parse_predicates(self, predicate_str: str) -> list[Predicate]:
         tokens = predicate_str.split()
         if len(tokens) % 3 != 0:
             raise ValueError(f"Expected multiples of 3 tokens, got {len(tokens)} in '{predicate_str}'")
