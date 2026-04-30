@@ -1,0 +1,29 @@
+monitor:
+  memory_threshold: 16106127360  # 15 GB
+  timeout: 7200  # 2 hours
+
+database:
+  path: ../../data/relational
+  name: Biodegradability.db
+
+logging:
+  log_dir: ../../logs/iswc2026/POPPER
+
+results:
+  output_dir: ../../results/iswc2026/POPPER
+
+algorithm:
+  name: POPPER
+
+benchmark:
+  baseline: POPPER
+  timeout: 7200
+
+batch:
+  workers: 1
+  timeout: 7200
+
+mlflow:
+  use: false
+  tracking_uri: file:../../mlruns
+  experiment_name: ISWC 2026 Benchmark

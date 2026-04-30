@@ -1,6 +1,17 @@
 import argparse
 
-from mahilda.cli import batch, benchmark, download_databases, import_rdf, mlflow_start, mlflow_ui, run, smoke, test_data
+from mahilda.cli import (
+    batch,
+    benchmark,
+    download_databases,
+    import_rdf,
+    mlflow_start,
+    mlflow_ui,
+    paper_benchmark,
+    run,
+    smoke,
+    test_data,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -65,6 +76,16 @@ def main(argv: list[str] | None = None) -> int:
     batch_parser.add_argument("--start-from", type=int, default=0)
     batch_parser.add_argument("--max-databases", type=int, default=None)
     batch_parser.add_argument("-w", "--workers", type=int, default=None)
+
+    paper_parser = subparsers.add_parser("paper-benchmark", help="Run ISWC 2026 paper benchmark protocol")
+    paper_parser.add_argument("--database-dir", default="data/relational")
+    paper_parser.add_argument("--output", default="results/iswc2026")
+    paper_parser.add_argument("--logs", default="logs/iswc2026")
+    paper_parser.add_argument("--algorithms", default="MAHILDA")
+    paper_parser.add_argument("--databases", default="paper")
+    paper_parser.add_argument("--timeout", type=int, default=7200)
+    paper_parser.add_argument("--memory-gb", type=float, default=15.0)
+    paper_parser.add_argument("--dry-run", action="store_true")
 
     smoke_parser = subparsers.add_parser("smoke", help="Run fast local smoke test")
     smoke_parser.add_argument("-v", "--verbose", action="store_true")
@@ -133,6 +154,27 @@ def main(argv: list[str] | None = None) -> int:
         if args.max_databases is not None:
             batch_args.extend(["--max-databases", str(args.max_databases)])
         return batch.main(batch_args)
+
+    if args.command == "paper-benchmark":
+        paper_args: list[str] = [
+            "--database-dir",
+            args.database_dir,
+            "--output",
+            args.output,
+            "--logs",
+            args.logs,
+            "--algorithms",
+            args.algorithms,
+            "--databases",
+            args.databases,
+            "--timeout",
+            str(args.timeout),
+            "--memory-gb",
+            str(args.memory_gb),
+        ]
+        if args.dry_run:
+            paper_args.append("--dry-run")
+        return paper_benchmark.main(paper_args)
 
     if args.command == "smoke":
         smoke_args: list[str] = ["--config", args.config]

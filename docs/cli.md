@@ -103,6 +103,30 @@ Behavior notes:
 - Worker logs are written under `<logging.log_dir>/<db_stem>/`.
 - A run summary is written to `<output>/summary.txt`.
 
+## `paper-benchmark`
+
+Runs the extracted ISWC 2026 paper benchmark protocol across selected databases and algorithms. This command is the preferred path for reproducing paper numbers because it generates per-run configs with the paper parameters and wraps every selected algorithm with a uniform wall-clock timeout and RSS memory limit.
+
+```bash
+uv run mahilda paper-benchmark --dry-run
+uv run mahilda paper-benchmark --algorithms MAHILDA --databases paper
+uv run mahilda paper-benchmark --algorithms MAHILDA,AMIE3 --databases Biodegradability,CORA
+uv run mahilda paper-benchmark --algorithms ALL --databases paper --timeout 7200 --memory-gb 15
+```
+
+Important flags:
+
+- `--database-dir`: directory containing `.db` files, default `data/relational`
+- `--databases`: `paper`, `all`, or a comma-separated list of database names
+- `--algorithms`: comma-separated list from `MAHILDA`, `AMIE3`, `SPIDER`, `POPPER`, or `ALL`
+- `--output`: output root, default `results/iswc2026`
+- `--logs`: log root, default `logs/iswc2026`
+- `--timeout`: per-run timeout in seconds, default `7200`
+- `--memory-gb`: per-run RSS limit, default `15`
+- `--dry-run`: generate configs and `summary.json` / `summary.md` without executing commands
+
+The generated MAHILDA configs set `disjoint_semantics: true` and keep that setting editable under `algorithm.parameters`.
+
 ## `smoke`
 
 Fast local check wired to `configs/config.test.yaml`.

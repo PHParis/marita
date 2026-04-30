@@ -68,3 +68,14 @@ Command-line flags override config values when provided:
 - Single-run and benchmark outputs: `results/`
 - Batch outputs: `results/batch/`
 - MLflow tracking: `mlruns/`
+
+## Paper Reproduction Configs
+
+ISWC 2026 paper templates live under `configs/paper/`:
+
+- `iswc2026.mahilda.yaml`
+- `iswc2026.amie3.yaml`
+- `iswc2026.spider.yaml`
+- `iswc2026.popper.yaml`
+
+These templates point at `data/relational`, use a 2-hour timeout and 15 GB monitor threshold, and write into `results/iswc2026`. For multi-database reruns, prefer `uv run mahilda paper-benchmark`, which generates one concrete config per selected algorithm and database.
