@@ -326,22 +326,20 @@ def convert_with_shell_script(mysql_input_file: Path, sqlite_output_file: Path) 
     script_proc = subprocess.run(
         ["awk", "-f", str(script), str(mysql_input_file)],
         capture_output=True,
-        text=True,
         check=False,
     )
     if script_proc.returncode != 0:
-        LOGGER.error("SQL conversion script failed: %s", script_proc.stderr)
+        LOGGER.error("SQL conversion script failed: %s", script_proc.stderr.decode(errors="replace"))
         return False
 
     sqlite_proc = subprocess.run(
         ["sqlite3", str(sqlite_output_file)],
         input=script_proc.stdout,
         capture_output=True,
-        text=True,
         check=False,
     )
     if sqlite_proc.returncode != 0:
-        LOGGER.error("sqlite3 import failed: %s", sqlite_proc.stderr)
+        LOGGER.error("sqlite3 import failed: %s", sqlite_proc.stderr.decode(errors="replace"))
         return False
     return verify_sqlite_database(sqlite_output_file)
 

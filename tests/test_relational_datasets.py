@@ -201,6 +201,28 @@ def test_shell_conversion_preserves_hyphenated_values(monkeypatch, tmp_path: Pat
     assert calls[1][0] == "sqlite3"
 
 
+def test_shell_conversion_passes_non_utf8_output_as_bytes(monkeypatch, tmp_path: Path) -> None:
+    sql_file = tmp_path / "demo.sql"
+    sqlite_file = tmp_path / "demo.db"
+    sql_file.write_text("CREATE TABLE demo(value BLOB);\n", encoding="latin1")
+    awk_output = b"CREATE TABLE demo(value BLOB);\nINSERT INTO demo VALUES (X'a8');\n"
+
+    def fake_run(command, **kwargs):
+        assert "text" not in kwargs
+        if command[0] == "awk":
+            return subprocess.CompletedProcess(command, 0, stdout=awk_output, stderr=b"")
+        if command[0] == "sqlite3":
+            assert kwargs["input"] == awk_output
+            return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(relational, "which", lambda command: f"/usr/bin/{command}")
+    monkeypatch.setattr(relational.subprocess, "run", fake_run)
+    monkeypatch.setattr(relational, "verify_sqlite_database", lambda output_file: output_file == sqlite_file)
+
+    assert relational.convert_with_shell_script(sql_file, sqlite_file) is True
+
+
 def test_shell_converter_skips_versioned_multiline_create_view(tmp_path: Path) -> None:
     sql_file = tmp_path / "view.sql"
     sql_file.write_text(
