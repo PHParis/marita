@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from importlib import resources
 from typing import TYPE_CHECKING
 
 from mahilda.evaluation.datasets import relational
@@ -168,3 +169,58 @@ UNLOCK TABLES;
     assert "ENGINE=" not in sqlite_sql
     assert 'CREATE TABLE "demo"' in sqlite_sql
     assert "INSERT INTO" in sqlite_sql
+
+
+def test_shell_conversion_preserves_hyphenated_values(monkeypatch, tmp_path: Path) -> None:
+    sql_file = tmp_path / "demo.sql"
+    sqlite_file = tmp_path / "demo.db"
+    sql_file.write_text(
+        "CREATE TABLE demo(id INTEGER, amount INTEGER, created_at TEXT);\n"
+        "INSERT INTO demo VALUES (1,-42,'2024-01-02');\n",
+        encoding="latin1",
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[0] == "awk":
+            assert command[-1] == str(sql_file)
+            return subprocess.CompletedProcess(command, 0, stdout=sql_file.read_text(encoding="latin1"), stderr="")
+        if command[0] == "sqlite3":
+            assert "-42" in kwargs["input"]
+            assert "2024-01-02" in kwargs["input"]
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(relational, "which", lambda command: f"/usr/bin/{command}")
+    monkeypatch.setattr(relational.subprocess, "run", fake_run)
+    monkeypatch.setattr(relational, "verify_sqlite_database", lambda output_file: output_file == sqlite_file)
+
+    assert relational.convert_with_shell_script(sql_file, sqlite_file) is True
+    assert calls[0][0] == "awk"
+    assert calls[1][0] == "sqlite3"
+
+
+def test_shell_converter_skips_versioned_multiline_create_view(tmp_path: Path) -> None:
+    sql_file = tmp_path / "view.sql"
+    sql_file.write_text(
+        "CREATE TABLE `Products` (`ProductID` int(11) NOT NULL);\n"
+        "/*!50001 CREATE VIEW `Product View` AS SELECT\n"
+        " 1 AS `ProductID`,\n"
+        " 1 AS `ProductName` */;\n"
+        "INSERT INTO `Products` VALUES (1);\n",
+        encoding="latin1",
+    )
+    script = resources.files("mahilda.evaluation.datasets").joinpath("convert_sql_sqlite3.sh")
+
+    result = subprocess.run(
+        ["awk", "-f", str(script), str(sql_file)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "Product View" not in result.stdout
+    assert "ProductName" not in result.stdout
+    assert "INSERT INTO" in result.stdout

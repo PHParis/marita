@@ -323,33 +323,27 @@ def convert_with_shell_script(mysql_input_file: Path, sqlite_output_file: Path) 
         return False
 
     script = resources.files("mahilda.evaluation.datasets").joinpath("convert_sql_sqlite3.sh")
-    temp_file_path: Path | None = None
-    try:
-        temp_file_path = sanitize_sql_dump(mysql_input_file)
-        script_proc = subprocess.run(
-            ["awk", "-f", str(script), str(temp_file_path)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if script_proc.returncode != 0:
-            LOGGER.error("SQL conversion script failed: %s", script_proc.stderr)
-            return False
+    script_proc = subprocess.run(
+        ["awk", "-f", str(script), str(mysql_input_file)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if script_proc.returncode != 0:
+        LOGGER.error("SQL conversion script failed: %s", script_proc.stderr)
+        return False
 
-        sqlite_proc = subprocess.run(
-            ["sqlite3", str(sqlite_output_file)],
-            input=script_proc.stdout,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if sqlite_proc.returncode != 0:
-            LOGGER.error("sqlite3 import failed: %s", sqlite_proc.stderr)
-            return False
-        return verify_sqlite_database(sqlite_output_file)
-    finally:
-        if temp_file_path and temp_file_path.exists():
-            temp_file_path.unlink()
+    sqlite_proc = subprocess.run(
+        ["sqlite3", str(sqlite_output_file)],
+        input=script_proc.stdout,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if sqlite_proc.returncode != 0:
+        LOGGER.error("sqlite3 import failed: %s", sqlite_proc.stderr)
+        return False
+    return verify_sqlite_database(sqlite_output_file)
 
 
 def convert_with_regex_adjustments(mysql_input_file: Path, sqlite_output_file: Path) -> bool:
@@ -444,13 +438,6 @@ def adjust_mysql_dump_for_sqlite(content: str) -> str:
     if create_table_lines:
         flush_create_table()
     return "".join(lines)
-
-
-def sanitize_sql_dump(file_path: Path) -> Path:
-    content = file_path.read_text(encoding="latin1")
-    with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".sql") as temp_file:
-        temp_file.write(content.replace("-", "_"))
-        return Path(temp_file.name)
 
 
 def validate_sql_file(sql_file: Path) -> bool:

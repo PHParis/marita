@@ -96,6 +96,17 @@ function bit_to_int( str_bit,   powtwo, i, res, bit, overflow ){
 # The rest of triggers just get passed through
 inTrigger != 0 { print; next }
 
+# MySQL versioned multiline CREATE VIEW blocks are executable comments that
+# SQLite cannot import. Skip the whole block, not just its opening line.
+/^\/\*![0-9]+ (CREATE|create) (ALGORITHM=.* )?(VIEW|view)/ {
+  inVersionedView = 1
+  next
+}
+# end of MySQL versioned CREATE VIEW
+inVersionedView != 0 && /\*\/;/ { inVersionedView = 0; next }
+# content of MySQL versioned CREATE VIEW
+inVersionedView != 0 { next }
+
 # CREATE VIEW looks like a TABLE in comments
 /^\/\*.*(CREATE.*TABLE|create.*table)/ {
   inView = 1
