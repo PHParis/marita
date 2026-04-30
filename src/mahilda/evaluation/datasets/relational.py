@@ -132,7 +132,6 @@ def build_dump_command(settings: RelationalDownloadSettings, database_name: str)
         "--single-transaction",
         "--no-tablespaces",
         "--skip-lock-tables",
-        "--set-gtid-purged=OFF",
         "-h",
         settings.host,
         "-P",
@@ -210,7 +209,7 @@ class RelationalDatasetPreparer:
             LOGGER.info("SQLite database already exists for %s: %s", database_name, sqlite_file)
             return
 
-        if not convert_only and not sql_file.exists():
+        if not convert_only and (not sql_file.exists() or sql_file.stat().st_size == 0):
             if not self.dump_database(database_name, sql_file):
                 report.failed.append((database_name, "dump failed"))
                 return
@@ -234,8 +233,10 @@ class RelationalDatasetPreparer:
             return False
 
         cmd = build_dump_command(self.settings, database_name)
+        temp_file_path: Path | None = None
         try:
-            with output_file.open("w") as file_out:
+            with tempfile.NamedTemporaryFile("w", dir=output_file.parent, delete=False) as file_out:
+                temp_file_path = Path(file_out.name)
                 result = subprocess.run(
                     cmd,
                     stdout=file_out,
@@ -246,15 +247,26 @@ class RelationalDatasetPreparer:
                 )
         except subprocess.TimeoutExpired:
             LOGGER.error("Dump timed out after %s seconds: %s", self.settings.timeout, mask_command(cmd))
+            if temp_file_path is not None and temp_file_path.exists():
+                temp_file_path.unlink()
             return False
 
         if result.returncode != 0:
-            LOGGER.error("Dump command failed: %s", re.sub(r"(-p)\S+", r"\1****", result.stderr or ""))
+            if temp_file_path is not None and temp_file_path.exists():
+                temp_file_path.unlink()
+            if output_file.exists() and output_file.stat().st_size == 0:
+                output_file.unlink()
+            LOGGER.error("Dump command failed: %s", re.sub(r"(?<!\S)-p\S+", "-p****", result.stderr or ""))
             return False
-        if output_file.stat().st_size == 0:
+        if temp_file_path is None or temp_file_path.stat().st_size == 0:
+            if temp_file_path is not None and temp_file_path.exists():
+                temp_file_path.unlink()
+            if output_file.exists() and output_file.stat().st_size == 0:
+                output_file.unlink()
             LOGGER.error("Dump command wrote an empty SQL file: %s", output_file)
             return False
 
+        temp_file_path.replace(output_file)
         LOGGER.info("Dumped %s with command: %s", database_name, mask_command(cmd))
         return True
 
@@ -289,6 +301,8 @@ def convert_mysql_to_sqlite(mysql_input_file: Path, sqlite_output_file: Path) ->
     ]
     for index, method in enumerate(methods, start=1):
         LOGGER.info("Attempting MySQL-to-SQLite conversion method %s", index)
+        if sqlite_output_file.exists():
+            sqlite_output_file.unlink()
         if method():
             LOGGER.info("Conversion succeeded with method %s", index)
             return True
@@ -347,16 +361,7 @@ def convert_with_regex_adjustments(mysql_input_file: Path, sqlite_output_file: P
 
     adjusted_file: Path | None = None
     try:
-        content = mysql_input_file.read_text(encoding="latin1")
-        content = re.sub(r"^__.*\n", "", content, flags=re.MULTILINE)
-        content = re.sub(r"ENGINE=\w+", "", content, flags=re.IGNORECASE)
-        content = re.sub(r"AUTO_INCREMENT\s*=\s*\d+", "", content, flags=re.IGNORECASE)
-        content = content.replace("`", '"')
-        content = re.sub(r"LOCK TABLES.*?;", "", content, flags=re.IGNORECASE | re.DOTALL)
-        content = re.sub(r"UNLOCK TABLES;", "", content, flags=re.IGNORECASE)
-        content = re.sub(r"\bunsigned\b", "", content, flags=re.IGNORECASE)
-        content = re.sub(r"DEFAULT CHARSET=\w+mb\d+ COLLATE=\w+", "", content, flags=re.IGNORECASE)
-        content = re.sub(r"DEFAULT CHARSET=\w+", "", content, flags=re.IGNORECASE)
+        content = adjust_mysql_dump_for_sqlite(mysql_input_file.read_text(encoding="latin1"))
 
         with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".sql") as temp_out:
             adjusted_file = Path(temp_out.name)
@@ -377,6 +382,68 @@ def convert_with_regex_adjustments(mysql_input_file: Path, sqlite_output_file: P
     finally:
         if adjusted_file and adjusted_file.exists():
             adjusted_file.unlink()
+
+
+def adjust_mysql_dump_for_sqlite(content: str) -> str:
+    lines: list[str] = []
+    create_table_lines: list[str] = []
+    in_create_table = False
+    skipping_versioned_statement = False
+
+    def flush_create_table() -> None:
+        while create_table_lines and create_table_lines[-1].rstrip().endswith(","):
+            create_table_lines[-1] = create_table_lines[-1].rstrip().removesuffix(",") + "\n"
+        lines.extend(create_table_lines)
+        create_table_lines.clear()
+
+    for raw_line in content.splitlines(keepends=True):
+        stripped = raw_line.strip()
+        upper = stripped.upper()
+
+        if skipping_versioned_statement:
+            if stripped.endswith("*/;") or stripped.endswith("*/"):
+                skipping_versioned_statement = False
+            continue
+
+        if not stripped or stripped.startswith("--") or stripped.startswith("/*M!"):
+            continue
+        if stripped.startswith("/*!"):
+            if not stripped.endswith("*/;") and not stripped.endswith("*/"):
+                skipping_versioned_statement = True
+            continue
+        if upper.startswith(("SET ", "LOCK TABLES", "UNLOCK TABLES", "DROP TABLE", "DROP VIEW")):
+            continue
+
+        line = raw_line.replace("`", '"')
+        line = re.sub(r"\bunsigned\b", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"\bAUTO_INCREMENT\b", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"\s+USING\s+BTREE", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"\s+CHARACTER SET\s+\w+", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"\s+COLLATE\s+\w+", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"\)\s*ENGINE=.*;", ");", line, flags=re.IGNORECASE)
+
+        if upper.startswith("CREATE TABLE"):
+            in_create_table = True
+            create_table_lines.append(line)
+            continue
+
+        if in_create_table:
+            line_upper = line.strip().upper()
+            if line_upper.startswith(("KEY ", "UNIQUE KEY", "FULLTEXT KEY", "SPATIAL KEY", "CONSTRAINT ")):
+                continue
+            if line_upper.startswith(");"):
+                flush_create_table()
+                lines.append(line)
+                in_create_table = False
+                continue
+            create_table_lines.append(line)
+            continue
+
+        lines.append(line)
+
+    if create_table_lines:
+        flush_create_table()
+    return "".join(lines)
 
 
 def sanitize_sql_dump(file_path: Path) -> Path:
