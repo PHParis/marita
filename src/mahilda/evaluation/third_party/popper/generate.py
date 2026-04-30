@@ -2,10 +2,12 @@ import clingo
 import operator
 import numbers
 import clingo.script
-import pkg_resources
+from pathlib import Path
 from .core import Literal, RuleVar, VarVar, Var
 from collections import defaultdict
 from .util import rule_is_recursive, format_rule
+
+LP_DIR = Path(__file__).with_name("lp")
 
 clingo.script.enable_python()
 from clingo import Function, Number, Tuple_
@@ -262,7 +264,7 @@ class Generator:
         self.seen_symbols = {}
 
         encoding = []
-        alan = pkg_resources.resource_string(__name__, "lp/alan.pl").decode()
+        alan = (LP_DIR / "alan.pl").read_text(encoding="utf-8")
         encoding.append(alan)
         with open(settings.bias_file) as f:
             encoding.append(f.read())

@@ -22,6 +22,12 @@ uv run mahilda run --config configs/config.example.yaml
 
 Runs one competitor baseline on a single database.
 
+Install benchmark extras first:
+
+```bash
+uv sync --extra benchmark
+```
+
 ```bash
 uv run mahilda benchmark --config configs/config.example.yaml --baseline AMIE3
 uv run mahilda benchmark --config configs/config.example.yaml --baseline SPIDER
@@ -106,6 +112,12 @@ Behavior notes:
 ## `paper-benchmark`
 
 Runs the extracted ISWC 2026 paper benchmark protocol across selected databases and algorithms. This command is the preferred path for reproducing paper numbers because it generates per-run configs with the paper parameters and wraps every selected algorithm with a uniform wall-clock timeout and RSS memory limit.
+
+Install benchmark extras first when running any baseline (`AMIE3`, `SPIDER`, `POPPER`):
+
+```bash
+uv sync --extra benchmark
+```
 
 ```bash
 uv run mahilda paper-benchmark --dry-run

@@ -1,8 +1,11 @@
 import clingo
 import clingo.script
-from .core import Literal
 from clingo import Function, Number, Tuple_
-import pkg_resources
+from pathlib import Path
+
+from .core import Literal
+
+LP_DIR = Path(__file__).with_name("lp")
 
 # tmp_map = {1:'A', 2:'A,B',3:'A,B,C', 4:'A,B,C,D',5:'A,B,C,D,E', 6:'A,B,C,D,E,F'}
 tmp_map = {}
@@ -68,8 +71,8 @@ def deduce_bk_cons(settings):
     with open(settings.bk_file) as f:
         bk = f.read()
 
-    cons = pkg_resources.resource_string(__name__, "lp/cons.pl").decode()
-    bk = bk.replace("\+", "not")
+    cons = (LP_DIR / "cons.pl").read_text(encoding="utf-8")
+    bk = bk.replace("\\+", "not")
 
     xs = deduce_bk_cons_aux(cons, prog, bias, bk)
     settings.bkcons = "\n".join(x + "." for x in xs)

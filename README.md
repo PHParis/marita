@@ -62,3 +62,9 @@ uv run pre-commit install
 - `AMIE3`: Java runtime
 - `SPIDER`: Java runtime
 - `POPPER`: `clingo` and SWI-Prolog (`swipl`)
+
+Install Python baseline extras before running competitor benchmarks:
+
+```bash
+uv sync --extra benchmark
+```

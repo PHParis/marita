@@ -179,6 +179,12 @@ Non-disjoint results:
 - Direct `mahilda benchmark` runs one baseline on one database. Use `mahilda paper-benchmark` for multi-database, multi-algorithm reruns.
 - `data/relational` is ignored by git via `data/*`; benchmark databases are intentionally local artifacts, not repository contents.
 
+Install baseline Python dependencies before baseline reruns:
+
+```bash
+uv sync --extra benchmark
+```
+
 ## Recommended Rerun Sequence
 
 Start with a dry-run plan:
