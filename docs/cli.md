@@ -45,6 +45,40 @@ uv run mahilda import-rdf --input data/yago-tiny.ttl --output-dir data/yago --va
 - The `core` variant contains ABox object facts, ABox datatype facts, and instance `rdf:type` facts.
 - The `ontology-lite` variant adds explicit `rdfs:subClassOf` statements.
 
+## `download-databases`
+
+Downloads relational benchmark databases from `relational.fel.cvut.cz`, dumps them with `mysqldump`, and converts the dumps to SQLite.
+
+Install optional dataset dependencies first:
+
+```bash
+uv sync --extra datasets
+```
+
+```bash
+uv run mahilda download-databases --output data/relational
+uv run mahilda download-databases --output data/relational --list
+uv run mahilda download-databases --output data/relational --database Mondial
+uv run mahilda download-databases --output data/relational --max-databases 10
+uv run mahilda download-databases --output data/relational --dump-only
+uv run mahilda download-databases --output data/relational --convert-only
+```
+
+Environment overrides:
+
+- `MAHILDA_RELATIONAL_BASE_URL`
+- `MAHILDA_RELATIONAL_HOST`
+- `MAHILDA_RELATIONAL_PORT`
+- `MAHILDA_RELATIONAL_USER`
+- `MAHILDA_RELATIONAL_PASSWORD`
+- `MAHILDA_RELATIONAL_DUMP_COMMAND`
+
+Outputs:
+
+- `<output>/<database>.sql`: raw MySQL/MariaDB dump
+- `<output>/<database>.db`: converted SQLite database
+- `<output>/conversion_report.txt`: preparation summary
+
 ## `batch`
 
 Runs `MAHILDA` across many `.db` files.

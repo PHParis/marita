@@ -26,6 +26,10 @@ benchmark = [
   "clingo>=5.7",
   "pyswip>=0.2.10",
 ]
+datasets = [
+  "requests>=2.31",
+  "beautifulsoup4>=4.12",
+]
 
 [project.scripts]
 mahilda = "mahilda.cli.main:main"
@@ -40,7 +44,7 @@ include = ["mahilda*"]
 
 [tool.setuptools.package-data]
 "mahilda.evaluation" = ["third_party/**/*.jar", "third_party/popper/lp/*.pl"]
-"mahilda.database" = ["*.sh"]
+"mahilda.evaluation.datasets" = ["*.sh"]
 
 [dependency-groups]
 dev = [

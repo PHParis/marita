@@ -14,6 +14,7 @@ uv run mahilda smoke
 
 - `uv run mahilda run --config configs/config.example.yaml` runs `MAHILDA` on one database.
 - `uv run mahilda benchmark --config configs/config.example.yaml --baseline {AMIE3|SPIDER|POPPER}` runs one baseline.
+- `uv run mahilda download-databases --output data/relational` downloads relational benchmark databases and converts them to SQLite.
 - `uv run mahilda import-rdf --input data/yago-tiny.ttl --output-dir data/yago` creates RDF benchmark artifacts.
 - `uv run mahilda batch -c configs/config.example.yaml -d <db_dir> -o results/batch` processes many databases.
 - `uv run mahilda mlflow start` launches a local MLflow tracking server; `uv run mahilda mlflow ui` launches the local MLflow UI.
@@ -21,6 +22,7 @@ uv run mahilda smoke
 ## Artifact Layout
 
 - Logs: `logs/`
+- Downloaded relational benchmark databases: `data/relational/`
 - Single-run and benchmark artifacts: `results/`
 - Batch artifacts: `results/batch/`
 - Local MLflow data: `mlruns/`
@@ -32,6 +34,7 @@ See `docs/config.md` for full path-resolution behavior and overrides.
 - `docs/architecture.md`: package structure, active modules, and runtime data flow
 - `docs/cli.md`: command behavior and examples
 - `docs/config.md`: configuration schema, defaults, normalization, and precedence
+- `docs/benchmark-datasets.md`: relational benchmark dataset download and conversion workflow
 - `docs/archive.md`: archive notes for `legacy/` and `research/`
 - `docs/yago-rdf-benchmark-protocol.md`: RDF-to-SQLite benchmark protocol for YAGO-derived datasets
 - `docs/yago-rdf-test-readiness.md`: remaining steps before full YAGO benchmark runs

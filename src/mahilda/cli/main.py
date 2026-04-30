@@ -1,6 +1,6 @@
 import argparse
 
-from mahilda.cli import batch, benchmark, import_rdf, mlflow_start, mlflow_ui, run, smoke, test_data
+from mahilda.cli import batch, benchmark, download_databases, import_rdf, mlflow_start, mlflow_ui, run, smoke, test_data
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -38,6 +38,19 @@ def main(argv: list[str] | None = None) -> int:
     import_rdf_parser.add_argument("--output-dir", required=True)
     import_rdf_parser.add_argument("--variants", default="core,ontology-lite")
     import_rdf_parser.add_argument("--dataset-name", default=None)
+
+    download_parser = subparsers.add_parser(
+        "download-databases",
+        help="Download and convert relational benchmark databases",
+    )
+    download_parser.add_argument("-o", "--output", default="data/relational")
+    download_parser.add_argument("--database", action="append", default=None)
+    download_parser.add_argument("--max-databases", type=int, default=None)
+    download_parser.add_argument("--timeout", type=int, default=300)
+    download_parser.add_argument("--list", action="store_true")
+    download_parser.add_argument("--dump-only", action="store_true")
+    download_parser.add_argument("--convert-only", action="store_true")
+    download_parser.add_argument("--quiet", action="store_true")
 
     batch_parser = subparsers.add_parser("batch", help="Run batch processing across many databases")
     batch_parser.add_argument(
@@ -85,6 +98,23 @@ def main(argv: list[str] | None = None) -> int:
         if args.dataset_name:
             import_args.extend(["--dataset-name", args.dataset_name])
         return import_rdf.main(import_args)
+
+    if args.command == "download-databases":
+        download_args: list[str] = ["--output", args.output, "--timeout", str(args.timeout)]
+        if args.database:
+            for database in args.database:
+                download_args.extend(["--database", database])
+        if args.max_databases is not None:
+            download_args.extend(["--max-databases", str(args.max_databases)])
+        if args.list:
+            download_args.append("--list")
+        if args.dump_only:
+            download_args.append("--dump-only")
+        if args.convert_only:
+            download_args.append("--convert-only")
+        if args.quiet:
+            download_args.append("--quiet")
+        return download_databases.main(download_args)
 
     if args.command == "batch":
         batch_args: list[str] = [

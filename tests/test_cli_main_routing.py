@@ -82,6 +82,46 @@ def test_main_routes_import_rdf_command(monkeypatch) -> None:
     ]
 
 
+def test_main_routes_download_databases_command(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_download_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 25
+
+    monkeypatch.setattr("mahilda.cli.download_databases.main", fake_download_main)
+
+    exit_code = main(
+        [
+            "download-databases",
+            "--output",
+            "data/relational",
+            "--database",
+            "Mondial",
+            "--max-databases",
+            "3",
+            "--timeout",
+            "9",
+            "--dump-only",
+            "--quiet",
+        ]
+    )
+
+    assert exit_code == 25
+    assert captured["argv"] == [
+        "--output",
+        "data/relational",
+        "--timeout",
+        "9",
+        "--database",
+        "Mondial",
+        "--max-databases",
+        "3",
+        "--dump-only",
+        "--quiet",
+    ]
+
+
 def test_main_routes_batch_command(monkeypatch) -> None:
     captured: dict[str, list[str]] = {}
 
