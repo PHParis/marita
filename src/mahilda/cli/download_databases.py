@@ -68,6 +68,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Skipped: {len(report.skipped)}")
     print(f"Failed: {len(report.failed)}")
     print(f"Report: {settings.output_dir / 'conversion_report.txt'}")
+    if not report.discovered and not args.convert_only:
+        logging.getLogger(__name__).error(
+            "No relational database export names were discovered. The upstream site format may have changed."
+        )
+        return 1
     return 1 if report.failed else 0
 
 

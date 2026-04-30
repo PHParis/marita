@@ -22,6 +22,16 @@ def test_extract_export_name_from_dataset_html() -> None:
     assert extract_export_name(html) == "Mondial"
 
 
+def test_extract_export_name_from_current_dataset_markup() -> None:
+    html = (
+        '<span data-reactid="x">Export &quot;</span>'
+        '<span data-reactid="y">Mondial</span>'
+        '<span data-reactid="z">&quot; database</span>'
+    )
+
+    assert extract_export_name(html) == "Mondial"
+
+
 def test_build_dump_command_masks_password(tmp_path: Path) -> None:
     settings = RelationalDownloadSettings(
         output_dir=tmp_path,

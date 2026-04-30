@@ -54,3 +54,18 @@ def test_download_databases_runs_preparation(monkeypatch, tmp_path: Path, capsys
 
 def test_download_databases_rejects_conflicting_modes() -> None:
     assert download_databases.main(["--dump-only", "--convert-only"]) == 2
+
+
+def test_download_databases_fails_when_no_databases_selected(monkeypatch, tmp_path: Path) -> None:
+    class FakePreparer:
+        def __init__(self, settings):
+            self.settings = settings
+
+        def prepare(self, **kwargs) -> DatasetPreparationReport:
+            return DatasetPreparationReport()
+
+    monkeypatch.setattr(download_databases, "RelationalDatasetPreparer", FakePreparer)
+
+    exit_code = download_databases.main(["--output", str(tmp_path), "--quiet"])
+
+    assert exit_code == 1

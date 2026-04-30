@@ -6,6 +6,7 @@ import re
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
+from html import unescape
 from importlib import resources
 from pathlib import Path
 from shutil import which
@@ -102,11 +103,20 @@ def extract_database_names(search_html: str, fetch_dataset_html: Any, *, base_ur
 
 
 def extract_export_name(dataset_html: str) -> str | None:
-    match = re.search(r'Export\s+"\s*</span>\s*<span[^>]*>\s*([^<]+?)\s*</span>', dataset_html)
-    if match is not None:
-        return match.group(1).strip()
+    html_patterns = [
+        r'Export\s+"\s*</span>\s*<span[^>]*>\s*([^<]+?)\s*</span>',
+        r"Export\s+&quot;\s*</span>\s*<span[^>]*>\s*([^<]+?)\s*</span>",
+        r"Export\s+&quot;\s*([^<&]+)",
+    ]
+    for pattern in html_patterns:
+        match = re.search(pattern, dataset_html)
+        if match is not None:
+            return match.group(1).strip()
 
-    fallback = re.search(r"Export\s+&quot;\s*([^<&]+)", dataset_html)
+    text = re.sub(r"<[^>]+>", " ", dataset_html)
+    text = unescape(text)
+    text = re.sub(r"\s+", " ", text)
+    fallback = re.search(r'Export\s+"\s*([^"]+?)\s*"\s+database', text, flags=re.IGNORECASE)
     if fallback is not None:
         return fallback.group(1).strip()
     return None
