@@ -20,6 +20,21 @@ uv run mahilda smoke
 - `uv run mahilda batch -c configs/config.example.yaml -d <db_dir> -o results/batch` processes many databases.
 - `uv run mahilda mlflow start` launches a local MLflow tracking server; `uv run mahilda mlflow ui` launches the local MLflow UI.
 
+## YAGO Reproducibility
+
+For the generated YAGO core benchmark, run the commands below in order:
+
+```bash
+uv sync --extra benchmark
+uv run mahilda import-rdf --input data/yago-tiny.ttl --output-dir data/yago --variants core,ontology-lite --dataset-name yago_tiny
+uv run mahilda run --config configs/config.yago-core.yaml
+uv run mahilda benchmark --config configs/config.yago-core.yaml --baseline AMIE3 --input-tsv data/yago/yago_tiny_core.tsv
+uv run mahilda benchmark --config configs/config.yago-core.yaml --baseline SPIDER
+uv run mahilda benchmark --config configs/config.yago-core.yaml --baseline POPPER
+```
+
+`configs/config.yago-core.yaml` pins the YAGO core SQLite DB, logs, results, timeout, and AMIE3 TSV input. Use the direct TSV path for AMIE3 so it is compared against the same selected YAGO statements as the relational baselines.
+
 ## Artifact Layout
 
 - Logs: `logs/`
