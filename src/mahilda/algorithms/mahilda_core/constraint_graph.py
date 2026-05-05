@@ -51,10 +51,12 @@ class Attribute:
 
         # return True if they are fk keys else return false
         # fk_found = False
-        return (
-            db_inspector.check_foreign_key_silently(self.table, self.name, other_attribute.table, other_attribute.name)
-            or db_inspector.check_foreign_key_silently(other_attribute.table, other_attribute.name, self.table, self.name)
-        )
+        from mahilda.algorithms.mahilda_core import tgd_discovery as _core_mod
+        if not _core_mod.APPLY_FULL_JOINABILITY:
+            return (
+                db_inspector.check_foreign_key_silently(self.table, self.name, other_attribute.table, other_attribute.name)
+                or db_inspector.check_foreign_key_silently(other_attribute.table, other_attribute.name, self.table, self.name)
+            )
         # for fk in foreign_keys:
         # return True
         # if threshold_overlap <0 :

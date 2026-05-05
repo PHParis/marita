@@ -7,6 +7,7 @@ and batch.py. They live here so commands don't depend on each other's internals.
 import logging
 import os
 import shutil
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -219,6 +220,8 @@ class BaselineProcessor:
         use_mlflow: bool = False,
         input_tsv: Path | None = None,
         timeout: int = 300,
+        memory_gb: float = 15.0,
+        java_heap_gb: int = 13,
     ):
         self.baseline_name = normalise_baseline_name(baseline_name)
         self.database_name = database_name
@@ -228,6 +231,8 @@ class BaselineProcessor:
         self.use_mlflow = use_mlflow
         self.input_tsv = input_tsv
         self.timeout = timeout
+        self.memory_gb = memory_gb
+        self.java_heap_gb = java_heap_gb
 
     def discover_rules(self) -> int:
         baseline_map = {
@@ -258,8 +263,12 @@ class BaselineProcessor:
             discover_kwargs: dict[str, Any] = {"results_dir": str(artifacts.run_dir)}
             if self.input_tsv is not None:
                 discover_kwargs["input_tsv"] = self.input_tsv
-            if self.baseline_name == "AMIE3":
-                discover_kwargs["timeout"] = self.timeout
+            discover_kwargs["timeout"] = self.timeout
+            discover_kwargs["memory_gb"] = self.memory_gb
+            discover_kwargs["java_heap_gb"] = self.java_heap_gb
+            if self.baseline_name == "POPPER":
+                discover_kwargs["runtime_dir"] = str(artifacts.run_dir / "_runtime")
+            start = time.time()
             raw_rules = algo.discover_rules(**discover_kwargs)
 
             if isinstance(raw_rules, dict):
@@ -272,7 +281,8 @@ class BaselineProcessor:
 
             top_rules = [rule for rule in rules if hasattr(rule, "accuracy") and hasattr(rule, "confidence")]
             top_rules_sorted = sorted(top_rules, key=lambda rule: -float(rule.accuracy))[:5]
-            self.generate_report(number_of_rules, result_path, top_rules_sorted)
+            elapsed = time.time() - start
+            self.generate_report(number_of_rules, result_path, top_rules_sorted, elapsed)
 
             if self.use_mlflow:
                 mlflow.log_param("algorithm", self.baseline_name)
@@ -293,7 +303,13 @@ class BaselineProcessor:
                 shutil.rmtree(directory)
                 self.logger.info("Cleaned up temporary directory: %s", directory)
 
-    def generate_report(self, number_of_rules: int, result_path: Path, top_rules: list[Any]) -> None:
+    def generate_report(
+        self,
+        number_of_rules: int,
+        result_path: Path,
+        top_rules: list[Any],
+        execution_time: float | None = None,
+    ) -> None:
         artifacts = build_command_artifacts(self.results_dir, self.baseline_name, self.database_name)
         write_markdown_report(
             report_path=artifacts.report_md,
@@ -304,9 +320,24 @@ class BaselineProcessor:
             number_of_rules=number_of_rules,
             result_path=result_path,
             top_rules=top_rules,
+            execution_time=execution_time,
         )
 
         self.logger.info("Generated report: %s", artifacts.report_md)
+
+        if execution_time is not None:
+            try:
+                write_execution_time_metrics(
+                    metrics_path=artifacts.execution_time_json,
+                    database_stem=self.database_name.stem,
+                    execution_time=execution_time,
+                    status="success",
+                    rules_count=number_of_rules,
+                    algorithm_name=self.baseline_name,
+                )
+                self.logger.info("Saved execution time metrics: %s", artifacts.execution_time_json)
+            except Exception as e:
+                self.logger.warning("Failed to save time metrics: %s", e)
 
         if self.use_mlflow:
             mlflow.log_artifact(str(artifacts.report_md))

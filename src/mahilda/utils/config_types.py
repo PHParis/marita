@@ -41,6 +41,8 @@ class BenchmarkConfig:
     baseline: str | None
     input_tsv: Path | None
     timeout: int
+    memory_gb: float
+    java_heap_gb: int
 
 
 @dataclass(frozen=True)
@@ -128,6 +130,8 @@ class AppConfig:
                 baseline=(str(benchmark.get("baseline")).strip().upper() if benchmark.get("baseline") else None),
                 input_tsv=(Path(str(benchmark["input_tsv"])) if "input_tsv" in benchmark else None),
                 timeout=int(benchmark.get("timeout", 300)),
+                memory_gb=float(benchmark.get("memory_gb", 15.0)),
+                java_heap_gb=int(benchmark.get("java_heap_gb", 13)),
             ),
             batch=BatchConfig(
                 workers=int(batch.get("workers", 3)),

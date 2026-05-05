@@ -19,6 +19,9 @@ class Spider(BaseAlgorithm):
         os.makedirs(results_path, exist_ok=True)
 
         algorithm_name = "SPIDER"
+        timeout = int(kwargs.get("timeout", 300))
+        memory_gb = float(kwargs.get("memory_gb", 15.0))
+        java_heap_gb = int(kwargs.get("java_heap_gb", max(1, int(memory_gb) - 2)))
         class_path = "de.metanome.algorithms.spider.SPIDERFile"
         rule_type = "inds"
         csv_files = [
@@ -31,6 +34,7 @@ class Spider(BaseAlgorithm):
 
         cmd = [
             "java",
+            f"-Xmx{java_heap_gb}G",
             "-cp",
             f"{jar_path}/metanome-cli-1.2-SNAPSHOT.jar:{jar_path}/{algorithm_name}-1.2-SNAPSHOT.jar",
             "de.metanome.cli.App",
@@ -46,8 +50,8 @@ class Spider(BaseAlgorithm):
             f"file:{output_prefix}",
             "--header",
         ]
-        if not run_cmd(cmd, logger=logger):
-            return rules
+        if not run_cmd(cmd, timeout=timeout, memory_limit_gb=memory_gb, logger=logger):
+            raise RuntimeError("SPIDER command failed, timed out, or exceeded memory limit.")
 
         result_file_path = f"{output_prefix}_{rule_type}"
         try:

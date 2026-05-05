@@ -73,6 +73,7 @@ def test_run_cmd_success(monkeypatch) -> None:
 
     monkeypatch.setattr(run_cmd_module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(run_cmd_module, "_start_memory_monitor", lambda **kwargs: None)
+    monkeypatch.setattr(run_cmd_module.os, "killpg", lambda *args, **kwargs: (_ for _ in ()).throw(OSError()))
 
     assert run_cmd_module.run_cmd("python -V", logger=logger) is True
 
@@ -99,6 +100,7 @@ def test_run_cmd_timeout(monkeypatch) -> None:
 
     monkeypatch.setattr(run_cmd_module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(run_cmd_module, "_start_memory_monitor", lambda **kwargs: None)
+    monkeypatch.setattr(run_cmd_module.os, "killpg", lambda *args, **kwargs: (_ for _ in ()).throw(OSError()))
 
     assert run_cmd_module.run_cmd("python -V", timeout=1, logger=logger) is False
     assert proc.terminated is True
@@ -138,7 +140,15 @@ def test_start_memory_monitor_terminates_process(monkeypatch) -> None:
 
             return M()
 
+        def children(self, recursive=False):
+            del recursive
+            return []
+
+        def is_running(self):
+            return True
+
     monkeypatch.setattr(run_cmd_module.psutil, "Process", lambda pid: FakePsProc())
+    monkeypatch.setattr(run_cmd_module.os, "killpg", lambda *args, **kwargs: (_ for _ in ()).throw(OSError()))
     monkeypatch.setattr(run_cmd_module.time, "sleep", lambda _x: None)
 
     proc = FakeProcess(returncode=None)

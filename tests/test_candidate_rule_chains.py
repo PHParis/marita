@@ -1,5 +1,9 @@
 from mahilda.algorithms.mahilda_core.candidate_rule_chains import CandidateRuleChains
-from mahilda.algorithms.mahilda_core.constraint_graph import AttributeMapper, IndexedAttribute, JoinableIndexedAttributes
+from mahilda.algorithms.mahilda_core.constraint_graph import (
+    AttributeMapper,
+    IndexedAttribute,
+    JoinableIndexedAttributes,
+)
 
 
 def _ia(i: int, j: int, k: int) -> IndexedAttribute:

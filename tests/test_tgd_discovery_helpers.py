@@ -1,4 +1,8 @@
-from mahilda.algorithms.mahilda_core.constraint_graph import AttributeMapper, IndexedAttribute, JoinableIndexedAttributes
+from mahilda.algorithms.mahilda_core.constraint_graph import (
+    AttributeMapper,
+    IndexedAttribute,
+    JoinableIndexedAttributes,
+)
 from mahilda.algorithms.mahilda_core.tgd_discovery import (
     assign_variables,
     check_max_table,

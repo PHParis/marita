@@ -1,3 +1,5 @@
+import pytest
+
 from mahilda.algorithms.mahilda import MAHILDA
 
 
@@ -40,3 +42,37 @@ def test_mahilda_normalizes_legacy_keys_from_config_parameters() -> None:
     assert algorithm.settings["max_variables"] == 12
     assert algorithm.settings["walk_length"] == 5
     assert algorithm.settings["recursivity"] == 4
+
+
+def test_joinability_default_is_fk() -> None:
+    algorithm = MAHILDA(database=object())
+    assert algorithm.settings["joinability"] == "fk"
+
+
+def test_joinability_accepts_full() -> None:
+    algorithm = MAHILDA(
+        database=object(),
+        settings={"joinability": "full"},
+    )
+    assert algorithm.settings["joinability"] == "full"
+
+
+def test_joinability_legacy_bool_true() -> None:
+    algorithm = MAHILDA(
+        database=object(),
+        settings={"full_joinability": True},
+    )
+    assert algorithm.settings["joinability"] == "full"
+
+
+def test_joinability_legacy_bool_false() -> None:
+    algorithm = MAHILDA(
+        database=object(),
+        settings={"full_joinability": False},
+    )
+    assert algorithm.settings["joinability"] == "fk"
+
+
+def test_joinability_invalid_raises() -> None:
+    with pytest.raises(ValueError, match="joinability must be"):
+        MAHILDA(database=object(), settings={"joinability": "bad"})

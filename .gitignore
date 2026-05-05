@@ -54,3 +54,5 @@ resume_last_session.sh
 data/yago-tiny.ttl
 CLAUDE.md
 data/*
+resume_last_session_import_database.sh
+PAPER_ALIGNMENT.md

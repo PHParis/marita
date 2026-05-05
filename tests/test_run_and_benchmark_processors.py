@@ -98,7 +98,8 @@ def test_benchmark_processor_uses_expected_output_paths(monkeypatch, tmp_path: P
         def __init__(self, db_util) -> None:
             del db_util
 
-        def discover_rules(self, *, results_dir: str):
+        def discover_rules(self, *, results_dir: str, **kwargs):
+            del kwargs
             captured["results_dir"] = results_dir
             rule = SimpleNamespace(display="A(x)->B(x)", accuracy=0.7, confidence=0.6)
             return [rule]
@@ -134,7 +135,8 @@ def test_benchmark_processor_passes_timeout_to_amie3(monkeypatch, tmp_path: Path
         def __init__(self, db_util) -> None:
             del db_util
 
-        def discover_rules(self, *, results_dir: str, timeout: int):
+        def discover_rules(self, *, results_dir: str, timeout: int, **kwargs):
+            del kwargs
             captured["results_dir"] = results_dir
             captured["timeout"] = timeout
             return []

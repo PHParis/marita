@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from mahilda.algorithms import mahilda as mahilda_module
-from mahilda.algorithms.mahilda import HornRuleExtended, MAHILDA
+from mahilda.algorithms.mahilda import MAHILDA, HornRuleExtended
 from mahilda.algorithms.mahilda_core.constraint_graph import IndexedAttribute, JoinableIndexedAttributes
 from mahilda.utils.rules import Predicate, TGDRule
 
@@ -22,6 +22,8 @@ def test_discover_rules_handles_empty_jia_and_restores_globals(monkeypatch) -> N
     algorithm = MAHILDA(database=object(), settings={"disjoint_semantics": True, "split_mean_threshold": 0.25})
     old_disjoint = mahilda_module.mahilda_core.APPLY_DISJOINT
     old_threshold = mahilda_module.mahilda_core.SPLIT_PRUNING_MEAN_THRESHOLD
+    old_full_join = mahilda_module.mahilda_core.APPLY_FULL_JOINABILITY
+    old_full_join = mahilda_module.mahilda_core.APPLY_FULL_JOINABILITY
 
     def fake_init(*args, **kwargs):
         del args, kwargs
@@ -31,8 +33,9 @@ def test_discover_rules_handles_empty_jia_and_restores_globals(monkeypatch) -> N
 
     discovered = list(algorithm.discover_rules())
     assert discovered == []
-    assert mahilda_module.mahilda_core.APPLY_DISJOINT == old_disjoint
-    assert mahilda_module.mahilda_core.SPLIT_PRUNING_MEAN_THRESHOLD == old_threshold
+    assert old_disjoint == mahilda_module.mahilda_core.APPLY_DISJOINT
+    assert old_threshold == mahilda_module.mahilda_core.SPLIT_PRUNING_MEAN_THRESHOLD
+    assert old_full_join == mahilda_module.mahilda_core.APPLY_FULL_JOINABILITY
 
 
 def test_discover_rules_yields_only_single_head_and_skips_errors(monkeypatch) -> None:
@@ -138,3 +141,12 @@ def test_coercion_helpers() -> None:
     assert MAHILDA._coerce_timeout("0") is None
     assert MAHILDA._coerce_float("1.5", 0.0) == 1.5
     assert MAHILDA._coerce_float("bad", 0.0) == 0.0
+
+
+def test_joinability_coercion() -> None:
+    assert MAHILDA._coerce_joinability(True) == "full"
+    assert MAHILDA._coerce_joinability(False) == "fk"
+    assert MAHILDA._coerce_joinability(None) == "fk"
+    assert MAHILDA._coerce_joinability("full") == "full"
+    assert MAHILDA._coerce_joinability("fk") == "fk"
+    assert MAHILDA._coerce_joinability("  FULL  ") == "full"

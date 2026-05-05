@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import shlex
+import signal
 import subprocess
 import threading
 import time
@@ -42,6 +44,7 @@ def run_cmd(
             stderr=subprocess.PIPE,
             text=True,
             cwd=str(cwd) if cwd else None,
+            start_new_session=True,
         )
 
         monitor_thread = _start_memory_monitor(
@@ -55,7 +58,7 @@ def run_cmd(
             _, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             active_logger.error("Command timed out after %s seconds", timeout)
-            process.terminate()
+            _terminate_process_group(process)
             return False
         finally:
             if monitor_thread is not None:
@@ -117,14 +120,15 @@ def _start_memory_monitor(
         try:
             monitored_process = psutil.Process(pid)
             while process.poll() is None:
-                memory_usage_gb = monitored_process.memory_info().rss / (1024**3)
+                processes = [monitored_process] + monitored_process.children(recursive=True)
+                memory_usage_gb = sum(child.memory_info().rss for child in processes if child.is_running()) / (1024**3)
                 if memory_usage_gb > memory_limit_gb:
                     logger.error(
                         "Memory usage exceeded %.2fGB (current: %.2fGB). Terminating command.",
                         memory_limit_gb,
                         memory_usage_gb,
                     )
-                    process.terminate()
+                    _terminate_process_group(process)
                     return
                 time.sleep(0.5)
         except psutil.Error:
@@ -133,3 +137,12 @@ def _start_memory_monitor(
     thread = threading.Thread(target=monitor, daemon=True)
     thread.start()
     return thread
+
+
+def _terminate_process_group(process: subprocess.Popen[str]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except OSError:
+        process.terminate()

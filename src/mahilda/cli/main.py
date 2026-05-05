@@ -85,6 +85,9 @@ def main(argv: list[str] | None = None) -> int:
     paper_parser.add_argument("--databases", default="paper")
     paper_parser.add_argument("--timeout", type=int, default=7200)
     paper_parser.add_argument("--memory-gb", type=float, default=15.0)
+    paper_parser.add_argument("--java-heap-gb", type=int, default=None)
+    paper_parser.add_argument("--settings", default=None)
+    paper_parser.add_argument("--host", default=None)
     paper_parser.add_argument("--dry-run", action="store_true")
 
     smoke_parser = subparsers.add_parser("smoke", help="Run fast local smoke test")
@@ -172,6 +175,12 @@ def main(argv: list[str] | None = None) -> int:
             "--memory-gb",
             str(args.memory_gb),
         ]
+        if args.java_heap_gb is not None:
+            paper_args.extend(["--java-heap-gb", str(args.java_heap_gb)])
+        if args.settings:
+            paper_args.extend(["--settings", args.settings])
+        if args.host:
+            paper_args.extend(["--host", args.host])
         if args.dry_run:
             paper_args.append("--dry-run")
         return paper_benchmark.main(paper_args)

@@ -1,0 +1,29 @@
+database_dir: data/relational
+output: results/paper_table2
+logs: logs/paper_table2
+databases: all
+algorithms: [POPPER, AMIE3, SPIDER, MAHILDA]
+
+limits:
+  timeout_seconds: 3600
+  memory_gb: 10
+  java_heap_gb: 8
+
+hosts:
+  - tipi00
+  - tipi01
+  - tipi02
+  - tipi04
+
+workers:
+  POPPER: 1
+  AMIE3: 1
+  SPIDER: 2
+  MAHILDA: 2
+
+b2:
+  databases: [Biodegradability]
+  timeout_seconds: 600
+
+b3:
+  databases: all

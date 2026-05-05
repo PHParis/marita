@@ -3,7 +3,15 @@ import json
 import pytest
 
 from mahilda.utils.rule_io import RuleIO
-from mahilda.utils.rules import DCCondition, DenialConstraint, FunctionalDependency, HornRule, InclusionDependency, Predicate, TGDRule
+from mahilda.utils.rules import (
+    DCCondition,
+    DenialConstraint,
+    FunctionalDependency,
+    HornRule,
+    InclusionDependency,
+    Predicate,
+    TGDRule,
+)
 
 
 def test_rule_io_round_trip_inclusion_dependency() -> None:

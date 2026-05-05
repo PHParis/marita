@@ -3,14 +3,14 @@ import json
 import logging
 import os
 import shutil
+import sys
+import tempfile
 import warnings
-from datetime import datetime
 from pathlib import Path
 from types import ModuleType
-from typing import List, Optional
 
 from mahilda.algorithms.base_algorithm import BaseAlgorithm
-from mahilda.utils.rules import HornRule, Predicate, Rule, TGDRule
+from mahilda.utils.rules import Predicate, Rule, TGDRule
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
@@ -22,11 +22,20 @@ def import_and_reload_package(package_name: str) -> ModuleType:
     return package
 
 class Popper(BaseAlgorithm):
-    def discover_rules(self, **kwargs) -> List[Rule]:
+    def discover_rules(self, **kwargs) -> list[Rule]:
         # Copy vendored Popper sources to a runtime package path.
         script_dir = Path(__file__).resolve().parent
         popper_source = script_dir.parent / "third_party" / "popper"
-        runtime_package = Path.cwd() / "popper"
+        results_path = Path(str(kwargs.get("results_dir", "results")))
+        runtime_root_arg = kwargs.get("runtime_dir")
+        temp_runtime: tempfile.TemporaryDirectory[str] | None = None
+        if runtime_root_arg:
+            runtime_root = Path(str(runtime_root_arg))
+            runtime_root.mkdir(parents=True, exist_ok=True)
+        else:
+            temp_runtime = tempfile.TemporaryDirectory(prefix=f"popper_{self.database.base_name}_")
+            runtime_root = Path(temp_runtime.name)
+        runtime_package = runtime_root / "popper"
 
         try:
             shutil.copytree(popper_source, runtime_package, dirs_exist_ok=True)
@@ -44,10 +53,10 @@ class Popper(BaseAlgorithm):
         max_body = max(3, number_of_tables - 1)
         max_vars = number_max_attributes
 
-        prolog_tmp = "prolog_tmp"
-        results_path = kwargs.get("results_dir", "results")
+        prolog_tmp = str(runtime_root / "prolog_tmp")
+        results_path_str = str(results_path)
 
-        compatibility_path = os.path.join(results_path, f"compatibility_{self.database.base_name}.json")
+        compatibility_path = os.path.join(results_path_str, f"compatibility_{self.database.base_name}.json")
 
         if os.path.exists(compatibility_path):
             with open(compatibility_path) as f:
@@ -57,40 +66,47 @@ class Popper(BaseAlgorithm):
 
         directories = self.generate_prolog_files(prolog_tmp, compatibility_dir)
         rules = []
+        sys.path.insert(0, str(runtime_root))
 
-        for directory in directories:
-            try:
-                popper = import_and_reload_package("popper")
-                settings = popper.util.Settings(
-                    kbpath=directory,
-                    max_body=max_body,
-                    max_vars=max_vars,
-                    quiet=False,
-                    debug=True,
-                )
+        try:
+            for directory in directories:
                 try:
-                    prog, score, stats = popper.loop.learn_solution(settings)
-                except Exception as e:
-                    logger.error("Popper learning error: %s", e)
-                    raise Exception("Popper failed to learn a solution") from e
+                    popper = import_and_reload_package("popper")
+                    settings = popper.util.Settings(
+                        kbpath=directory,
+                        max_body=max_body,
+                        max_vars=max_vars,
+                        quiet=False,
+                        debug=True,
+                    )
+                    try:
+                        prog, score, stats = popper.loop.learn_solution(settings)
+                    except Exception as e:
+                        logger.error("Popper learning error: %s", e)
+                        raise Exception("Popper failed to learn a solution") from e
 
-                if prog is None:
-                    continue
-
-                raw_rules = popper.util.format_prog(popper.util.order_prog(prog)).split("\n")
-                for raw_rule in raw_rules:
-                    if not raw_rule.strip():
+                    if prog is None:
                         continue
-                    rule = self.process_raw_rule(raw_rule, score)
-                    if rule:
-                        rules.append(rule)
-            except Exception as e:
-                logger.error("Error processing directory %s: %s", directory, e)
-                raise
+
+                    raw_rules = popper.util.format_prog(popper.util.order_prog(prog)).split("\n")
+                    for raw_rule in raw_rules:
+                        if not raw_rule.strip():
+                            continue
+                        rule = self.process_raw_rule(raw_rule, score)
+                        if rule:
+                            rules.append(rule)
+                except Exception as e:
+                    logger.error("Error processing directory %s: %s", directory, e)
+                    raise
+        finally:
+            if sys.path and sys.path[0] == str(runtime_root):
+                sys.path.pop(0)
+            if temp_runtime is not None:
+                temp_runtime.cleanup()
 
         return rules
 
-    def process_raw_rule(self, raw_rule: str, score) -> Optional[Rule]:
+    def process_raw_rule(self, raw_rule: str, score) -> Rule | None:
         variables_used = {}
         try:
             head, body = raw_rule.split(":-")
@@ -118,7 +134,7 @@ class Popper(BaseAlgorithm):
 
         return self.convert_prologrule_to_rule(raw_rule, precision, -1)
 
-    def parse_predicates(self, body: str, variables_used: dict) -> List[Predicate]:
+    def parse_predicates(self, body: str, variables_used: dict) -> list[Predicate]:
         predicates = []
         for predicate in body.split("),"):
             predicate = predicate.strip().rstrip(")")
@@ -134,7 +150,7 @@ class Popper(BaseAlgorithm):
             predicates.append(Predicate(pred_id, relation.strip(), var))
         return predicates
 
-    def parse_head(self, head: str, variables_used: dict) -> List[Predicate]:
+    def parse_head(self, head: str, variables_used: dict) -> list[Predicate]:
         predicates = []
         try:
             relation, variables = head.split("(")
@@ -204,7 +220,7 @@ class Popper(BaseAlgorithm):
             confidence=recall
         )
 
-    def generate_prolog_files(self, prolog_tmp_path: str, compatibility_dir: dict = None) -> List[str]:
+    def generate_prolog_files(self, prolog_tmp_path: str, compatibility_dir: dict = None) -> list[str]:
         """
         Generates Prolog files for each table in the database.
 
@@ -313,7 +329,7 @@ class Popper(BaseAlgorithm):
         forbidden_chars = "'() \n.:-/,¡"
         return "".join(ch for ch in s.lower().replace(" ", "") if ch not in forbidden_chars)
 
-    def get_possible_heads(self, compatibility_dir: dict, sep: str = "___sep___") -> List[str]:
+    def get_possible_heads(self, compatibility_dir: dict, sep: str = "___sep___") -> list[str]:
         heads = []
         for key, values in compatibility_dir.items():
             heads.append(key.split(sep)[0])

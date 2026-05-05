@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from mahilda.algorithms.mahilda_core import tgd_discovery
 from mahilda.algorithms.mahilda_core.constraint_graph import (
     Attribute,
     AttributeMapper,
@@ -113,3 +114,25 @@ def test_constraint_graph_core_behaviors() -> None:
     graph2.add_node(low)
     with pytest.raises(Exception):
         graph2.add_edge(high, low)
+
+
+def test_is_compatible_fk_only_no_overlap_returns_false(monkeypatch) -> None:
+    monkeypatch.setattr(tgd_discovery, "APPLY_FULL_JOINABILITY", False)
+
+    insp = _FakeInspector()
+    a = Attribute("a", "val")
+    b = Attribute("b", "val")
+    insp.values[("a", "val")] = []
+    insp.values[("b", "val")] = ["x", "y"]
+    assert a.is_compatible(b, db_inspector=insp) is False
+
+
+def test_is_compatible_full_joinability_with_overlap_returns_true(monkeypatch) -> None:
+    monkeypatch.setattr(tgd_discovery, "APPLY_FULL_JOINABILITY", True)
+
+    insp = _FakeInspector()
+    a = Attribute("a", "val")
+    b = Attribute("b", "val")
+    insp.values[("a", "val")] = ["x", "y"]
+    insp.values[("b", "val")] = ["y", "z"]
+    assert a.is_compatible(b, db_inspector=insp, threshold_overlap=0) is True

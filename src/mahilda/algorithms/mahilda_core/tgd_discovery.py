@@ -38,6 +38,7 @@ logging.basicConfig(
 )
 
 APPLY_DISJOINT = True  # Set to True if you want to apply disjoint semantics
+APPLY_FULL_JOINABILITY = False  # if True, is_compatible also accepts value-overlap edges
 SPLIT_PRUNING_MEAN_THRESHOLD = 0
 TableOccurrence = tuple[int, int]
 CandidateRule = list[JoinableIndexedAttributes]

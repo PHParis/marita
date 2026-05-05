@@ -1,0 +1,37 @@
+monitor:
+  memory_threshold: 16106127360  # 15GB in bytes
+  timeout: 7200  # 2 hours
+
+database:
+  path: ../data/yago
+  name: yago_tiny_ontology_lite.db
+
+logging:
+  log_dir: ../logs/yago_ontology_lite
+
+results:
+  output_dir: ../results/yago_ontology_lite
+
+algorithm:
+  name: MAHILDA
+  parameters:
+    walk_length: 3
+    max_tables: 3
+    max_variables: 3
+    timeout: 7200
+    disjoint_semantics: true
+    split_mean_threshold: 0.0
+
+benchmark:
+  baseline: AMIE3
+  input_tsv: ../data/yago/yago_tiny_ontology_lite.tsv
+  timeout: 7200
+
+batch:
+  workers: 1
+  timeout: 7200
+
+mlflow:
+  use: false
+  tracking_uri: file:../mlruns
+  experiment_name: YAGO Ontology Lite Benchmark

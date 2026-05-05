@@ -19,6 +19,8 @@ class Amie3(BaseAlgorithm):
 
         input_tsv = kwargs.get("input_tsv")
         timeout = int(kwargs.get("timeout", 300))
+        memory_gb = float(kwargs.get("memory_gb", 15.0))
+        java_heap_gb = int(kwargs.get("java_heap_gb", max(1, int(memory_gb) - 2)))
         database_path = Path(input_tsv) if input_tsv else Path(self.database.database_path_tsv)
         current_time = datetime.now()
 
@@ -27,7 +29,7 @@ class Amie3(BaseAlgorithm):
 
         cmd = [
             "java",
-            "-Xmx15G",
+            f"-Xmx{java_heap_gb}G",
             "-jar",
             str(jar_file),
             "-mins",
@@ -43,8 +45,8 @@ class Amie3(BaseAlgorithm):
             str(database_path),
         ]
 
-        if not run_cmd(cmd, timeout=timeout, stdout_path=output_file, logger=logger):
-            return []
+        if not run_cmd(cmd, timeout=timeout, memory_limit_gb=memory_gb, stdout_path=output_file, logger=logger):
+            raise RuntimeError("AMIE3 command failed, timed out, or exceeded memory limit.")
 
         with output_file.open(encoding="utf-8") as file:
             raw_rules = file.read()

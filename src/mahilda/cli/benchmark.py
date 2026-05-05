@@ -72,6 +72,8 @@ def main(argv: list[str] | None = None) -> int:
         use_mlflow=use_mlflow,
         input_tsv=input_tsv,
         timeout=config.benchmark.timeout,
+        memory_gb=config.benchmark.memory_gb,
+        java_heap_gb=config.benchmark.java_heap_gb,
     )
 
     try:

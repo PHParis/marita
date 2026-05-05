@@ -44,6 +44,7 @@ class MAHILDA(BaseAlgorithm):
         "max_variables": 100,
         "max_nb_occurrence_per_table_and_column": {},
         "disjoint_semantics": False,
+        "joinability": "fk",
         "split_mean_threshold": 0.0,
         "timeout": None,
         "results_dir": None,
@@ -55,6 +56,9 @@ class MAHILDA(BaseAlgorithm):
         "max_vars": "max_variables",
         "disjoint_semantic": "disjoint_semantics",
         "disjoint_semantics": "disjoint_semantics",
+        "joinability": "joinability",
+        "joinability_scope": "joinability",
+        "full_joinability": "joinability",
     }
 
     def __init__(
@@ -129,6 +133,10 @@ class MAHILDA(BaseAlgorithm):
                 merged["disjoint_semantics"] = MAHILDA._to_bool(value)
                 continue
 
+            if normalised_key == "joinability":
+                merged["joinability"] = MAHILDA._coerce_joinability(value)
+                continue
+
             merged[normalised_key] = value
 
         return merged
@@ -140,6 +148,19 @@ class MAHILDA(BaseAlgorithm):
         if isinstance(value, str):
             return value.strip().lower() in {"1", "true", "yes", "on"}
         return bool(value)
+
+    @staticmethod
+    def _coerce_joinability(value: Any) -> str:
+        if isinstance(value, bool):
+            return "full" if value else "fk"
+        if value is None:
+            return "fk"
+        text = str(value).strip().lower()
+        if text in {"fk", "fk_only", "fk-only", "foreign_keys", "foreign-keys"}:
+            return "fk"
+        if text in {"full", "full_join", "full-joinability", "value_overlap"}:
+            return "full"
+        raise ValueError(f"joinability must be 'fk' or 'full', got {value!r}")
 
     @staticmethod
     def _coerce_positive_int(value: Any, fallback: int) -> int:
@@ -197,6 +218,7 @@ class MAHILDA(BaseAlgorithm):
         max_occurrence_map_typed = cast(Dict[str, Dict[str, int]], max_occurrence_map)
 
         disjoint_semantics = bool(runtime_settings.get("disjoint_semantics", False))
+        joinability = MAHILDA._coerce_joinability(runtime_settings.get("joinability", "fk"))
         split_mean_threshold = self._coerce_float(
             runtime_settings.get("split_mean_threshold"),
             self.DEFAULT_SETTINGS["split_mean_threshold"],
@@ -212,8 +234,10 @@ class MAHILDA(BaseAlgorithm):
 
         previous_disjoint = mahilda_core.APPLY_DISJOINT
         previous_threshold = mahilda_core.SPLIT_PRUNING_MEAN_THRESHOLD
+        previous_full_join = mahilda_core.APPLY_FULL_JOINABILITY
         mahilda_core.APPLY_DISJOINT = disjoint_semantics
         mahilda_core.SPLIT_PRUNING_MEAN_THRESHOLD = split_mean_threshold
+        mahilda_core.APPLY_FULL_JOINABILITY = (joinability == "full")
 
         start_time = time.time()
 
@@ -278,6 +302,7 @@ class MAHILDA(BaseAlgorithm):
         finally:
             mahilda_core.APPLY_DISJOINT = previous_disjoint
             mahilda_core.SPLIT_PRUNING_MEAN_THRESHOLD = previous_threshold
+            mahilda_core.APPLY_FULL_JOINABILITY = previous_full_join
             if temp_results_dir and os.path.isdir(temp_results_dir):
                 shutil.rmtree(temp_results_dir, ignore_errors=True)
 
