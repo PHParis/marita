@@ -8,6 +8,7 @@ from mahilda.cli import (
     mlflow_start,
     mlflow_ui,
     paper_benchmark,
+    paper_pipeline,
     run,
     smoke,
     test_data,
@@ -89,6 +90,13 @@ def main(argv: list[str] | None = None) -> int:
     paper_parser.add_argument("--settings", default=None)
     paper_parser.add_argument("--host", default=None)
     paper_parser.add_argument("--dry-run", action="store_true")
+
+    pipeline_parser = subparsers.add_parser("paper-pipeline", help="Run the full paper experiment pipeline")
+    pipeline_parser.add_argument("--settings", default="configs/paper/benchmark_83.yaml")
+    pipeline_parser.add_argument("--host", default="auto")
+    pipeline_parser.add_argument("--dry-run", action="store_true")
+    pipeline_parser.add_argument("--status", action="store_true")
+    pipeline_parser.add_argument("--reset", action="store_true")
 
     smoke_parser = subparsers.add_parser("smoke", help="Run fast local smoke test")
     smoke_parser.add_argument("-v", "--verbose", action="store_true")
@@ -184,6 +192,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.dry_run:
             paper_args.append("--dry-run")
         return paper_benchmark.main(paper_args)
+
+    if args.command == "paper-pipeline":
+        pipeline_args: list[str] = ["--settings", args.settings, "--host", args.host]
+        if args.dry_run:
+            pipeline_args.append("--dry-run")
+        if args.status:
+            pipeline_args.append("--status")
+        if args.reset:
+            pipeline_args.append("--reset")
+        return paper_pipeline.main(pipeline_args)
 
     if args.command == "smoke":
         smoke_args: list[str] = ["--config", args.config]
