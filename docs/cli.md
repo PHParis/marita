@@ -113,7 +113,7 @@ Behavior notes:
 
 Runs the extracted ISWC 2026 paper benchmark protocol across selected databases and algorithms. This command is the preferred path for reproducing paper numbers because it generates per-run configs with the paper parameters and wraps every selected algorithm with a uniform wall-clock timeout and RSS memory limit.
 
-Install benchmark extras first when running any baseline (`AMIE3`, `SPIDER`, `POPPER`):
+Install benchmark extras first when running Java baselines (`AMIE3`, `SPIDER`). POPPER uses an external `run-popper` command; see `docs/popper-user-space-install.md`.
 
 ```bash
 uv sync --extra benchmark

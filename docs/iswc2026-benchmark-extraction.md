@@ -113,7 +113,7 @@ allow_singletons.
 
 Notes:
 
-- POPPER depends on vendored Popper plus `clingo` and SWI-Prolog / `pyswip` runtime support.
+- POPPER depends on an external `run-popper` wrapper; see `docs/popper-user-space-install.md`.
 - Current direct `mahilda benchmark` execution does not enforce the paper timeout uniformly for POPPER.
 - The paper-runner added for reproduction wraps the whole command with a wall-clock timeout.
 

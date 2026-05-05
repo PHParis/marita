@@ -100,7 +100,7 @@ uv run mahilda benchmark --config configs/config.yago-core.yaml --baseline POPPE
 
 Remaining caveats:
 
-- Requires `clingo` and SWI-Prolog runtime dependencies.
+- Requires external `run-popper`; see `docs/popper-user-space-install.md`.
 - The current adapter derives search size from table count and may create a very large Prolog task for YAGO.
 - It likely needs table filtering, max-table limits, or a dedicated small YAGO subset before a full run is practical.
 

@@ -66,8 +66,8 @@ def test_spider_integration(tmp_path: Path) -> None:
 def test_popper_integration(tmp_path: Path) -> None:
     if not _should_run_integration():
         pytest.skip("Set MAHILDA_RUN_INTEGRATION=1 to run integration tests")
-    if shutil.which("clingo") is None or shutil.which("swipl") is None:
-        pytest.skip("clingo and swipl are required for Popper integration")
+    if shutil.which("run-popper") is None:
+        pytest.skip("run-popper is required for Popper integration")
 
     db_path = tmp_path / "test.db"
     _ensure_test_db(db_path)

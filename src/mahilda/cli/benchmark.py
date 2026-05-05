@@ -74,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         timeout=config.benchmark.timeout,
         memory_gb=config.benchmark.memory_gb,
         java_heap_gb=config.benchmark.java_heap_gb,
+        popper_command=config.benchmark.popper_command,
     )
 
     try:

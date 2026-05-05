@@ -56,6 +56,14 @@ Do not launch the real pipeline until the count is `83`.
 
 ## 3. Dry Run
 
+Before the full pipeline, verify external POPPER works on each server:
+
+```bash
+run-popper "$HOME/Popper/examples/iggp-rps-next-score"
+```
+
+If `run-popper` is missing, follow `docs/popper-user-space-install.md`.
+
 Run on each server:
 
 ```bash

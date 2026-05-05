@@ -18,6 +18,7 @@ algorithm:
 benchmark:
   baseline: POPPER
   timeout: 7200
+  popper_command: run-popper
 
 batch:
   workers: 1

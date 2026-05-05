@@ -22,10 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-benchmark = [
-  "clingo>=5.7",
-  "pyswip>=0.2.10",
-]
+benchmark = []
 datasets = [
   "requests>=2.31",
   "beautifulsoup4>=4.12",
@@ -43,7 +40,7 @@ where = ["src"]
 include = ["mahilda*"]
 
 [tool.setuptools.package-data]
-"mahilda.evaluation" = ["third_party/**/*.jar", "third_party/popper/lp/*.pl"]
+"mahilda.evaluation" = ["third_party/**/*.jar"]
 "mahilda.evaluation.datasets" = ["*.sh"]
 
 [dependency-groups]
@@ -64,7 +61,7 @@ addopts = "-ra --strict-markers --strict-config --cov=mahilda --cov-report=term-
 markers = [
   "integration: marks slow external dependency integration tests",
   "java_required: marks tests that require Java runtime",
-  "prolog_required: marks tests that require clingo and SWI-Prolog",
+  "prolog_required: marks tests that require external Popper/SWI-Prolog tooling",
 ]
 
 [tool.coverage.run]
@@ -73,7 +70,6 @@ source = ["mahilda"]
 omit = [
   "src/mahilda/evaluation/third_party/amie3/*",
   "src/mahilda/evaluation/third_party/metanome/*",
-  "src/mahilda/evaluation/third_party/popper/*",
 ]
 
 [tool.coverage.report]
@@ -90,7 +86,6 @@ extend-exclude = [
   "research/legacy",
   "src/mahilda/algorithms/mahilda_core",
   "src/mahilda/evaluation/third_party",
-  "src/mahilda/evaluation/baselines/popper.py",
   "src/mahilda/utils/log_setup.py",
   "src/mahilda/utils/monitor.py",
 ]
@@ -136,12 +131,10 @@ exclude = [
   "legacy",
   "research",
   "**/evaluation/third_party/**",
-  "**/evaluation/third_party/popper/**",
   "**/__pycache__",
 ]
 ignore = [
   "src/mahilda/algorithms/mahilda_core",
-  "src/mahilda/evaluation/baselines/popper.py",
   "src/mahilda/evaluation/baselines/spider.py",
   "src/mahilda/evaluation/baselines/amie3.py",
   "src/mahilda/utils/rules.py",

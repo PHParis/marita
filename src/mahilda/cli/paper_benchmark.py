@@ -368,6 +368,8 @@ def _build_config(
             "memory_gb": memory_gb,
             "java_heap_gb": java_heap_gb,
         }
+        if algorithm == "POPPER":
+            config["benchmark"]["popper_command"] = "run-popper"
     return config
 
 

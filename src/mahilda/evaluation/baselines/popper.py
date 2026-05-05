@@ -1,48 +1,76 @@
-import importlib
+from __future__ import annotations
+
 import json
 import logging
 import os
-import shutil
-import sys
+import re
+import shlex
 import tempfile
 import warnings
 from pathlib import Path
-from types import ModuleType
+from typing import Any, cast
 
 from mahilda.algorithms.base_algorithm import BaseAlgorithm
 from mahilda.utils.rules import Predicate, Rule, TGDRule
+from mahilda.utils.run_cmd import run_cmd
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
 
-def import_and_reload_package(package_name: str) -> ModuleType:
-    package = importlib.import_module(package_name)
-    importlib.reload(package)
-    return package
-
 class Popper(BaseAlgorithm):
-    def discover_rules(self, **kwargs) -> list[Rule]:
-        # Copy vendored Popper sources to a runtime package path.
-        script_dir = Path(__file__).resolve().parent
-        popper_source = script_dir.parent / "third_party" / "popper"
+    def __init__(self, database: Any) -> None:
+        super().__init__(database)
+        self._safe_to_original_table: dict[str, str] = {}
+
+    def discover_rules(self, **kwargs: Any) -> list[Rule]:
         results_path = Path(str(kwargs.get("results_dir", "results")))
+        results_path.mkdir(parents=True, exist_ok=True)
         runtime_root_arg = kwargs.get("runtime_dir")
-        temp_runtime: tempfile.TemporaryDirectory[str] | None = None
+        timeout = int(kwargs.get("timeout", 300))
+        memory_gb = float(kwargs.get("memory_gb", 15.0))
+        popper_command = self._resolve_popper_command(kwargs.get("popper_command"))
+
+        runtime_context: tempfile.TemporaryDirectory[str] | None = None
         if runtime_root_arg:
             runtime_root = Path(str(runtime_root_arg))
             runtime_root.mkdir(parents=True, exist_ok=True)
         else:
-            temp_runtime = tempfile.TemporaryDirectory(prefix=f"popper_{self.database.base_name}_")
-            runtime_root = Path(temp_runtime.name)
-        runtime_package = runtime_root / "popper"
+            runtime_context = tempfile.TemporaryDirectory(prefix=f"popper_{self.database.base_name}_")
+            runtime_root = Path(runtime_context.name)
 
         try:
-            shutil.copytree(popper_source, runtime_package, dirs_exist_ok=True)
-        except Exception as e:
-            logger.error("Error copying Popper sources: %s", e)
-            return []
+            return self._discover_with_external_popper(
+                results_path=results_path,
+                runtime_root=runtime_root,
+                timeout=timeout,
+                memory_gb=memory_gb,
+                popper_command=popper_command,
+            )
+        finally:
+            if runtime_context is not None:
+                runtime_context.cleanup()
 
+    @staticmethod
+    def _resolve_popper_command(configured_command: Any) -> list[str]:
+        value = configured_command or os.environ.get("MAHILDA_POPPER_CMD") or "run-popper"
+        if isinstance(value, (list, tuple)):
+            command = [str(item) for item in value]
+        else:
+            command = shlex.split(str(value))
+        if not command:
+            raise ValueError("Popper command cannot be empty.")
+        return command
+
+    def _discover_with_external_popper(
+        self,
+        *,
+        results_path: Path,
+        runtime_root: Path,
+        timeout: int,
+        memory_gb: float,
+        popper_command: list[str],
+    ) -> list[Rule]:
         tables = self.database.get_table_names()
         if not tables:
             logger.warning("No tables found in the database.")
@@ -53,184 +81,134 @@ class Popper(BaseAlgorithm):
         max_body = max(3, number_of_tables - 1)
         max_vars = number_max_attributes
 
-        prolog_tmp = str(runtime_root / "prolog_tmp")
-        results_path_str = str(results_path)
-
-        compatibility_path = os.path.join(results_path_str, f"compatibility_{self.database.base_name}.json")
-
-        if os.path.exists(compatibility_path):
-            with open(compatibility_path) as f:
-                compatibility_dir = json.load(f)
+        compatibility_path = results_path / f"compatibility_{self.database.base_name}.json"
+        if compatibility_path.exists():
+            loaded_compatibility = json.loads(compatibility_path.read_text(encoding="utf-8"))
+            compatibility_dir = loaded_compatibility if isinstance(loaded_compatibility, dict) else {}
         else:
-            compatibility_dir = []
+            compatibility_dir = {}
 
-        directories = self.generate_prolog_files(prolog_tmp, compatibility_dir)
-        rules = []
-        sys.path.insert(0, str(runtime_root))
-
-        try:
-            for directory in directories:
-                try:
-                    popper = import_and_reload_package("popper")
-                    settings = popper.util.Settings(
-                        kbpath=directory,
-                        max_body=max_body,
-                        max_vars=max_vars,
-                        quiet=False,
-                        debug=True,
-                    )
-                    try:
-                        prog, score, stats = popper.loop.learn_solution(settings)
-                    except Exception as e:
-                        logger.error("Popper learning error: %s", e)
-                        raise Exception("Popper failed to learn a solution") from e
-
-                    if prog is None:
-                        continue
-
-                    raw_rules = popper.util.format_prog(popper.util.order_prog(prog)).split("\n")
-                    for raw_rule in raw_rules:
-                        if not raw_rule.strip():
-                            continue
-                        rule = self.process_raw_rule(raw_rule, score)
-                        if rule:
-                            rules.append(rule)
-                except Exception as e:
-                    logger.error("Error processing directory %s: %s", directory, e)
-                    raise
-        finally:
-            if sys.path and sys.path[0] == str(runtime_root):
-                sys.path.pop(0)
-            if temp_runtime is not None:
-                temp_runtime.cleanup()
-
+        problem_dirs = self.generate_prolog_files(str(runtime_root / "prolog_tmp"), compatibility_dir)
+        rules: list[Rule] = []
+        for problem_dir in problem_dirs:
+            output_file = results_path / f"{Path(problem_dir).name}_popper.stdout"
+            cmd = [
+                *popper_command,
+                problem_dir,
+                "--timeout",
+                str(timeout),
+                "--max-body",
+                str(max_body),
+                "--max-vars",
+                str(max_vars),
+            ]
+            if not run_cmd(cmd, timeout=timeout, memory_limit_gb=memory_gb, stdout_path=output_file, logger=logger):
+                raise RuntimeError("External Popper command failed, timed out, or exceeded memory limit.")
+            rules.extend(self.parse_popper_output(output_file.read_text(encoding="utf-8", errors="replace")))
         return rules
 
-    def process_raw_rule(self, raw_rule: str, score) -> Rule | None:
-        variables_used = {}
-        try:
-            head, body = raw_rule.split(":-")
-            head = head.strip()
-            body = body.strip().rstrip(".")
-        except ValueError:
-            logger.warning("Invalid rule format: %s", raw_rule)
-            return None
+    def parse_popper_output(self, output: str) -> list[Rule]:
+        if "NO SOLUTION" in output:
+            return []
 
-        body_lst = self.parse_predicates(body, variables_used)
-        head_lst = self.parse_head(head, variables_used)
-
-        try:
-            precision = float(score[0]) / (score[0] + score[1])
-        except (IndexError, ZeroDivisionError):
-            precision = 0
-
-        # Remove variables used only once
-        variables_to_delete = [var for var, count in variables_used.items() if count == 1]
-        body_lst = [pred for pred in body_lst if pred.variable2 not in variables_to_delete]
-        head_lst = [pred for pred in head_lst if pred.variable2 not in variables_to_delete]
-
-        if not body_lst and not head_lst:
-            return None
-
-        return self.convert_prologrule_to_rule(raw_rule, precision, -1)
-
-    def parse_predicates(self, body: str, variables_used: dict) -> list[Predicate]:
-        predicates = []
-        for predicate in body.split("),"):
-            predicate = predicate.strip().rstrip(")")
-            try:
-                relation, variables = predicate.split("(")
-                variables = variables.split(",")
-            except ValueError:
-                logger.warning("Invalid predicate format: %s", predicate)
+        precision = self._extract_score(output, "Precision")
+        recall = self._extract_score(output, "Recall")
+        rules: list[Rule] = []
+        in_solution = False
+        for raw_line in output.splitlines():
+            line = raw_line.strip()
+            if not line:
                 continue
-            for var in variables:
-                variables_used[var] = variables_used.get(var, 0) + 1
-            pred_id = self.get_random_id()
-            predicates.append(Predicate(pred_id, relation.strip(), var))
-        return predicates
+            if "SOLUTION" in line:
+                in_solution = True
+                continue
+            if in_solution and set(line) == {"*"}:
+                in_solution = False
+                continue
+            if in_solution and ":-" in line and line.endswith("."):
+                rule = self.convert_prologrule_to_rule(line, precision, recall)
+                if rule is not None:
+                    rules.append(rule)
+        return rules
 
-    def parse_head(self, head: str, variables_used: dict) -> list[Predicate]:
-        predicates = []
-        try:
-            relation, variables = head.split("(")
-            variables = variables.split(",")
-        except ValueError:
-            logger.warning("Invalid head format: %s", head)
-            return predicates
-        for var in variables:
-            variables_used[var] = variables_used.get(var, 0) + 1
-        pred_id = self.get_random_id()
-        predicates.append(Predicate(pred_id, relation.strip(), var))
-        return predicates
+    @staticmethod
+    def _extract_score(output: str, label: str) -> float:
+        match = re.search(rf"{label}:([0-9.]+|n/a)", output)
+        if not match or match.group(1) == "n/a":
+            return -1.0
+        return float(match.group(1))
 
-    def convert_prologrule_to_rule(self, prolog_rule: str, precision: float, recall: float) -> TGDRule:
-        data_str = prolog_rule.replace(".", "")
+    def convert_prologrule_to_rule(self, prolog_rule: str, precision: float, recall: float) -> TGDRule | None:
+        data_str = prolog_rule.strip().rstrip(".")
         try:
             head, body = data_str.split(":-")
         except ValueError:
             logger.warning("Invalid rule format: %s", prolog_rule)
             return None
 
-        body = body.split("),") if body.count(")") > 1 else [body]
-        new_body = []
-        new_head = []
-        variables_usage = {}
+        new_body: list[Predicate] = []
+        new_head: list[Predicate] = []
+        variable_usage: dict[str, int] = {}
 
-        for attribute in body:
-            attribute = attribute.strip().rstrip(")")
-            try:
-                relation, vars_part = attribute.split("(")
-            except ValueError:
-                logger.warning("Invalid attribute format: %s", attribute)
-                continue
-            variables = vars_part.split(",")
-            attributes_names = self.database.get_attribute_names(relation.strip())
-            for i, var in enumerate(variables):
-                if i >= len(attributes_names):
-                    attribute_name = f"attribute{i}"
-                else:
-                    attribute_name = attributes_names[i]
-                pred_id = self.get_random_id()
-                new_body.append(Predicate(pred_id, f"{relation}{self.relation_attribute_sep}{attribute_name}", var))
-                variables_usage[var] = variables_usage.get(var, 0) + 1
+        for attribute in self._split_literals(body):
+            self._append_literal_predicates(attribute, new_body, variable_usage)
+        self._append_literal_predicates(head, new_head, variable_usage)
 
-        head_relation, head_vars = head.split("(")
-        head_vars = head_vars.rstrip(")").split(",")
-        attributes_names = self.database.get_attribute_names(head_relation.strip())
-
-        for i, var in enumerate(head_vars):
-            if i >= len(attributes_names):
-                attribute_name = f"attribute{i}"
-            else:
-                attribute_name = attributes_names[i]
-            pred_id = self.get_random_id()
-            new_head.append(Predicate(pred_id, f"{head_relation}{self.relation_attribute_sep}{attribute_name}", var))
-            variables_usage[var] = variables_usage.get(var, 0) + 1
-
-        # Filter predicates based on variable usage
-        new_new_body = [pred for pred in new_body if variables_usage.get(pred.variable2, 0) > 1]
-        new_new_head = [pred for pred in new_head if variables_usage.get(pred.variable2, 0) > 1]
+        filtered_body = [pred for pred in new_body if variable_usage.get(pred.variable2, 0) > 1]
+        filtered_head = [pred for pred in new_head if variable_usage.get(pred.variable2, 0) > 1]
 
         return TGDRule(
-            list(set(new_new_body)),
-            list(set(new_new_head)),
+            cast("Any", tuple(set(filtered_body))),
+            cast("Any", tuple(set(filtered_head))),
             display=prolog_rule,
             accuracy=precision,
-            confidence=recall
+            confidence=recall,
         )
 
-    def generate_prolog_files(self, prolog_tmp_path: str, compatibility_dir: dict = None) -> list[str]:
-        """
-        Generates Prolog files for each table in the database.
+    @staticmethod
+    def _split_literals(body: str) -> list[str]:
+        literals: list[str] = []
+        current: list[str] = []
+        depth = 0
+        for char in body:
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+            if char == "," and depth == 0:
+                literal = "".join(current).strip()
+                if literal:
+                    literals.append(literal)
+                current = []
+                continue
+            current.append(char)
+        literal = "".join(current).strip()
+        if literal:
+            literals.append(literal)
+        return literals
 
-        Args:
-            prolog_tmp_path (str): The path where the Prolog files will be created.
-            compatibility_dir (dict, optional): Compatibility information. Defaults to None.
+    def _append_literal_predicates(
+        self,
+        literal: str,
+        target: list[Predicate],
+        variable_usage: dict[str, int],
+    ) -> None:
+        try:
+            relation, vars_part = literal.strip().rstrip(")").split("(", 1)
+        except ValueError:
+            logger.warning("Invalid literal format: %s", literal)
+            return
+        safe_relation = relation.strip()
+        original_relation = self._safe_to_original_table.get(safe_relation, safe_relation)
+        variables = [var.strip() for var in vars_part.split(",")]
+        attribute_names = self.database.get_attribute_names(original_relation)
+        for index, var in enumerate(variables):
+            attribute_name = attribute_names[index] if index < len(attribute_names) else f"attribute{index}"
+            pred_id = self.get_random_id()
+            target.append(Predicate(pred_id, f"{original_relation}{self.relation_attribute_sep}{attribute_name}", var))
+            variable_usage[var] = variable_usage.get(var, 0) + 1
 
-        Returns:
-            List[str]: A list of paths to the directories created for each table.
-        """
+    def generate_prolog_files(self, prolog_tmp_path: str, compatibility_dir: dict | None = None) -> list[str]:
         if compatibility_dir is None:
             compatibility_dir = {}
 
@@ -242,6 +220,7 @@ class Popper(BaseAlgorithm):
         max_vars = 3
         max_body = 6
         created_dirs = []
+        self._safe_to_original_table = {self.clean_string(table): table for table in tables}
 
         if compatibility_dir:
             possible_heads = self.get_possible_heads(compatibility_dir)
@@ -254,24 +233,25 @@ class Popper(BaseAlgorithm):
             if table not in possible_heads:
                 continue
 
-            dir_path = os.path.join(prolog_tmp_path, table)
+            safe_table = self.clean_string(table)
+            dir_path = os.path.join(prolog_tmp_path, safe_table)
             os.makedirs(dir_path, exist_ok=True)
             created_dirs.append(dir_path)
 
             predicates = self.database.get_attribute_names(table)
             examples = [
-                f"pos({self.clean_string(table)}({','.join(self.sanitize_identifier(str(el)) for el in row)}))."
+                f"pos({safe_table}({','.join(self.sanitize_identifier(str(el)) for el in row)}))."
                 for row in self.database._select_query(table, predicates)
             ]
 
-            with open(os.path.join(dir_path, "exs.pl"), "w") as exs_file:
+            with open(os.path.join(dir_path, "exs.pl"), "w", encoding="utf-8") as exs_file:
                 exs_file.write("\n".join(examples) + "\n")
 
             max_vars = max(max_vars, len(predicates))
 
-            head_pred = f"head_pred({self.clean_string(table)}, {len(predicates)}).\n"
+            head_pred = f"head_pred({safe_table}, {len(predicates)}).\n"
             body_preds = []
-            bk_predicates = [f":- dynamic {self.clean_string(table)}/{len(predicates)}.\n"]
+            bk_predicates = [f":- dynamic {safe_table}/{len(predicates)}.\n"]
 
             for other_table in tables:
                 if other_table == table or other_table not in possible_other_tables.get(table, []):
@@ -287,7 +267,7 @@ class Popper(BaseAlgorithm):
                     bk_predicates.append(f"{other_safe_table}({','.join(str_row)}).\n")
 
             bk_predicates = sorted(bk_predicates)
-            with open(os.path.join(dir_path, "bk.pl"), "w") as bk_file:
+            with open(os.path.join(dir_path, "bk.pl"), "w", encoding="utf-8") as bk_file:
                 bk_file.writelines(bk_predicates)
 
             bias_content = (
@@ -298,12 +278,12 @@ class Popper(BaseAlgorithm):
                 + "".join(body_preds)
             )
 
-            with open(os.path.join(dir_path, "bias.pl"), "w") as bias_file:
+            with open(os.path.join(dir_path, "bias.pl"), "w", encoding="utf-8") as bias_file:
                 bias_file.write(bias_content)
 
         return created_dirs
 
-    def is_integer(self, value) -> bool:
+    def is_integer(self, value: Any) -> bool:
         if isinstance(value, int) and not isinstance(value, bool):
             return True
         if isinstance(value, str):
@@ -311,23 +291,20 @@ class Popper(BaseAlgorithm):
         return False
 
     def filter_non_alpha(self, input_string: str) -> str:
-        import re
-        return re.sub(r'[^a-zA-Z]', '', input_string)
+        return re.sub(r"[^a-zA-Z]", "", input_string)
 
     def sanitize_identifier(self, identifier: str) -> str:
-        """Sanitize the given identifier."""
         if identifier is None or str(identifier).lower() == "none":
-            return '_'
+            return "_"
         if self.is_integer(identifier):
             return str(identifier)
         identifier = self.filter_non_alpha(identifier)
         filtered = "".join(ch for ch in identifier if ch.isalpha()).lower()
         return filtered if filtered else "_"
 
-    def clean_string(self, s: str) -> str:
-        """Clean the given string by removing specified characters."""
+    def clean_string(self, value: str) -> str:
         forbidden_chars = "'() \n.:-/,¡"
-        return "".join(ch for ch in s.lower().replace(" ", "") if ch not in forbidden_chars)
+        return "".join(ch for ch in value.lower().replace(" ", "") if ch not in forbidden_chars)
 
     def get_possible_heads(self, compatibility_dir: dict, sep: str = "___sep___") -> list[str]:
         heads = []
@@ -345,6 +322,7 @@ class Popper(BaseAlgorithm):
 
     def get_random_id(self) -> str:
         import random
+
         return f"id-{random.randint(0, 10000)}"
 
     @property

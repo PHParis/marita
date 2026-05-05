@@ -43,6 +43,7 @@ class BenchmarkConfig:
     timeout: int
     memory_gb: float
     java_heap_gb: int
+    popper_command: str | None
 
 
 @dataclass(frozen=True)
@@ -132,6 +133,7 @@ class AppConfig:
                 timeout=int(benchmark.get("timeout", 300)),
                 memory_gb=float(benchmark.get("memory_gb", 15.0)),
                 java_heap_gb=int(benchmark.get("java_heap_gb", 13)),
+                popper_command=(str(benchmark["popper_command"]) if "popper_command" in benchmark else None),
             ),
             batch=BatchConfig(
                 workers=int(batch.get("workers", 3)),

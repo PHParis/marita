@@ -162,6 +162,36 @@ def test_benchmark_processor_passes_timeout_to_amie3(monkeypatch, tmp_path: Path
     assert str(captured["results_dir"]).endswith("AMIE3_demo")
 
 
+def test_benchmark_processor_passes_popper_command(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    class FakePopper:
+        def __init__(self, db_util) -> None:
+            del db_util
+
+        def discover_rules(self, **kwargs):
+            captured.update(kwargs)
+            return []
+
+    monkeypatch.setattr(processors_cli, "Popper", FakePopper)
+    monkeypatch.setattr(processors_cli, "AlchemyUtility", _FakeAlchemyUtility)
+    monkeypatch.setattr(processors_cli.RuleIO, "save_rules_to_json", lambda rules, path: len(rules))
+    monkeypatch.setattr(BaselineProcessor, "generate_report", lambda *args, **kwargs: None)
+
+    processor = BaselineProcessor(
+        baseline_name="POPPER",
+        database_name=Path("demo.db"),
+        database_path=tmp_path,
+        results_dir=tmp_path / "results",
+        logger=logging.getLogger("test_benchmark_popper_command"),
+        popper_command="custom-popper",
+    )
+
+    assert processor.discover_rules() == 0
+    assert captured["popper_command"] == "custom-popper"
+    assert str(captured["runtime_dir"]).endswith("POPPER_demo/_runtime")
+
+
 def test_run_report_path_generation(tmp_path: Path) -> None:
     results_dir = tmp_path / "results"
     results_dir.mkdir(parents=True, exist_ok=True)

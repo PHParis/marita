@@ -222,6 +222,7 @@ class BaselineProcessor:
         timeout: int = 300,
         memory_gb: float = 15.0,
         java_heap_gb: int = 13,
+        popper_command: str | None = None,
     ):
         self.baseline_name = normalise_baseline_name(baseline_name)
         self.database_name = database_name
@@ -233,6 +234,7 @@ class BaselineProcessor:
         self.timeout = timeout
         self.memory_gb = memory_gb
         self.java_heap_gb = java_heap_gb
+        self.popper_command = popper_command
 
     def discover_rules(self) -> int:
         baseline_map = {
@@ -268,6 +270,8 @@ class BaselineProcessor:
             discover_kwargs["java_heap_gb"] = self.java_heap_gb
             if self.baseline_name == "POPPER":
                 discover_kwargs["runtime_dir"] = str(artifacts.run_dir / "_runtime")
+                if self.popper_command:
+                    discover_kwargs["popper_command"] = self.popper_command
             start = time.time()
             raw_rules = algo.discover_rules(**discover_kwargs)
 

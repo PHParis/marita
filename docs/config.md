@@ -31,7 +31,10 @@
 
 - `baseline` (optional): one of `AMIE3`, `SPIDER`, `POPPER`, `ILP`
 - `input_tsv` (optional): prebuilt TSV path for AMIE3 direct graph input
-- `timeout` (optional positive number): AMIE3 subprocess timeout in seconds, default `300`
+- `timeout` (optional positive number): baseline subprocess timeout in seconds, default `300`
+- `memory_gb` (optional positive number): baseline subprocess RSS limit in GB
+- `java_heap_gb` (optional positive int): Java baseline heap size for AMIE3/SPIDER
+- `popper_command` (optional string): external Popper command, default `MAHILDA_POPPER_CMD` or `run-popper`
 
 ## `batch`
 

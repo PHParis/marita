@@ -107,7 +107,7 @@
 - [x] Run `uv run mahilda run --config configs/config.example.yaml`.
 - [x] Run `uv run mahilda benchmark --config configs/config.example.yaml --baseline AMIE3` only in environments with Java available.
 - [x] Run `uv run mahilda benchmark --config configs/config.example.yaml --baseline SPIDER` only in environments with Java available.
-- [ ] Run `uv run mahilda benchmark --config configs/config.example.yaml --baseline POPPER` only in environments with `clingo` and SWI-Prolog available.
+- [ ] Run `uv run mahilda benchmark --config configs/config.example.yaml --baseline POPPER` only in environments with `run-popper` available.
 
 ## Explicit Non-Goals
 
