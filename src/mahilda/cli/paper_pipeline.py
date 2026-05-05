@@ -568,11 +568,20 @@ def recover_stale_jobs(settings: PipelineSettings, stage: StageSettings) -> None
     pending_dir = settings.queue_dir / "queue" / stage.id / "pending"
     now = time.time()
     for running_path in running_dir.glob("*.json"):
+        if running_path.name.endswith(".heartbeat.json"):
+            continue
         heartbeat_path = running_path.with_suffix(".heartbeat.json")
         marker = heartbeat_path if heartbeat_path.exists() else running_path
-        if now - marker.stat().st_mtime < settings.stale_after_seconds:
+        try:
+            marker_mtime = marker.stat().st_mtime
+        except FileNotFoundError:
             continue
-        job = json.loads(running_path.read_text(encoding="utf-8"))
+        if now - marker_mtime < settings.stale_after_seconds:
+            continue
+        try:
+            job = json.loads(running_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            continue
         if int(job.get("attempt", 1)) > int(job.get("max_retries", 0)):
             failed = settings.queue_dir / "queue" / stage.id / "failed" / f"{job['job_id']}.json"
             job["result"] = {"status": "error", "error": "stale running job exceeded retry budget"}

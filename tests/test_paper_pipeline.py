@@ -84,6 +84,46 @@ def test_claim_job_moves_only_one_pending_file(tmp_path: Path) -> None:
     assert len(list((settings.queue_dir / "queue" / stage.id / "running").glob("*.json"))) == 1
 
 
+def test_recover_stale_jobs_ignores_vanished_running_file(tmp_path: Path, monkeypatch) -> None:
+    settings = paper_pipeline.load_settings(_settings_file(tmp_path, db_count=1))
+    databases = paper_pipeline.resolve_databases(settings.database_dir, settings.expected_databases)
+    paper_pipeline.initialise_queue(settings, databases)
+    stage = next(stage for stage in settings.stages if stage.id == "030_b1_mahilda")
+    claim = paper_pipeline.claim_job(settings, stage, "tipi00")
+    assert claim is not None
+    running_path, _ = claim
+    original_stat = Path.stat
+
+    def stat_with_race(self, *args, **kwargs):
+        if self == running_path:
+            raise FileNotFoundError(running_path)
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", stat_with_race)
+
+    paper_pipeline.recover_stale_jobs(settings, stage)
+
+
+def test_recover_stale_jobs_ignores_orphan_heartbeat_file(tmp_path: Path, monkeypatch) -> None:
+    settings = paper_pipeline.load_settings(_settings_file(tmp_path, db_count=1))
+    databases = paper_pipeline.resolve_databases(settings.database_dir, settings.expected_databases)
+    paper_pipeline.initialise_queue(settings, databases)
+    stage = next(stage for stage in settings.stages if stage.id == "030_b1_mahilda")
+    running_dir = settings.queue_dir / "queue" / stage.id / "running"
+    heartbeat_path = running_dir / "orphan.heartbeat.json"
+    heartbeat_path.write_text('{"host": "tipi00"}', encoding="utf-8")
+
+    monkeypatch.setattr(
+        paper_pipeline.time,
+        "time",
+        lambda: heartbeat_path.stat().st_mtime + settings.stale_after_seconds + 1,
+    )
+
+    paper_pipeline.recover_stale_jobs(settings, stage)
+
+    assert heartbeat_path.exists()
+
+
 def test_resolve_databases_enforces_expected_count(tmp_path: Path) -> None:
     settings = paper_pipeline.load_settings(_settings_file(tmp_path, db_count=2))
 
