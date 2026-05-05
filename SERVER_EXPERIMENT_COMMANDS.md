@@ -110,6 +110,18 @@ Check the local server log:
 tail -f "logs/paper_pipeline/runner_$(hostname -s).log"
 ```
 
+Useful commands after launch:
+
+| Command | Utility |
+| --- | --- |
+| `Ctrl-C` | Stop `tail -f` only. This does not stop the `nohup` runner. |
+| `jobs -l` | Show background jobs in the current shell, including the runner PID. |
+| `ps -fp <PID>` | Check what a printed PID is running. For example, use this for the PID printed by `nohup`. |
+| `disown` | Detach the background runner from the current shell before exiting SSH. |
+| `exit` | Close the SSH session after the runner has been started with `nohup ... &`. |
+
+If the same stage appears in multiple logs, that is expected. All servers work on the same shared stage, but each server claims different jobs from the queue.
+
 ## 5. Pipeline Order
 
 The pipeline runs stages in this order:
@@ -192,10 +204,22 @@ To stop the runner on the current server:
 pkill -TERM -f 'mahilda paper-pipeline'
 ```
 
+To stop one specific PID after verifying it with `ps -fp <PID>`:
+
+```bash
+kill <PID>
+```
+
 If a process does not exit after a short wait:
 
 ```bash
 pkill -KILL -f 'mahilda paper-pipeline'
+```
+
+Or, for one specific PID only:
+
+```bash
+kill -9 <PID>
 ```
 
 Use `SIGKILL` only as a last resort.
