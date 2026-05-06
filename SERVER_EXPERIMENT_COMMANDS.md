@@ -170,7 +170,79 @@ nohup uv run mahilda paper-pipeline \
 
 The runner resumes from the shared queue. Completed jobs are not rerun.
 
-## 8. Reset
+## 8. Restart After Config Changes
+
+Restart the runner after changing worker counts or resource limits in `configs/paper/benchmark_83.yaml`. Settings are loaded only when the runner starts, so already-running processes do not see YAML edits.
+
+Do not run `--reset` for a restart. Resetting discards the shared queue state.
+
+Run on each server:
+
+```bash
+cd /home/paris/dev/py/mahilda
+pgrep -af '[m]ahilda paper-pipeline.*configs/paper/benchmark_83.yaml'
+```
+
+It is normal to see two matching processes for one runner:
+
+```text
+75637 uv run mahilda paper-pipeline --settings configs/paper/benchmark_83.yaml --host auto
+75645 /people/paris/mahilda/.venv/bin/python3 /people/paris/mahilda/.venv/bin/mahilda paper-pipeline --settings configs/paper/benchmark_83.yaml --host auto
+```
+
+The first process is the `uv run` wrapper. The second process is the actual Python `mahilda paper-pipeline` child. Stop both PIDs for a clean restart:
+
+```bash
+kill -TERM 75637 75645
+sleep 10
+pgrep -af '[m]ahilda paper-pipeline.*configs/paper/benchmark_83.yaml'
+```
+
+If either PID is still listed:
+
+```bash
+kill -KILL 75637 75645
+```
+
+If AMIE3 or POPPER was active when the runner was stopped, check for orphaned child jobs before relaunching:
+
+```bash
+pgrep -af '[m]ahilda.cli.main benchmark.*--baseline (AMIE3|POPPER)|[j]ava.*amie-milestone-intKB.jar|[r]un-popper'
+```
+
+If those processes are still running and you intentionally want a hard restart, stop them too:
+
+```bash
+pkill -TERM -f '[m]ahilda.cli.main benchmark.*--baseline (AMIE3|POPPER)'
+pkill -TERM -f '[j]ava.*amie-milestone-intKB.jar'
+pkill -TERM -f '[r]un-popper'
+sleep 10
+pkill -KILL -f '[m]ahilda.cli.main benchmark.*--baseline (AMIE3|POPPER)'
+pkill -KILL -f '[j]ava.*amie-milestone-intKB.jar'
+pkill -KILL -f '[r]un-popper'
+```
+
+Relaunch exactly one runner per server:
+
+```bash
+cd /home/paris/dev/py/mahilda
+mkdir -p logs/paper_pipeline
+nohup uv run mahilda paper-pipeline \
+  --settings configs/paper/benchmark_83.yaml \
+  --host auto \
+  > "logs/paper_pipeline/runner_$(hostname -s).log" 2>&1 &
+```
+
+Verify the restart:
+
+```bash
+pgrep -af '[m]ahilda paper-pipeline.*configs/paper/benchmark_83.yaml'
+tail -f "logs/paper_pipeline/runner_$(hostname -s).log"
+```
+
+If active jobs were killed, their queue markers can remain in `running` until stale recovery requeues them. With the current config, `stale_after_seconds: 4200` means this can take up to about 70 minutes.
+
+## 9. Reset
 
 Only use this before a real launch, or if you intentionally want to discard the shared queue state:
 
@@ -183,7 +255,7 @@ uv run mahilda paper-pipeline \
 
 Do not reset while jobs are running.
 
-## 9. Final Artifacts
+## 10. Final Artifacts
 
 When the pipeline finishes, `tipi00` performs aggregation and writes:
 
