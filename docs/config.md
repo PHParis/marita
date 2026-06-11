@@ -24,17 +24,18 @@
 
 ## `algorithm`
 
-- `name` (required): one of `MAHILDA`, `AMIE3`, `SPIDER`, `POPPER`, `ILP`
+- `name` (required): one of `MAHILDA`, `AMIE3`, `SPIDER`, `POPPER`, `MATILDA`, `ILP`
 - `parameters` (optional mapping): algorithm-specific parameters
 
 ## `benchmark`
 
-- `baseline` (optional): one of `AMIE3`, `SPIDER`, `POPPER`, `ILP`
+- `baseline` (optional): one of `AMIE3`, `SPIDER`, `POPPER`, `MATILDA`, `ILP`
 - `input_tsv` (optional): prebuilt TSV path for AMIE3 direct graph input
 - `timeout` (optional positive number): baseline subprocess timeout in seconds, default `300`
 - `memory_gb` (optional positive number): baseline subprocess RSS limit in GB
 - `java_heap_gb` (optional positive int): Java baseline heap size for AMIE3/SPIDER
 - `popper_command` (optional string): external Popper command, default `MAHILDA_POPPER_CMD` or `run-popper`
+- `matilda_path` (optional string): sibling MATILDA repository path, default `MAHILDA_MATILDA_PATH` or `../MATILDA`
 
 ## `batch`
 

@@ -32,10 +32,11 @@ uv sync --extra benchmark
 uv run mahilda benchmark --config configs/config.example.yaml --baseline AMIE3
 uv run mahilda benchmark --config configs/config.example.yaml --baseline SPIDER
 uv run mahilda benchmark --config configs/config.example.yaml --baseline POPPER
+uv run mahilda benchmark --config configs/config.example.yaml --baseline MATILDA
 uv run mahilda benchmark --config configs/config.example.yaml --baseline AMIE3 --input-tsv data/yago/yago_tiny_core.tsv
 ```
 
-- Allowed baselines: `AMIE3`, `SPIDER`, `POPPER` (`ILP` is normalized to `POPPER`).
+- Allowed baselines: `AMIE3`, `SPIDER`, `POPPER`, `MATILDA` (`ILP` is normalized to `POPPER`).
 - Baseline selection comes from `--baseline` first, then `benchmark.baseline`, then `algorithm.name`.
 - `--input-tsv` lets AMIE3 consume a prebuilt RDF benchmark TSV directly.
 
@@ -113,7 +114,7 @@ Behavior notes:
 
 Runs the extracted ISWC 2026 paper benchmark protocol across selected databases and algorithms. This command is the preferred path for reproducing paper numbers because it generates per-run configs with the paper parameters and wraps every selected algorithm with a uniform wall-clock timeout and RSS memory limit.
 
-Install benchmark extras first when running Java baselines (`AMIE3`, `SPIDER`). POPPER uses an external `run-popper` command; see `docs/popper-user-space-install.md`.
+Install benchmark extras first when running Java baselines (`AMIE3`, `SPIDER`). POPPER uses an external `run-popper` command; see `docs/popper-user-space-install.md`. MATILDA uses the sibling repo from `benchmark.matilda_path`, `MAHILDA_MATILDA_PATH`, or `../MATILDA`.
 
 ```bash
 uv sync --extra benchmark
@@ -130,7 +131,7 @@ Important flags:
 
 - `--database-dir`: directory containing `.db` files, default `data/relational`
 - `--databases`: `paper`, `all`, or a comma-separated list of database names
-- `--algorithms`: comma-separated list from `MAHILDA`, `AMIE3`, `SPIDER`, `POPPER`, or `ALL`
+- `--algorithms`: comma-separated list from `MAHILDA`, `AMIE3`, `SPIDER`, `POPPER`, `MATILDA`, or `ALL`
 - `--output`: output root, default `results/iswc2026`
 - `--logs`: log root, default `logs/iswc2026`
 - `--timeout`: per-run timeout in seconds, default `7200`

@@ -26,6 +26,7 @@ def test_load_config_resolves_paths_relative_to_config_file(tmp_path: Path) -> N
                 "  tracking_uri: file:../mlruns",
                 "benchmark:",
                 "  input_tsv: ../data/kg.tsv",
+                "  matilda_path: ../../MATILDA",
             ]
         ),
         encoding="utf-8",
@@ -38,6 +39,7 @@ def test_load_config_resolves_paths_relative_to_config_file(tmp_path: Path) -> N
     assert loaded["results"]["output_dir"] == str((config_dir / "../results").resolve())
     assert loaded["mlflow"]["tracking_uri"] == f"file:{(config_dir / '../mlruns').resolve()}"
     assert loaded["benchmark"]["input_tsv"] == str((config_dir / "../data/kg.tsv").resolve())
+    assert loaded["benchmark"]["matilda_path"] == str((config_dir / "../../MATILDA").resolve())
 
 
 def test_load_config_rejects_invalid_algorithm_name(tmp_path: Path) -> None:
@@ -261,6 +263,7 @@ def test_load_typed_config_builds_dataclass_view(tmp_path: Path) -> None:
                 "  timeout: 88",
                 "benchmark:",
                 "  timeout: 99",
+                "  matilda_path: ../MATILDA",
             ]
         ),
         encoding="utf-8",
@@ -272,6 +275,7 @@ def test_load_typed_config_builds_dataclass_view(tmp_path: Path) -> None:
     assert config.batch.workers == 5
     assert config.batch.timeout == 88
     assert config.benchmark.timeout == 99
+    assert config.benchmark.matilda_path == (tmp_path / "../MATILDA").resolve()
     assert config.database.name.name == "my.db"
 
 

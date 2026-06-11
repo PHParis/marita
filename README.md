@@ -13,7 +13,7 @@ uv run mahilda smoke
 ## CLI Overview
 
 - `uv run mahilda run --config configs/config.example.yaml` runs `MAHILDA` on one database.
-- `uv run mahilda benchmark --config configs/config.example.yaml --baseline {AMIE3|SPIDER|POPPER}` runs one baseline.
+- `uv run mahilda benchmark --config configs/config.example.yaml --baseline {AMIE3|SPIDER|POPPER|MATILDA}` runs one baseline.
 - `uv run mahilda download-databases --output data/relational` downloads relational benchmark databases and converts them to SQLite.
 - `uv run mahilda paper-benchmark --dry-run` generates the ISWC 2026 paper benchmark rerun plan.
 - `uv run mahilda import-rdf --input data/yago-tiny.ttl --output-dir data/yago` creates RDF benchmark artifacts.
@@ -98,6 +98,7 @@ uv run pre-commit install
 - `AMIE3`: Java runtime
 - `SPIDER`: Java runtime
 - `POPPER`: external `run-popper` command on `PATH`; see `docs/popper-user-space-install.md`
+- `MATILDA`: sibling MATILDA repo configured with `benchmark.matilda_path`, `MAHILDA_MATILDA_PATH`, or default `../MATILDA`
 
 Install Python baseline extras before running Java competitor benchmarks:
 

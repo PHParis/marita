@@ -6,8 +6,8 @@ import yaml
 
 from mahilda.utils.config_types import AppConfig
 
-ALLOWED_ALGORITHMS = {"MAHILDA", "AMIE3", "SPIDER", "POPPER", "ILP"}
-ALLOWED_BASELINES = {"AMIE3", "SPIDER", "POPPER", "ILP"}
+ALLOWED_ALGORITHMS = {"MAHILDA", "AMIE3", "SPIDER", "POPPER", "MATILDA", "ILP"}
+ALLOWED_BASELINES = {"AMIE3", "SPIDER", "POPPER", "MATILDA", "ILP"}
 
 
 def _is_mapping(value: Any) -> bool:
@@ -110,6 +110,7 @@ def validate_config(config: dict[str, Any]) -> None:
         _expect_positive_number(benchmark, "benchmark", "memory_gb", errors)
         _expect_positive_int(benchmark, "benchmark", "java_heap_gb", errors)
         _expect_non_empty_string(benchmark, "benchmark", "popper_command", errors, required=False)
+        _expect_non_empty_string(benchmark, "benchmark", "matilda_path", errors, required=False)
 
     monitor = _expect_mapping(config, "monitor", errors, required=False)
     if monitor is not None:
@@ -180,6 +181,8 @@ def _normalise_relative_paths(config: dict, config_dir: Path) -> dict:
     benchmark_config = config.get("benchmark")
     if isinstance(benchmark_config, dict) and "input_tsv" in benchmark_config:
         benchmark_config["input_tsv"] = _resolve_path(config_dir, benchmark_config["input_tsv"])
+    if isinstance(benchmark_config, dict) and "matilda_path" in benchmark_config:
+        benchmark_config["matilda_path"] = _resolve_path(config_dir, benchmark_config["matilda_path"])
 
     return config
 

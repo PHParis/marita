@@ -24,7 +24,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--baseline",
-        help="Baseline to run (AMIE3, SPIDER, POPPER). Overrides config algorithm.name.",
+        help="Baseline to run (AMIE3, SPIDER, POPPER, MATILDA). Overrides config algorithm.name.",
     )
     parser.add_argument(
         "--input-tsv",
@@ -44,8 +44,8 @@ def main(argv: list[str] | None = None) -> int:
     baseline_from_config = config.benchmark.baseline or config.algorithm.name
     requested_baseline = args.baseline if args.baseline else baseline_from_config
     baseline_name = normalise_baseline_name(requested_baseline)
-    if baseline_name not in {"AMIE3", "SPIDER", "POPPER"}:
-        logging.getLogger(__name__).error("Benchmark baseline must be one of: AMIE3, SPIDER, POPPER")
+    if baseline_name not in {"AMIE3", "SPIDER", "POPPER", "MATILDA"}:
+        logging.getLogger(__name__).error("Benchmark baseline must be one of: AMIE3, SPIDER, POPPER, MATILDA")
         return 1
 
     database_path = config.database.path
@@ -75,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         memory_gb=config.benchmark.memory_gb,
         java_heap_gb=config.benchmark.java_heap_gb,
         popper_command=config.benchmark.popper_command,
+        matilda_path=getattr(config.benchmark, "matilda_path", None),
     )
 
     try:

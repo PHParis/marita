@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     benchmark_parser.add_argument(
         "--baseline",
         default=None,
-        help="Benchmark baseline to run (AMIE3, SPIDER, POPPER)",
+        help="Benchmark baseline to run (AMIE3, SPIDER, POPPER, MATILDA)",
     )
     benchmark_parser.add_argument(
         "--input-tsv",

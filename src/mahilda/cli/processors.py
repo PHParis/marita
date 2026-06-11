@@ -23,7 +23,7 @@ from mahilda.algorithms.mahilda import MAHILDA
 from mahilda.cli._color import Fore, Style
 from mahilda.cli.artifacts import build_command_artifacts, write_execution_time_metrics, write_markdown_report
 from mahilda.database.alchemy_utility import AlchemyUtility
-from mahilda.evaluation.baselines import Amie3, Popper, Spider
+from mahilda.evaluation.baselines import Amie3, Matilda, Popper, Spider
 from mahilda.utils.rule_io import RuleIO
 
 
@@ -223,6 +223,7 @@ class BaselineProcessor:
         memory_gb: float = 15.0,
         java_heap_gb: int = 13,
         popper_command: str | None = None,
+        matilda_path: Path | None = None,
     ):
         self.baseline_name = normalise_baseline_name(baseline_name)
         self.database_name = database_name
@@ -235,10 +236,12 @@ class BaselineProcessor:
         self.memory_gb = memory_gb
         self.java_heap_gb = java_heap_gb
         self.popper_command = popper_command
+        self.matilda_path = matilda_path
 
     def discover_rules(self) -> int:
         baseline_map = {
             "AMIE3": Amie3,
+            "MATILDA": Matilda,
             "SPIDER": Spider,
             "POPPER": Popper,
         }
@@ -272,6 +275,8 @@ class BaselineProcessor:
                 discover_kwargs["runtime_dir"] = str(artifacts.run_dir / "_runtime")
                 if self.popper_command:
                     discover_kwargs["popper_command"] = self.popper_command
+            if self.baseline_name == "MATILDA" and self.matilda_path is not None:
+                discover_kwargs["matilda_path"] = self.matilda_path
             start = time.time()
             raw_rules = algo.discover_rules(**discover_kwargs)
 

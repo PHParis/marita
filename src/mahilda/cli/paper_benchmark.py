@@ -34,7 +34,7 @@ PAPER_DATABASES = [
     "SAT.db",
 ]
 
-ALGORITHMS = ("MAHILDA", "AMIE3", "SPIDER", "POPPER")
+ALGORITHMS = ("MAHILDA", "AMIE3", "SPIDER", "POPPER", "MATILDA")
 MEMORY_BYTES_PER_GB = 1024**3
 
 
@@ -69,7 +69,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--algorithms",
         default="MAHILDA",
-        help="Comma-separated algorithms to run: MAHILDA, AMIE3, SPIDER, POPPER, or ALL (default: MAHILDA).",
+        help="Comma-separated algorithms to run: MAHILDA, AMIE3, SPIDER, POPPER, MATILDA, or ALL (default: MAHILDA).",
     )
     parser.add_argument(
         "--databases",
@@ -216,7 +216,7 @@ def _shard_databases(databases: list[Path], hosts: Any, host: str | None) -> lis
 def _profile_workers(profile: dict[str, Any]) -> dict[str, int]:
     workers_raw = profile.get("workers")
     raw = cast("dict[str, Any]", workers_raw) if isinstance(workers_raw, dict) else {}
-    defaults = {"MAHILDA": 1, "SPIDER": 1, "AMIE3": 1, "POPPER": 1}
+    defaults = {"MAHILDA": 1, "SPIDER": 1, "AMIE3": 1, "POPPER": 1, "MATILDA": 1}
     for key, value in raw.items():
         defaults[str(key).upper()] = max(1, int(value))
     return defaults
@@ -370,6 +370,8 @@ def _build_config(
         }
         if algorithm == "POPPER":
             config["benchmark"]["popper_command"] = "run-popper"
+        if algorithm == "MATILDA":
+            config["benchmark"]["matilda_path"] = str(Path(__file__).resolve().parents[3].parent / "MATILDA")
     return config
 
 
