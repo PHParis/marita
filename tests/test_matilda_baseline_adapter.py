@@ -42,3 +42,24 @@ def test_convert_rule_translates_external_tgd_shape():
         correct=True,
         compatible=None,
     )
+
+
+def test_discover_rules_forwards_timeout_to_external_matilda(monkeypatch, tmp_path):
+    captured: dict[str, object] = {}
+
+    class FakeExternalMatilda:
+        def __init__(self, database, settings=None):
+            captured["database"] = database
+            captured["settings"] = settings
+
+        def discover_rules(self, **kwargs):
+            captured.update(kwargs)
+            return []
+
+    monkeypatch.setattr(Matilda, "_resolve_matilda_path", staticmethod(lambda configured_path: tmp_path))
+    monkeypatch.setattr(Matilda, "_load_external_matilda", staticmethod(lambda matilda_path: FakeExternalMatilda))
+
+    Matilda(database=object()).discover_rules(results_dir=str(tmp_path / "results"), timeout=7)
+
+    assert captured["results_dir"] == str(tmp_path / "results")
+    assert captured["timeout"] == 7

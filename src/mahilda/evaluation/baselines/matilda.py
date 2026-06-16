@@ -24,12 +24,17 @@ class Matilda(BaseAlgorithm):
         settings = kwargs.get("settings")
         algo = matilda_cls(self.database, settings=settings if isinstance(settings, dict) else None)
 
-        discover_kwargs: dict[str, Any] = {"results_dir": kwargs.get("results_dir")}
+        discover_kwargs: dict[str, Any] = {
+            "results_dir": kwargs.get("results_dir"),
+            "timeout": kwargs.get("timeout"),
+        }
         if "traversal_algorithm" in kwargs:
             discover_kwargs["traversal_algorithm"] = kwargs["traversal_algorithm"]
 
         rules = []
-        for raw_rule in algo.discover_rules(**{key: value for key, value in discover_kwargs.items() if value is not None}):
+        for raw_rule in algo.discover_rules(
+            **{key: value for key, value in discover_kwargs.items() if value is not None}
+        ):
             rules.append(self._convert_rule(raw_rule))
         return rules
 

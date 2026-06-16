@@ -7,8 +7,11 @@ and batch.py. They live here so commands don't depend on each other's internals.
 import logging
 import os
 import shutil
+import signal
+import threading
 import time
 from collections.abc import Callable
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -26,12 +29,41 @@ from mahilda.database.alchemy_utility import AlchemyUtility
 from mahilda.evaluation.baselines import Amie3, Matilda, Popper, Spider
 from mahilda.utils.rule_io import RuleIO
 
+BENCHMARK_TIMEOUT_EXIT_CODE = 124
+
+
+class BenchmarkTimeoutError(TimeoutError):
+    """Raised when a benchmark baseline exceeds its wall-clock limit."""
+
 
 def normalise_baseline_name(name: str) -> str:
     cleaned = name.strip().upper()
     if cleaned == "ILP":
         return "POPPER"
     return cleaned
+
+
+@contextmanager
+def benchmark_timeout(seconds: int):
+    if seconds <= 0 or not hasattr(signal, "SIGALRM") or threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def timeout_handler(signum, frame):
+        del signum, frame
+        raise BenchmarkTimeoutError(f"Benchmark execution exceeded {seconds} seconds")
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, 0)
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer[0] > 0:
+            signal.setitimer(signal.ITIMER_REAL, *previous_timer)
 
 
 class DatabaseProcessor:
@@ -278,7 +310,21 @@ class BaselineProcessor:
             if self.baseline_name == "MATILDA" and self.matilda_path is not None:
                 discover_kwargs["matilda_path"] = self.matilda_path
             start = time.time()
-            raw_rules = algo.discover_rules(**discover_kwargs)
+            try:
+                with benchmark_timeout(self.timeout):
+                    raw_rules = algo.discover_rules(**discover_kwargs)
+            except BenchmarkTimeoutError:
+                elapsed = time.time() - start
+                self.logger.error("Benchmark execution exceeded %s seconds.", self.timeout)
+                write_execution_time_metrics(
+                    metrics_path=artifacts.execution_time_json,
+                    database_stem=self.database_name.stem,
+                    execution_time=elapsed,
+                    status="timeout",
+                    rules_count=0,
+                    algorithm_name=self.baseline_name,
+                )
+                raise
 
             if isinstance(raw_rules, dict):
                 rules = list(raw_rules.keys())

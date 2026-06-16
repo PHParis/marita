@@ -1,4 +1,6 @@
 import logging
+import signal
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -190,6 +192,37 @@ def test_benchmark_processor_passes_popper_command(monkeypatch, tmp_path: Path) 
     assert processor.discover_rules() == 0
     assert captured["popper_command"] == "custom-popper"
     assert str(captured["runtime_dir"]).endswith("POPPER_demo/_runtime")
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGALRM"), reason="SIGALRM is required for hard benchmark timeout")
+def test_benchmark_processor_enforces_hard_timeout(monkeypatch, tmp_path: Path) -> None:
+    class SlowMatilda:
+        def __init__(self, db_util) -> None:
+            del db_util
+
+        def discover_rules(self, **kwargs):
+            del kwargs
+            time.sleep(5)
+            return []
+
+    monkeypatch.setattr(processors_cli, "Matilda", SlowMatilda)
+    monkeypatch.setattr(processors_cli, "AlchemyUtility", _FakeAlchemyUtility)
+
+    processor = BaselineProcessor(
+        baseline_name="MATILDA",
+        database_name=Path("demo.db"),
+        database_path=tmp_path,
+        results_dir=tmp_path / "results",
+        logger=logging.getLogger("test_benchmark_hard_timeout"),
+        timeout=1,
+    )
+
+    started = time.monotonic()
+    with pytest.raises(processors_cli.BenchmarkTimeoutError):
+        processor.discover_rules()
+
+    assert time.monotonic() - started < 3
+    assert (tmp_path / "results" / "MATILDA_demo" / "execution_time_demo.json").exists()
 
 
 def test_run_report_path_generation(tmp_path: Path) -> None:

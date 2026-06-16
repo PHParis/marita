@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import datetime as dt
 import json
 import logging
@@ -36,6 +37,8 @@ PAPER_DATABASES = [
 
 ALGORITHMS = ("MAHILDA", "AMIE3", "SPIDER", "POPPER", "MATILDA")
 MEMORY_BYTES_PER_GB = 1024**3
+TIMEOUT_EXIT_CODE = 124
+PR_SET_PDEATHSIG = 1
 
 
 @dataclass(frozen=True)
@@ -152,7 +155,9 @@ def main(argv: list[str] | None = None) -> int:
     _write_summary(output_dir, specs, results, dry_run=False, host=host)
     failed = [result for result in results if result["status"] != "success"]
     if failed:
-        logger.warning("Completed with %s non-successful runs. See %s", len(failed), _summary_path(output_dir, host, ".json"))
+        logger.warning(
+            "Completed with %s non-successful runs. See %s", len(failed), _summary_path(output_dir, host, ".json")
+        )
         return 1
     logger.info("All runs completed successfully. See %s", _summary_path(output_dir, host, ".json"))
     return 0
@@ -309,7 +314,9 @@ def _build_run_spec(
         ]
 
     stdout_path = output_dir / "timings" / f"{algorithm.lower()}_{database.stem}.stdout"
-    return RunSpec(algorithm=algorithm, database=database, config_path=config_path, command=command, stdout_path=stdout_path)
+    return RunSpec(
+        algorithm=algorithm, database=database, config_path=config_path, command=command, stdout_path=stdout_path
+    )
 
 
 def _build_config(
@@ -395,7 +402,14 @@ def _run_command(spec: RunSpec, *, timeout: int, memory_gb: float) -> dict[str, 
     started_at = dt.datetime.now(dt.timezone.utc)
     spec.stdout_path.parent.mkdir(parents=True, exist_ok=True)
     stdout_handle = spec.stdout_path.open("w", encoding="utf-8")
-    process = subprocess.Popen(spec.command, stdout=stdout_handle, stderr=subprocess.STDOUT, start_new_session=True)
+    popen_kwargs: dict[str, Any] = {
+        "stdout": stdout_handle,
+        "stderr": subprocess.STDOUT,
+        "start_new_session": True,
+    }
+    if os.name == "posix":
+        popen_kwargs["preexec_fn"] = _prepare_child_process
+    process = subprocess.Popen(spec.command, **popen_kwargs)
     oom = threading.Event()
     peak_rss = {"bytes": 0}
     monitor_thread = threading.Thread(
@@ -412,6 +426,9 @@ def _run_command(spec: RunSpec, *, timeout: int, memory_gb: float) -> dict[str, 
         if oom.is_set():
             status = "oom"
             error = f"Memory limit exceeded: {memory_gb} GB"
+        elif return_code == TIMEOUT_EXIT_CODE:
+            status = "timeout"
+            error = f"Execution exceeded {timeout} seconds"
         elif return_code != 0:
             status = "error"
             error = f"Command exited with code {return_code}"
@@ -470,6 +487,16 @@ def _monitor_memory(
         time.sleep(0.5)
 
 
+def _prepare_child_process() -> None:
+    if os.name != "posix":
+        return
+    try:
+        libc = ctypes.CDLL(None)
+        libc.prctl(PR_SET_PDEATHSIG, signal.SIGTERM)
+    except Exception:
+        return
+
+
 def _terminate_process_group(process: subprocess.Popen[Any]) -> None:
     try:
         os.killpg(process.pid, signal.SIGTERM)
@@ -493,7 +520,9 @@ def _summary_path(output_dir: Path, host: str | None, suffix: str) -> Path:
     return output_dir / name
 
 
-def _write_summary(output_dir: Path, specs: list[RunSpec], results: list[dict[str, Any]], *, dry_run: bool, host: str | None) -> None:
+def _write_summary(
+    output_dir: Path, specs: list[RunSpec], results: list[dict[str, Any]], *, dry_run: bool, host: str | None
+) -> None:
     summary_json = _summary_path(output_dir, host, ".json")
     if not dry_run and summary_json.exists():
         try:
@@ -504,9 +533,7 @@ def _write_summary(output_dir: Path, specs: list[RunSpec], results: list[dict[st
             existing_runs = existing.get("runs", [])
             if isinstance(existing_runs, list):
                 by_pair = {
-                    (run.get("algorithm"), run.get("database")): run
-                    for run in existing_runs
-                    if isinstance(run, dict)
+                    (run.get("algorithm"), run.get("database")): run for run in existing_runs if isinstance(run, dict)
                 }
                 for run in results:
                     by_pair[(run.get("algorithm"), run.get("database"))] = run

@@ -8,7 +8,12 @@ try:
 except ImportError:
     MLFLOW_AVAILABLE = False
 
-from mahilda.cli.processors import BaselineProcessor, normalise_baseline_name
+from mahilda.cli.processors import (
+    BENCHMARK_TIMEOUT_EXIT_CODE,
+    BaselineProcessor,
+    BenchmarkTimeoutError,
+    normalise_baseline_name,
+)
 from mahilda.cli.runtime import initialize_directories, mlflow_run_context, scoped_env_vars
 from mahilda.utils.config_loader import load_typed_config
 from mahilda.utils.logging_utils import configure_global_logger
@@ -82,6 +87,9 @@ def main(argv: list[str] | None = None) -> int:
         with scoped_env_vars({"MAHILDA_LOG_DIR": str(log_dir)}), mlflow_run_context(use_mlflow, config.raw):
             processor.discover_rules()
             processor.clean_up()
+    except BenchmarkTimeoutError:
+        logger.error("Baseline benchmark timed out after %s seconds.", config.benchmark.timeout)
+        return BENCHMARK_TIMEOUT_EXIT_CODE
     except Exception:
         logger.error("An error occurred during baseline benchmark execution.", exc_info=True)
         return 1
