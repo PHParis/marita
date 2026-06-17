@@ -202,6 +202,7 @@ def test_wrap_with_systemd_scope_adds_limits(monkeypatch) -> None:
     monkeypatch.delenv("MAHILDA_DISABLE_SYSTEMD_SCOPE", raising=False)
     monkeypatch.setattr(run_cmd_module.os, "name", "posix")
     monkeypatch.setattr(run_cmd_module, "which", lambda name: "/usr/bin/systemd-run" if name == "systemd-run" else None)
+    monkeypatch.setattr(run_cmd_module, "_systemd_user_manager_active", lambda: True)
 
     command = run_cmd_module._wrap_with_systemd_scope(
         ["run-popper", "kb"],
@@ -214,6 +215,25 @@ def test_wrap_with_systemd_scope_adds_limits(monkeypatch) -> None:
     assert "MemoryMax=10737418240" in command
     assert "RuntimeMaxSec=3600" in command
     assert command[-2:] == ["run-popper", "kb"]
+
+
+def test_wrap_with_systemd_scope_falls_back_without_user_manager(monkeypatch) -> None:
+    logger = DummyLogger()
+    monkeypatch.setattr(run_cmd_module.os, "name", "posix")
+    monkeypatch.setattr(run_cmd_module, "which", lambda name: "/usr/bin/systemd-run" if name == "systemd-run" else None)
+    monkeypatch.setattr(run_cmd_module, "_systemd_user_manager_active", lambda: False)
+
+    command = ["run-popper", "kb"]
+
+    assert (
+        run_cmd_module._wrap_with_systemd_scope(
+            command,
+            timeout=3600,
+            memory_limit_gb=10,
+            logger=logger,  # type: ignore[arg-type]
+        )
+        == command
+    )
 
 
 def test_start_memory_monitor_psutil_error(monkeypatch) -> None:

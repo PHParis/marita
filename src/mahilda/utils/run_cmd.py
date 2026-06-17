@@ -134,6 +134,9 @@ def _wrap_with_systemd_scope(
         return command_args
     if which("systemd-run") is None:
         return command_args
+    if not _systemd_user_manager_active():
+        logger.debug("systemd user manager is not active; using process-tree monitoring only.")
+        return command_args
 
     properties = ["--property", "CollectMode=inactive-or-failed"]
     if memory_limit_gb is not None:
@@ -146,6 +149,19 @@ def _wrap_with_systemd_scope(
     wrapped = ["systemd-run", "--user", "--scope", "--quiet", "--wait", "--collect", "--unit", unit, *properties, *command_args]
     logger.info("Executing external command in systemd scope %s.", unit)
     return wrapped
+
+
+def _systemd_user_manager_active() -> bool:
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "is-active", "default.target"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return False
+    return result.returncode == 0
 
 
 def _normalise_command(
