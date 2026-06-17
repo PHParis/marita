@@ -194,6 +194,94 @@ def test_run_command_classifies_internal_timeout_exit_code(monkeypatch, tmp_path
         assert captured["preexec_fn"] is paper_benchmark._prepare_child_process
 
 
+def test_run_command_writes_running_and_final_progress(monkeypatch, tmp_path: Path) -> None:
+    class FakeProcess:
+        pid = 12345
+
+        def __init__(self, *_args, **_kwargs):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(paper_benchmark.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(paper_benchmark, "_monitor_memory", lambda *args, **kwargs: None)
+
+    progress_path = tmp_path / "progress" / "POPPER_Demo.db.json"
+    spec = paper_benchmark.RunSpec(
+        algorithm="POPPER",
+        database=tmp_path / "Demo.db",
+        config_path=tmp_path / "config.yaml",
+        command=["mahilda", "benchmark"],
+        stdout_path=tmp_path / "stdout.log",
+        progress_path=progress_path,
+    )
+
+    result = paper_benchmark._run_command(spec, timeout=7, memory_gb=1)
+    progress = paper_benchmark.json.loads(progress_path.read_text(encoding="utf-8"))
+
+    assert result["status"] == "success"
+    assert progress["status"] == "success"
+    assert progress["algorithm"] == "POPPER"
+    assert progress["database"] == "Demo.db"
+    assert progress["stdout"] == str(spec.stdout_path)
+
+
+def test_print_progress_status_overlays_shared_progress(tmp_path: Path, capsys) -> None:
+    output_dir = tmp_path / "results"
+    specs = [
+        paper_benchmark.RunSpec(
+            algorithm="POPPER",
+            database=tmp_path / "A.db",
+            config_path=tmp_path / "popper_a.yaml",
+            command=["mahilda", "benchmark"],
+            stdout_path=tmp_path / "popper_a.stdout",
+            progress_path=output_dir / "progress" / "POPPER_A.db.json",
+        ),
+        paper_benchmark.RunSpec(
+            algorithm="POPPER",
+            database=tmp_path / "B.db",
+            config_path=tmp_path / "popper_b.yaml",
+            command=["mahilda", "benchmark"],
+            stdout_path=tmp_path / "popper_b.stdout",
+            progress_path=output_dir / "progress" / "POPPER_B.db.json",
+        ),
+        paper_benchmark.RunSpec(
+            algorithm="POPPER",
+            database=tmp_path / "C.db",
+            config_path=tmp_path / "popper_c.yaml",
+            command=["mahilda", "benchmark"],
+            stdout_path=tmp_path / "popper_c.stdout",
+            progress_path=output_dir / "progress" / "POPPER_C.db.json",
+        ),
+    ]
+    paper_benchmark._write_progress(
+        specs[0],
+        {
+            "algorithm": "POPPER",
+            "database": "A.db",
+            "status": "running",
+            "host": "tipi01",
+            "started_at": "2026-06-17T00:00:00+00:00",
+        },
+    )
+    paper_benchmark._write_progress(
+        specs[1],
+        {"algorithm": "POPPER", "database": "B.db", "status": "oom", "error": "Memory limit exceeded"},
+    )
+
+    paper_benchmark.print_progress_status(output_dir, specs)
+    output = capsys.readouterr().out
+
+    assert "Overall 1/3 done  1 running  1 pending  1 failed" in output
+    assert "POPPER: 1/3 done  1 running  1 failed" in output
+    assert "tipi01  POPPER  A.db" in output
+    assert "POPPER  B.db  oom  Memory limit exceeded" in output
+
+
 def test_email_config_uses_environment(monkeypatch) -> None:
     monkeypatch.setenv("MAHILDA_EMAIL_TO", "to@example.com")
     monkeypatch.setenv("MAHILDA_EMAIL_FROM", "from@example.com")

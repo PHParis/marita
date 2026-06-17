@@ -66,6 +66,19 @@ The YAGO config is aligned to paper defaults for reproducibility (`walk_length: 
 
 See `docs/config.md` for full path-resolution behavior and overrides.
 
+## Benchmark Progress
+
+`paper-benchmark` writes live per-run progress files to `<output>/progress/`. When the output directory is on shared storage, any benchmark host can display the global state:
+
+```bash
+uv run mahilda paper-benchmark \
+  --settings configs/paper/benchmark_83.yaml \
+  --hosts tipi01,tipi02 \
+  --status
+```
+
+Use the same `--settings`, `--databases`, `--algorithms`, and `--hosts` values as the running benchmark so pending counts match the intended plan.
+
 ## Email Notifications
 
 `paper-benchmark` can send a best-effort completion email from Python when the run succeeds, fails, raises an exception, or receives `SIGINT`/`SIGTERM`. Email cannot be guaranteed after `SIGKILL`, machine crashes, network outages, or SMTP outages.

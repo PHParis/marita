@@ -6,6 +6,7 @@ import datetime as dt
 import json
 import logging
 import os
+import re
 import signal
 import smtplib
 import socket
@@ -51,6 +52,7 @@ class RunSpec:
     config_path: Path
     command: list[str]
     stdout_path: Path
+    progress_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +154,11 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Generate configs and summary plan without executing benchmark commands.",
     )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Show file-backed benchmark progress from the output directory and exit.",
+    )
     parser.add_argument("--email-to", default=None, help="Send a completion notification to this email address.")
     parser.add_argument("--email-from", default=None, help="Sender address for notification emails.")
     parser.add_argument("--smtp-host", default=None, help="SMTP host for notification emails.")
@@ -170,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_arguments(argv)
     logger = logging.getLogger(__name__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    notifier = EmailNotifier(_email_config_from_args(args), logger)
+    notifier = EmailNotifier(None if args.status else _email_config_from_args(args), logger)
     started_at = dt.datetime.now(dt.timezone.utc)
     host: str | None = None
     output_dir: Path | None = None
@@ -243,7 +250,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         algorithms = _parse_algorithms(args.algorithms)
         databases = _resolve_databases(database_dir, args.databases)
-        databases = _shard_databases(databases, hosts, host)
     except ValueError as exc:
         logger.error("%s", exc)
         exit_code = 1
@@ -272,10 +278,20 @@ def main(argv: list[str] | None = None) -> int:
                 timeout=args.timeout,
                 memory_gb=args.memory_gb,
                 java_heap_gb=java_heap_gb,
+                write_config=not args.status,
             )
             for algorithm in algorithms
             for db in databases
         ]
+
+        if args.status:
+            print_progress_status(output_dir, specs)
+            exit_code = 0
+            finish()
+            return exit_code
+
+        databases = _shard_databases(databases, hosts, host)
+        specs = [spec for spec in specs if spec.database in databases]
 
         if args.dry_run:
             _write_summary(output_dir, specs, [], dry_run=True, host=host)
@@ -570,6 +586,7 @@ def _build_run_spec(
     timeout: int,
     memory_gb: float = 15.0,
     java_heap_gb: int = 13,
+    write_config: bool = True,
 ) -> RunSpec:
     config_path = output_dir / "configs" / f"{algorithm.lower()}_{database.stem}.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -585,7 +602,8 @@ def _build_run_spec(
         memory_gb=memory_gb,
         java_heap_gb=java_heap_gb,
     )
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    if write_config:
+        config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 
     if algorithm == "MAHILDA":
         command = [sys.executable, "-m", "mahilda.cli.main", "run", "--config", str(config_path)]
@@ -602,8 +620,14 @@ def _build_run_spec(
         ]
 
     stdout_path = output_dir / "timings" / f"{algorithm.lower()}_{database.stem}.stdout"
+    progress_path = _progress_path(output_dir, algorithm, database)
     return RunSpec(
-        algorithm=algorithm, database=database, config_path=config_path, command=command, stdout_path=stdout_path
+        algorithm=algorithm,
+        database=database,
+        config_path=config_path,
+        command=command,
+        stdout_path=stdout_path,
+        progress_path=progress_path,
     )
 
 
@@ -688,6 +712,20 @@ def _run_specs(specs: list[RunSpec], *, timeout: int, memory_gb: float, workers:
 def _run_command(spec: RunSpec, *, timeout: int, memory_gb: float) -> dict[str, Any]:
     start = time.time()
     started_at = dt.datetime.now(dt.timezone.utc)
+    host = socket.gethostname().split(".")[0]
+    _write_progress(
+        spec,
+        {
+            "algorithm": spec.algorithm,
+            "database": spec.database.name,
+            "status": "running",
+            "host": host,
+            "started_at": started_at.isoformat(),
+            "config": str(spec.config_path),
+            "command": spec.command,
+            "stdout": str(spec.stdout_path),
+        },
+    )
     spec.stdout_path.parent.mkdir(parents=True, exist_ok=True)
     stdout_handle = spec.stdout_path.open("w", encoding="utf-8")
     popen_kwargs: dict[str, Any] = {
@@ -735,7 +773,7 @@ def _run_command(spec: RunSpec, *, timeout: int, memory_gb: float) -> dict[str, 
         stdout_handle.close()
 
     ended_at = dt.datetime.now(dt.timezone.utc)
-    return {
+    result = {
         "algorithm": spec.algorithm,
         "database": spec.database.name,
         "status": status,
@@ -747,8 +785,125 @@ def _run_command(spec: RunSpec, *, timeout: int, memory_gb: float) -> dict[str, 
         "command": spec.command,
         "stdout": str(spec.stdout_path),
         "peak_rss_bytes": peak_rss["bytes"],
-        "host": socket.gethostname().split(".")[0],
+        "host": host,
     }
+    _write_progress(spec, result)
+    return result
+
+
+def _progress_path(output_dir: Path, algorithm: str, database: Path) -> Path:
+    key = _safe_progress_key(f"{algorithm}_{database.name}")
+    return output_dir / "progress" / f"{key}.json"
+
+
+def _safe_progress_key(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value)
+
+
+def _write_progress(spec: RunSpec, payload: dict[str, Any]) -> None:
+    if spec.progress_path is None:
+        return
+    _atomic_write_json(spec.progress_path, {**payload, "updated_at": dt.datetime.now(dt.timezone.utc).isoformat()})
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def print_progress_status(output_dir: Path, specs: list[RunSpec]) -> None:
+    by_key = {(spec.algorithm, spec.database.name): spec for spec in specs}
+    progress = _read_progress(output_dir, specs)
+    rows = []
+    for key, spec in by_key.items():
+        payload = progress.get(key)
+        if payload is None:
+            payload = {
+                "algorithm": spec.algorithm,
+                "database": spec.database.name,
+                "status": "pending",
+                "config": str(spec.config_path),
+                "stdout": str(spec.stdout_path),
+            }
+        rows.append(payload)
+
+    total = len(rows)
+    done_statuses = {"success", "timeout", "oom", "error"}
+    done = sum(1 for row in rows if row.get("status") in done_statuses)
+    running = sum(1 for row in rows if row.get("status") == "running")
+    pending = sum(1 for row in rows if row.get("status") == "pending")
+    failed = sum(1 for row in rows if row.get("status") in {"timeout", "oom", "error"})
+    percent = (done / total * 100) if total else 100.0
+    print(f"Overall {done}/{total} done  {running} running  {pending} pending  {failed} failed")
+    print(f"[{_progress_bar(done, total)}] {percent:.1f}%")
+
+    algorithms = sorted({str(row.get("algorithm")) for row in rows})
+    for algorithm in algorithms:
+        algo_rows = [row for row in rows if row.get("algorithm") == algorithm]
+        algo_done = sum(1 for row in algo_rows if row.get("status") in done_statuses)
+        algo_running = sum(1 for row in algo_rows if row.get("status") == "running")
+        algo_failed = sum(1 for row in algo_rows if row.get("status") in {"timeout", "oom", "error"})
+        print(f"{algorithm}: {algo_done}/{len(algo_rows)} done  {algo_running} running  {algo_failed} failed")
+
+    running_rows = sorted(
+        (row for row in rows if row.get("status") == "running"),
+        key=lambda row: (str(row.get("host", "")), str(row.get("algorithm", "")), str(row.get("database", ""))),
+    )
+    if running_rows:
+        print("")
+        print("Running:")
+        now = dt.datetime.now(dt.timezone.utc)
+        for row in running_rows:
+            elapsed = _elapsed_since(row.get("started_at"), now)
+            host = row.get("host") or "unknown"
+            print(f"  {host}  {row.get('algorithm')}  {row.get('database')}  {elapsed}")
+
+    failed_rows = sorted(
+        (row for row in rows if row.get("status") in {"timeout", "oom", "error"}),
+        key=lambda row: (str(row.get("algorithm", "")), str(row.get("database", ""))),
+    )
+    if failed_rows:
+        print("")
+        print("Failures:")
+        for row in failed_rows:
+            print(f"  {row.get('algorithm')}  {row.get('database')}  {row.get('status')}  {row.get('error') or ''}")
+
+
+def _read_progress(output_dir: Path, specs: list[RunSpec]) -> dict[tuple[str, str], dict[str, Any]]:
+    progress: dict[tuple[str, str], dict[str, Any]] = {}
+    expected_paths = {spec.progress_path for spec in specs if spec.progress_path is not None}
+    for path in expected_paths:
+        if path is None or not path.exists():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            key = (str(payload.get("algorithm")), str(payload.get("database")))
+            progress[key] = payload
+    return progress
+
+
+def _progress_bar(done: int, total: int, width: int = 40) -> str:
+    if total <= 0:
+        return "#" * width
+    filled = round(width * done / total)
+    return "#" * filled + "-" * (width - filled)
+
+
+def _elapsed_since(value: object, now: dt.datetime) -> str:
+    if not isinstance(value, str):
+        return "unknown"
+    try:
+        started = dt.datetime.fromisoformat(value)
+    except ValueError:
+        return "unknown"
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=dt.timezone.utc)
+    return format_duration(max(0.0, (now - started).total_seconds()))
 
 
 def _monitor_memory(

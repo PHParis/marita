@@ -125,6 +125,7 @@ uv run mahilda paper-benchmark --dry-run
 uv run mahilda paper-benchmark --algorithms MAHILDA --databases paper
 uv run mahilda paper-benchmark --algorithms MAHILDA,AMIE3 --databases Biodegradability,CORA
 uv run mahilda paper-benchmark --algorithms ALL --databases paper --timeout 7200 --memory-gb 15
+uv run mahilda paper-benchmark --settings configs/paper/benchmark_83.yaml --hosts tipi01,tipi02 --status
 ```
 
 Important flags:
@@ -137,9 +138,12 @@ Important flags:
 - `--timeout`: per-run timeout in seconds, default `7200`
 - `--memory-gb`: per-run RSS limit, default `15`
 - `--dry-run`: generate configs and `summary.json` / `summary.md` without executing commands
+- `--status`: read live progress from `<output>/progress/*.json`, render a progress bar, and exit
 - `--email-to`: send a best-effort completion email after the run; SMTP can be configured with `--email-from`, `--smtp-host`, `--smtp-port`, `--smtp-user`, `--smtp-password-env`, and `--smtp-starttls`
 
 The generated MAHILDA configs set `disjoint_semantics: true` and keep that setting editable under `algorithm.parameters`.
+
+Running benchmarks write one atomic JSON progress file per planned algorithm/database pair under `<output>/progress/`. The status view rebuilds the expected plan from the same settings and overlays those files, so any server sharing the output directory can show the same global state without contacting the other servers. Use the same `--settings`, `--databases`, `--algorithms`, and `--hosts` values for `--status` that you use for the benchmark run.
 
 Email notifications can also be configured with environment variables:
 

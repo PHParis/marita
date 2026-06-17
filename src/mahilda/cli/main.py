@@ -91,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     paper_parser.add_argument("--host", default=None)
     paper_parser.add_argument("--hosts", default=None)
     paper_parser.add_argument("--dry-run", action="store_true")
+    paper_parser.add_argument("--status", action="store_true")
     paper_parser.add_argument("--email-to", default=None)
     paper_parser.add_argument("--email-from", default=None)
     paper_parser.add_argument("--smtp-host", default=None)
@@ -201,6 +202,8 @@ def main(argv: list[str] | None = None) -> int:
             paper_args.extend(["--hosts", args.hosts])
         if args.dry_run:
             paper_args.append("--dry-run")
+        if args.status:
+            paper_args.append("--status")
         if args.email_to:
             paper_args.extend(["--email-to", args.email_to])
         if args.email_from:

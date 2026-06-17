@@ -149,6 +149,18 @@ uv run mahilda paper-pipeline \
   --status
 ```
 
+For direct `paper-benchmark` runs, use the live progress files in the shared output directory:
+
+```bash
+cd /home/paris/dev/py/mahilda
+uv run mahilda paper-benchmark \
+  --settings configs/paper/benchmark_83.yaml \
+  --hosts tipi01,tipi02 \
+  --status
+```
+
+The command reads `results/paper_table2/progress/*.json` and reconstructs pending work from the same settings file, so the output should match on every server that sees the shared filesystem. Pass the same `--hosts`, `--algorithms`, and `--databases` values that were used for the running benchmark.
+
 Also useful:
 
 ```bash
