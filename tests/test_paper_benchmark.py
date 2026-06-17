@@ -123,6 +123,34 @@ def test_shard_databases_is_deterministic_and_non_overlapping(tmp_path: Path) ->
     assert sum(len(shard) for shard in shards) == len(set(flattened))
 
 
+def test_resolve_hosts_override_settings_hosts() -> None:
+    profile = {"hosts": ["tipi00", "tipi01", "tipi02", "tipi04"]}
+
+    assert paper_benchmark._resolve_hosts("tipi01,tipi02", profile) == ["tipi01", "tipi02"]
+
+
+def test_two_host_override_shards_all_databases_once(tmp_path: Path) -> None:
+    dbs = [tmp_path / f"db{i}.db" for i in range(83)]
+    hosts = paper_benchmark._resolve_hosts("tipi01,tipi02", {"hosts": ["tipi00", "tipi01", "tipi02", "tipi04"]})
+
+    tipi01 = paper_benchmark._shard_databases(dbs, hosts, "tipi01")
+    tipi02 = paper_benchmark._shard_databases(dbs, hosts, "tipi02")
+
+    assert len(tipi01) == 42
+    assert len(tipi02) == 41
+    assert sorted(tipi01 + tipi02) == sorted(dbs)
+    assert set(tipi01).isdisjoint(tipi02)
+
+
+def test_resolve_hosts_rejects_duplicates() -> None:
+    try:
+        paper_benchmark._resolve_hosts("tipi01,tipi01", {})
+    except ValueError as exc:
+        assert "duplicate" in str(exc)
+    else:
+        raise AssertionError("Expected duplicate hosts to raise")
+
+
 def test_parse_all_algorithms() -> None:
     assert paper_benchmark._parse_algorithms("ALL") == ["MAHILDA", "AMIE3", "SPIDER", "POPPER", "MATILDA"]
 

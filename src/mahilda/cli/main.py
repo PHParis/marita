@@ -89,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     paper_parser.add_argument("--java-heap-gb", type=int, default=None)
     paper_parser.add_argument("--settings", default=None)
     paper_parser.add_argument("--host", default=None)
+    paper_parser.add_argument("--hosts", default=None)
     paper_parser.add_argument("--dry-run", action="store_true")
 
     pipeline_parser = subparsers.add_parser("paper-pipeline", help="Run the full paper experiment pipeline")
@@ -189,6 +190,8 @@ def main(argv: list[str] | None = None) -> int:
             paper_args.extend(["--settings", args.settings])
         if args.host:
             paper_args.extend(["--host", args.host])
+        if args.hosts:
+            paper_args.extend(["--hosts", args.hosts])
         if args.dry_run:
             paper_args.append("--dry-run")
         return paper_benchmark.main(paper_args)

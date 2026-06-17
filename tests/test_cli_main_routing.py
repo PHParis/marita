@@ -170,6 +170,34 @@ def test_main_routes_batch_command(monkeypatch) -> None:
     ]
 
 
+def test_main_routes_paper_benchmark_hosts_override(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_paper_benchmark_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 29
+
+    monkeypatch.setattr("mahilda.cli.paper_benchmark.main", fake_paper_benchmark_main)
+
+    exit_code = main(
+        [
+            "paper-benchmark",
+            "--settings",
+            "configs/paper/benchmark_83.yaml",
+            "--algorithms",
+            "POPPER",
+            "--host",
+            "auto",
+            "--hosts",
+            "tipi01,tipi02",
+        ]
+    )
+
+    assert exit_code == 29
+    assert "--hosts" in captured["argv"]
+    assert captured["argv"][captured["argv"].index("--hosts") + 1] == "tipi01,tipi02"
+
+
 def test_main_routes_smoke_command(monkeypatch) -> None:
     captured: dict[str, list[str]] = {}
 

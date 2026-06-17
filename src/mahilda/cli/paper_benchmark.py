@@ -86,6 +86,11 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--settings", default=None, help="YAML benchmark profile with hosts, limits, and workers.")
     parser.add_argument("--host", default=None, help="Host shard to run, or 'auto' to use hostname -s.")
     parser.add_argument(
+        "--hosts",
+        default=None,
+        help="Comma-separated hosts for sharding; overrides hosts from --settings.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Generate configs and summary plan without executing benchmark commands.",
@@ -101,7 +106,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         profile = _load_profile(args.settings)
         _apply_profile_defaults(args, profile)
-        host = _resolve_host(args.host, profile)
+        hosts = _resolve_hosts(args.hosts, profile)
+        host = _resolve_host(args.host, hosts)
     except ValueError as exc:
         logger.error("%s", exc)
         return 1
@@ -114,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         algorithms = _parse_algorithms(args.algorithms)
         databases = _resolve_databases(database_dir, args.databases)
-        databases = _shard_databases(databases, profile.get("hosts", []), host)
+        databases = _shard_databases(databases, hosts, host)
     except ValueError as exc:
         logger.error("%s", exc)
         return 1
@@ -198,25 +204,43 @@ def _apply_profile_defaults(args: argparse.Namespace, profile: dict[str, Any]) -
         args.java_heap_gb = int(limits["java_heap_gb"])
 
 
-def _resolve_host(value: str | None, profile: dict[str, Any]) -> str | None:
+def _resolve_hosts(value: str | None, profile: dict[str, Any]) -> list[str]:
+    if value:
+        hosts = [host.strip() for host in value.split(",") if host.strip()]
+        if not hosts:
+            raise ValueError("--hosts must contain at least one host.")
+        if len(hosts) != len(set(hosts)):
+            raise ValueError("--hosts contains duplicate host names.")
+        return hosts
+
+    hosts_raw = profile.get("hosts", [])
+    if not hosts_raw:
+        return []
+    if not isinstance(hosts_raw, list):
+        raise ValueError("Benchmark settings hosts must be a list.")
+    hosts = [str(item) for item in hosts_raw]
+    if len(hosts) != len(set(hosts)):
+        raise ValueError("Benchmark settings hosts contains duplicate host names.")
+    return hosts
+
+
+def _resolve_host(value: str | None, hosts: list[str]) -> str | None:
     if not value:
         return None
     host = socket.gethostname().split(".")[0] if value == "auto" else value
-    hosts = profile.get("hosts", [])
     if hosts and host not in hosts:
-        allowed = ", ".join(str(item) for item in hosts)
+        allowed = ", ".join(hosts)
         raise ValueError(f"Host {host!r} is not in benchmark settings hosts: {allowed}")
     return host
 
 
-def _shard_databases(databases: list[Path], hosts: Any, host: str | None) -> list[Path]:
+def _shard_databases(databases: list[Path], hosts: list[str], host: str | None) -> list[Path]:
     if not host:
         return databases
-    if not isinstance(hosts, list) or not hosts:
-        raise ValueError("--host requires a non-empty hosts list in --settings.")
-    host_names = [str(item) for item in hosts]
-    host_index = host_names.index(host)
-    return [db for index, db in enumerate(databases) if index % len(host_names) == host_index]
+    if not hosts:
+        raise ValueError("--host requires a non-empty hosts list from --hosts or --settings.")
+    host_index = hosts.index(host)
+    return [db for index, db in enumerate(databases) if index % len(hosts) == host_index]
 
 
 def _profile_workers(profile: dict[str, Any]) -> dict[str, int]:
