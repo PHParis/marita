@@ -151,7 +151,6 @@ def _wrap_with_systemd_scope(
         "--user",
         "--scope",
         "--quiet",
-        "--wait",
         "--collect",
         "--unit",
         unit,

@@ -211,7 +211,8 @@ def test_wrap_with_systemd_scope_adds_limits(monkeypatch) -> None:
         logger=logger,  # type: ignore[arg-type]
     )
 
-    assert command[:5] == ["systemd-run", "--user", "--scope", "--quiet", "--wait"]
+    assert command[:4] == ["systemd-run", "--user", "--scope", "--quiet"]
+    assert "--wait" not in command
     assert "MemoryMax=10737418240" in command
     assert "RuntimeMaxSec=3600" in command
     assert command[-2:] == ["run-popper", "kb"]
