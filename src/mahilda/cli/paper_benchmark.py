@@ -39,6 +39,7 @@ ALGORITHMS = ("MAHILDA", "AMIE3", "SPIDER", "POPPER", "MATILDA")
 MEMORY_BYTES_PER_GB = 1024**3
 TIMEOUT_EXIT_CODE = 124
 PR_SET_PDEATHSIG = 1
+SUBPROCESS_CLEANUP_GRACE_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -406,6 +407,7 @@ def _run_command(spec: RunSpec, *, timeout: int, memory_gb: float) -> dict[str, 
         "stdout": stdout_handle,
         "stderr": subprocess.STDOUT,
         "start_new_session": True,
+        "env": _external_command_env(),
     }
     if os.name == "posix":
         popen_kwargs["preexec_fn"] = _prepare_child_process
@@ -422,7 +424,7 @@ def _run_command(spec: RunSpec, *, timeout: int, memory_gb: float) -> dict[str, 
     status = "success"
     error: str | None = None
     try:
-        return_code = process.wait(timeout=timeout)
+        return_code = process.wait(timeout=timeout + SUBPROCESS_CLEANUP_GRACE_SECONDS)
         if oom.is_set():
             status = "oom"
             error = f"Memory limit exceeded: {memory_gb} GB"
@@ -495,6 +497,14 @@ def _prepare_child_process() -> None:
         libc.prctl(PR_SET_PDEATHSIG, signal.SIGTERM)
     except Exception:
         return
+
+
+def _external_command_env() -> dict[str, str]:
+    env = os.environ.copy()
+    local_bin = str(Path.home() / ".local" / "bin")
+    current_path = env.get("PATH", "")
+    env["PATH"] = f"{local_bin}{os.pathsep}{current_path}" if current_path else local_bin
+    return env
 
 
 def _terminate_process_group(process: subprocess.Popen[Any]) -> None:

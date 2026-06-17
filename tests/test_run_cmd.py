@@ -1,3 +1,5 @@
+# pyright: reportArgumentType=false
+
 from __future__ import annotations
 
 import logging
@@ -31,14 +33,25 @@ class FakeProcess:
         self._stderr = stderr
         self._timeout = timeout
         self.terminated = False
+        self.killed = False
 
     def communicate(self, timeout=None):
         if self._timeout:
             raise subprocess.TimeoutExpired(cmd="x", timeout=timeout)
         return "", self._stderr
 
+    def wait(self, timeout=None):
+        del timeout
+        return self.returncode
+
     def terminate(self):
         self.terminated = True
+
+    def send_signal(self, sig):
+        if sig == run_cmd_module.signal.SIGTERM:
+            self.terminated = True
+        if sig == run_cmd_module.signal.SIGKILL:
+            self.killed = True
 
     def poll(self):
         return self.returncode
@@ -73,6 +86,7 @@ def test_run_cmd_success(monkeypatch) -> None:
 
     monkeypatch.setattr(run_cmd_module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(run_cmd_module, "_start_memory_monitor", lambda **kwargs: None)
+    monkeypatch.setattr(run_cmd_module, "_wrap_with_systemd_scope", lambda command_args, **kwargs: command_args)
     monkeypatch.setattr(run_cmd_module.os, "killpg", lambda *args, **kwargs: (_ for _ in ()).throw(OSError()))
 
     assert run_cmd_module.run_cmd("python -V", logger=logger) is True
@@ -86,6 +100,7 @@ def test_run_cmd_failure_with_stderr(monkeypatch) -> None:
 
     monkeypatch.setattr(run_cmd_module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(run_cmd_module, "_start_memory_monitor", lambda **kwargs: None)
+    monkeypatch.setattr(run_cmd_module, "_wrap_with_systemd_scope", lambda command_args, **kwargs: command_args)
 
     assert run_cmd_module.run_cmd("python -V", logger=logger) is False
     assert any(level == "error" and "bad things" in msg for level, msg in logger.messages)
@@ -100,6 +115,7 @@ def test_run_cmd_timeout(monkeypatch) -> None:
 
     monkeypatch.setattr(run_cmd_module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(run_cmd_module, "_start_memory_monitor", lambda **kwargs: None)
+    monkeypatch.setattr(run_cmd_module, "_wrap_with_systemd_scope", lambda command_args, **kwargs: command_args)
     monkeypatch.setattr(run_cmd_module.os, "killpg", lambda *args, **kwargs: (_ for _ in ()).throw(OSError()))
 
     assert run_cmd_module.run_cmd("python -V", timeout=1, logger=logger) is False
@@ -115,6 +131,7 @@ def test_run_cmd_writes_redirected_stdout_file(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(run_cmd_module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(run_cmd_module, "_start_memory_monitor", lambda **kwargs: None)
+    monkeypatch.setattr(run_cmd_module, "_wrap_with_systemd_scope", lambda command_args, **kwargs: command_args)
 
     assert run_cmd_module.run_cmd("python -V", stdout_path=out, logger=logger) is True
     assert out.exists()
@@ -169,6 +186,34 @@ def test_start_memory_monitor_terminates_process(monkeypatch) -> None:
     assert thread is not None
     thread.join(timeout=1)
     assert proc.terminated is True
+
+
+def test_external_command_env_adds_user_local_bin(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    env = run_cmd_module._external_command_env()
+
+    assert env["PATH"].split(run_cmd_module.os.pathsep)[0] == str(tmp_path / ".local" / "bin")
+
+
+def test_wrap_with_systemd_scope_adds_limits(monkeypatch) -> None:
+    logger = DummyLogger()
+    monkeypatch.delenv("MAHILDA_DISABLE_SYSTEMD_SCOPE", raising=False)
+    monkeypatch.setattr(run_cmd_module.os, "name", "posix")
+    monkeypatch.setattr(run_cmd_module, "which", lambda name: "/usr/bin/systemd-run" if name == "systemd-run" else None)
+
+    command = run_cmd_module._wrap_with_systemd_scope(
+        ["run-popper", "kb"],
+        timeout=3600,
+        memory_limit_gb=10,
+        logger=logger,  # type: ignore[arg-type]
+    )
+
+    assert command[:5] == ["systemd-run", "--user", "--scope", "--quiet", "--wait"]
+    assert "MemoryMax=10737418240" in command
+    assert "RuntimeMaxSec=3600" in command
+    assert command[-2:] == ["run-popper", "kb"]
 
 
 def test_start_memory_monitor_psutil_error(monkeypatch) -> None:

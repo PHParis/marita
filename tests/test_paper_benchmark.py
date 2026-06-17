@@ -159,6 +159,7 @@ def test_run_command_classifies_internal_timeout_exit_code(monkeypatch, tmp_path
 
     assert result["status"] == "timeout"
     assert result["error"] == "Execution exceeded 7 seconds"
-    assert captured["timeout"] == 7
+    assert captured["timeout"] == 7 + paper_benchmark.SUBPROCESS_CLEANUP_GRACE_SECONDS
+    assert "env" in captured
     if paper_benchmark.os.name == "posix":
         assert captured["preexec_fn"] is paper_benchmark._prepare_child_process
