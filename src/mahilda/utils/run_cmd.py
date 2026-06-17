@@ -146,7 +146,18 @@ def _wrap_with_systemd_scope(
         properties.extend(["--property", f"RuntimeMaxSec={timeout}"])
 
     unit = f"mahilda-ext-{uuid.uuid4().hex[:12]}"
-    wrapped = ["systemd-run", "--user", "--scope", "--quiet", "--wait", "--collect", "--unit", unit, *properties, *command_args]
+    wrapped = [
+        "systemd-run",
+        "--user",
+        "--scope",
+        "--quiet",
+        "--wait",
+        "--collect",
+        "--unit",
+        unit,
+        *properties,
+        *command_args,
+    ]
     logger.info("Executing external command in systemd scope %s.", unit)
     return wrapped
 
