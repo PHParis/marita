@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -191,3 +192,69 @@ def test_run_command_classifies_internal_timeout_exit_code(monkeypatch, tmp_path
     assert "env" in captured
     if paper_benchmark.os.name == "posix":
         assert captured["preexec_fn"] is paper_benchmark._prepare_child_process
+
+
+def test_email_config_uses_environment(monkeypatch) -> None:
+    monkeypatch.setenv("MAHILDA_EMAIL_TO", "to@example.com")
+    monkeypatch.setenv("MAHILDA_EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("MAHILDA_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("MAHILDA_SMTP_PORT", "587")
+    monkeypatch.setenv("MAHILDA_SMTP_USER", "user@example.com")
+    monkeypatch.setenv("MAHILDA_SMTP_STARTTLS", "1")
+
+    args = paper_benchmark.parse_arguments(["--dry-run"])
+    config = paper_benchmark._email_config_from_args(args)
+
+    assert config is not None
+    assert config.to == "to@example.com"
+    assert config.sender == "from@example.com"
+    assert config.smtp_host == "smtp.example.com"
+    assert config.smtp_port == 587
+    assert config.smtp_user == "user@example.com"
+    assert config.starttls is True
+
+
+def test_paper_benchmark_dry_run_sends_email(monkeypatch, tmp_path: Path) -> None:
+    db_dir = tmp_path / "dbs"
+    db_dir.mkdir()
+    (db_dir / "Demo.db").touch()
+    sent_messages: list[Any] = []
+
+    class FakeSMTP:
+        def __init__(self, host: str, port: int, timeout: int) -> None:
+            assert host == "localhost"
+            assert port == 25
+            assert timeout == 30
+
+        def __enter__(self) -> "FakeSMTP":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def send_message(self, message: Any) -> None:
+            sent_messages.append(message)
+
+    monkeypatch.setattr(paper_benchmark.smtplib, "SMTP", FakeSMTP)
+
+    exit_code = paper_benchmark.main(
+        [
+            "--database-dir",
+            str(db_dir),
+            "--output",
+            str(tmp_path / "results"),
+            "--logs",
+            str(tmp_path / "logs"),
+            "--databases",
+            "Demo",
+            "--dry-run",
+            "--email-to",
+            "to@example.com",
+        ]
+    )
+
+    assert exit_code == 0
+    assert len(sent_messages) == 1
+    assert sent_messages[0]["To"] == "to@example.com"
+    assert "success" in sent_messages[0]["Subject"]
+    assert "Status: success" in sent_messages[0].get_content()

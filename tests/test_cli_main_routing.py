@@ -198,6 +198,52 @@ def test_main_routes_paper_benchmark_hosts_override(monkeypatch) -> None:
     assert captured["argv"][captured["argv"].index("--hosts") + 1] == "tipi01,tipi02"
 
 
+def test_main_routes_paper_benchmark_email_options(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_paper_benchmark_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 29
+
+    monkeypatch.setattr("mahilda.cli.paper_benchmark.main", fake_paper_benchmark_main)
+
+    exit_code = main(
+        [
+            "paper-benchmark",
+            "--email-to",
+            "to@example.com",
+            "--email-from",
+            "from@example.com",
+            "--smtp-host",
+            "smtp.example.com",
+            "--smtp-port",
+            "587",
+            "--smtp-user",
+            "user@example.com",
+            "--smtp-password-env",
+            "SMTP_SECRET",
+            "--smtp-starttls",
+        ]
+    )
+
+    assert exit_code == 29
+    assert captured["argv"][-13:] == [
+        "--email-to",
+        "to@example.com",
+        "--email-from",
+        "from@example.com",
+        "--smtp-host",
+        "smtp.example.com",
+        "--smtp-port",
+        "587",
+        "--smtp-user",
+        "user@example.com",
+        "--smtp-password-env",
+        "SMTP_SECRET",
+        "--smtp-starttls",
+    ]
+
+
 def test_main_routes_smoke_command(monkeypatch) -> None:
     captured: dict[str, list[str]] = {}
 

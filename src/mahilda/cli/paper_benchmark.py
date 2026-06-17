@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import signal
+import smtplib
 import socket
 import subprocess
 import sys
@@ -14,6 +15,7 @@ import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, cast
 
@@ -49,6 +51,61 @@ class RunSpec:
     config_path: Path
     command: list[str]
     stdout_path: Path
+
+
+@dataclass(frozen=True)
+class EmailNotificationConfig:
+    to: str
+    smtp_host: str
+    smtp_port: int
+    sender: str
+    smtp_user: str | None = None
+    smtp_password_env: str = "MAHILDA_SMTP_PASSWORD"
+    starttls: bool = False
+
+
+class EmailNotifier:
+    def __init__(self, config: EmailNotificationConfig | None, logger: logging.Logger) -> None:
+        self.config = config
+        self.logger = logger
+        self._sent = False
+
+    @property
+    def enabled(self) -> bool:
+        return self.config is not None
+
+    def send_once(
+        self,
+        *,
+        status: str,
+        exit_code: int | None,
+        started_at: dt.datetime,
+        ended_at: dt.datetime,
+        host: str | None,
+        output_dir: Path | None,
+        summary_path: Path | None,
+        results: list[dict[str, Any]],
+        error: str | None = None,
+    ) -> None:
+        if self.config is None or self._sent:
+            return
+        self._sent = True
+        try:
+            _send_email_notification(
+                self.config,
+                status=status,
+                exit_code=exit_code,
+                started_at=started_at,
+                ended_at=ended_at,
+                host=host,
+                output_dir=output_dir,
+                summary_path=summary_path,
+                results=results,
+                error=error,
+            )
+            self.logger.info("Sent benchmark notification email to %s", self.config.to)
+        except Exception as exc:
+            self.logger.error("Failed to send benchmark notification email: %s", exc)
 
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
@@ -95,6 +152,17 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Generate configs and summary plan without executing benchmark commands.",
     )
+    parser.add_argument("--email-to", default=None, help="Send a completion notification to this email address.")
+    parser.add_argument("--email-from", default=None, help="Sender address for notification emails.")
+    parser.add_argument("--smtp-host", default=None, help="SMTP host for notification emails.")
+    parser.add_argument("--smtp-port", type=int, default=None, help="SMTP port for notification emails.")
+    parser.add_argument("--smtp-user", default=None, help="SMTP username for notification emails.")
+    parser.add_argument(
+        "--smtp-password-env",
+        default="MAHILDA_SMTP_PASSWORD",
+        help="Environment variable containing the SMTP password (default: MAHILDA_SMTP_PASSWORD).",
+    )
+    parser.add_argument("--smtp-starttls", action="store_true", help="Use STARTTLS for SMTP notifications.")
     return parser.parse_args(argv)
 
 
@@ -102,6 +170,52 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_arguments(argv)
     logger = logging.getLogger(__name__)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    notifier = EmailNotifier(_email_config_from_args(args), logger)
+    started_at = dt.datetime.now(dt.timezone.utc)
+    host: str | None = None
+    output_dir: Path | None = None
+    results: list[dict[str, Any]] = []
+    exit_code: int | None = None
+    error: str | None = None
+
+    def notify_interrupted(signum: int, _frame: object) -> None:
+        ended_at = dt.datetime.now(dt.timezone.utc)
+        notifier.send_once(
+            status=f"interrupted by signal {signum}",
+            exit_code=128 + signum,
+            started_at=started_at,
+            ended_at=ended_at,
+            host=host,
+            output_dir=output_dir,
+            summary_path=_summary_path(output_dir, host, ".json") if output_dir else None,
+            results=results,
+            error=f"Received signal {signum}",
+        )
+        raise KeyboardInterrupt
+
+    previous_handlers: dict[int, Any] = {}
+    if notifier.enabled and threading.current_thread() is threading.main_thread():
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous_handlers[signum] = signal.getsignal(signum)
+            signal.signal(signum, notify_interrupted)
+
+    def finish() -> None:
+        if previous_handlers:
+            for signum, handler in previous_handlers.items():
+                signal.signal(signum, handler)
+        ended_at = dt.datetime.now(dt.timezone.utc)
+        status = "success" if exit_code == 0 else "failed"
+        notifier.send_once(
+            status=status,
+            exit_code=exit_code,
+            started_at=started_at,
+            ended_at=ended_at,
+            host=host,
+            output_dir=output_dir,
+            summary_path=_summary_path(output_dir, host, ".json") if output_dir else None,
+            results=results,
+            error=error,
+        )
 
     try:
         profile = _load_profile(args.settings)
@@ -110,7 +224,16 @@ def main(argv: list[str] | None = None) -> int:
         host = _resolve_host(args.host, hosts)
     except ValueError as exc:
         logger.error("%s", exc)
-        return 1
+        exit_code = 1
+        error = str(exc)
+        finish()
+        return exit_code
+    except Exception as exc:
+        exit_code = 1
+        error = repr(exc)
+        logger.exception("Paper benchmark setup failed")
+        finish()
+        return exit_code
 
     database_dir = Path(args.database_dir).expanduser().resolve()
     output_dir = Path(args.output).expanduser().resolve()
@@ -123,51 +246,191 @@ def main(argv: list[str] | None = None) -> int:
         databases = _shard_databases(databases, hosts, host)
     except ValueError as exc:
         logger.error("%s", exc)
-        return 1
+        exit_code = 1
+        error = str(exc)
+        finish()
+        return exit_code
+    except Exception as exc:
+        exit_code = 1
+        error = repr(exc)
+        logger.exception("Paper benchmark setup failed")
+        finish()
+        return exit_code
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "configs").mkdir(parents=True, exist_ok=True)
-    log_root.mkdir(parents=True, exist_ok=True)
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "configs").mkdir(parents=True, exist_ok=True)
+        log_root.mkdir(parents=True, exist_ok=True)
 
-    specs = [
-        _build_run_spec(
-            algorithm=algorithm,
-            database=db,
-            database_dir=database_dir,
-            output_dir=output_dir,
-            log_root=log_root,
-            timeout=args.timeout,
-            memory_gb=args.memory_gb,
-            java_heap_gb=java_heap_gb,
-        )
-        for algorithm in algorithms
-        for db in databases
-    ]
+        specs = [
+            _build_run_spec(
+                algorithm=algorithm,
+                database=db,
+                database_dir=database_dir,
+                output_dir=output_dir,
+                log_root=log_root,
+                timeout=args.timeout,
+                memory_gb=args.memory_gb,
+                java_heap_gb=java_heap_gb,
+            )
+            for algorithm in algorithms
+            for db in databases
+        ]
 
-    if args.dry_run:
-        _write_summary(output_dir, specs, [], dry_run=True, host=host)
-        for spec in specs:
-            logger.info("DRY RUN: %s", " ".join(spec.command))
-        logger.info("Wrote dry-run plan to %s", _summary_path(output_dir, host, ".json"))
-        return 0
+        if args.dry_run:
+            _write_summary(output_dir, specs, [], dry_run=True, host=host)
+            for spec in specs:
+                logger.info("DRY RUN: %s", " ".join(spec.command))
+            logger.info("Wrote dry-run plan to %s", _summary_path(output_dir, host, ".json"))
+            exit_code = 0
+            finish()
+            return exit_code
+    except KeyboardInterrupt:
+        exit_code = 130
+        error = "Interrupted"
+        logger.error("Interrupted")
+        finish()
+        return exit_code
+    except Exception as exc:
+        exit_code = 1
+        error = repr(exc)
+        logger.exception("Paper benchmark setup failed")
+        finish()
+        return exit_code
 
-    results: list[dict[str, Any]] = []
     workers = _profile_workers(profile)
-    for algorithm in algorithms:
-        algorithm_specs = [spec for spec in specs if spec.algorithm == algorithm]
-        parallelism = workers.get(algorithm, 1)
-        logger.info("Running %s: %s jobs with %s worker(s)", algorithm, len(algorithm_specs), parallelism)
-        results.extend(_run_specs(algorithm_specs, timeout=args.timeout, memory_gb=args.memory_gb, workers=parallelism))
+    try:
+        for algorithm in algorithms:
+            algorithm_specs = [spec for spec in specs if spec.algorithm == algorithm]
+            parallelism = workers.get(algorithm, 1)
+            logger.info("Running %s: %s jobs with %s worker(s)", algorithm, len(algorithm_specs), parallelism)
+            results.extend(
+                _run_specs(algorithm_specs, timeout=args.timeout, memory_gb=args.memory_gb, workers=parallelism)
+            )
 
-    _write_summary(output_dir, specs, results, dry_run=False, host=host)
-    failed = [result for result in results if result["status"] != "success"]
-    if failed:
-        logger.warning(
-            "Completed with %s non-successful runs. See %s", len(failed), _summary_path(output_dir, host, ".json")
+        _write_summary(output_dir, specs, results, dry_run=False, host=host)
+        failed = [result for result in results if result["status"] != "success"]
+        if failed:
+            logger.warning(
+                "Completed with %s non-successful runs. See %s", len(failed), _summary_path(output_dir, host, ".json")
+            )
+            exit_code = 1
+            return exit_code
+        logger.info("All runs completed successfully. See %s", _summary_path(output_dir, host, ".json"))
+        exit_code = 0
+        return exit_code
+    except KeyboardInterrupt:
+        exit_code = 130
+        error = "Interrupted"
+        logger.error("Interrupted")
+        return exit_code
+    except Exception as exc:
+        exit_code = 1
+        error = repr(exc)
+        logger.exception("Paper benchmark failed")
+        return exit_code
+    finally:
+        finish()
+
+
+def _email_config_from_args(args: argparse.Namespace) -> EmailNotificationConfig | None:
+    recipient = args.email_to or os.environ.get("MAHILDA_EMAIL_TO")
+    if not recipient:
+        return None
+
+    smtp_host = args.smtp_host or os.environ.get("MAHILDA_SMTP_HOST") or "localhost"
+    smtp_port = args.smtp_port or int(os.environ.get("MAHILDA_SMTP_PORT", "25"))
+    sender = args.email_from or os.environ.get("MAHILDA_EMAIL_FROM") or recipient
+    smtp_user = args.smtp_user or os.environ.get("MAHILDA_SMTP_USER")
+    starttls = args.smtp_starttls or _env_flag("MAHILDA_SMTP_STARTTLS")
+
+    return EmailNotificationConfig(
+        to=recipient,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        sender=sender,
+        smtp_user=smtp_user,
+        smtp_password_env=args.smtp_password_env,
+        starttls=starttls,
+    )
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _send_email_notification(
+    config: EmailNotificationConfig,
+    *,
+    status: str,
+    exit_code: int | None,
+    started_at: dt.datetime,
+    ended_at: dt.datetime,
+    host: str | None,
+    output_dir: Path | None,
+    summary_path: Path | None,
+    results: list[dict[str, Any]],
+    error: str | None,
+) -> None:
+    host_name = host or socket.gethostname().split(".")[0]
+    message = EmailMessage()
+    message["From"] = config.sender
+    message["To"] = config.to
+    message["Subject"] = f"MAHILDA paper-benchmark {status} on {host_name}"
+    message.set_content(
+        _format_email_body(
+            status=status,
+            exit_code=exit_code,
+            started_at=started_at,
+            ended_at=ended_at,
+            host=host_name,
+            output_dir=output_dir,
+            summary_path=summary_path,
+            results=results,
+            error=error,
         )
-        return 1
-    logger.info("All runs completed successfully. See %s", _summary_path(output_dir, host, ".json"))
-    return 0
+    )
+
+    password = os.environ.get(config.smtp_password_env)
+    with smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=30) as smtp:
+        if config.starttls:
+            smtp.starttls()
+        if config.smtp_user:
+            smtp.login(config.smtp_user, password or "")
+        smtp.send_message(message)
+
+
+def _format_email_body(
+    *,
+    status: str,
+    exit_code: int | None,
+    started_at: dt.datetime,
+    ended_at: dt.datetime,
+    host: str,
+    output_dir: Path | None,
+    summary_path: Path | None,
+    results: list[dict[str, Any]],
+    error: str | None,
+) -> str:
+    elapsed = ended_at - started_at
+    success_count = sum(1 for result in results if result.get("status") == "success")
+    failed_count = sum(1 for result in results if result.get("status") != "success")
+    lines = [
+        "MAHILDA paper benchmark notification",
+        "",
+        f"Status: {status}",
+        f"Exit code: {exit_code if exit_code is not None else 'unknown'}",
+        f"Host: {host}",
+        f"Started at: {started_at.isoformat()}",
+        f"Ended at: {ended_at.isoformat()}",
+        f"Elapsed: {format_duration(elapsed.total_seconds())}",
+        f"Output directory: {output_dir if output_dir else 'unknown'}",
+        f"Summary: {summary_path if summary_path else 'unknown'}",
+        f"Runs: {len(results)} total, {success_count} success, {failed_count} non-success",
+    ]
+    if error:
+        lines.extend(["", f"Error: {error}"])
+    return "\n".join(lines) + "\n"
 
 
 def _load_profile(path: str | None) -> dict[str, Any]:

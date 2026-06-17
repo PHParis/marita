@@ -66,6 +66,30 @@ The YAGO config is aligned to paper defaults for reproducibility (`walk_length: 
 
 See `docs/config.md` for full path-resolution behavior and overrides.
 
+## Email Notifications
+
+`paper-benchmark` can send a best-effort completion email from Python when the run succeeds, fails, raises an exception, or receives `SIGINT`/`SIGTERM`. Email cannot be guaranteed after `SIGKILL`, machine crashes, network outages, or SMTP outages.
+
+Configure SMTP with environment variables so passwords are not written in shell history:
+
+```bash
+export MAHILDA_EMAIL_TO="you@example.com"
+export MAHILDA_EMAIL_FROM="you@example.com"
+export MAHILDA_SMTP_HOST="smtp.example.com"
+export MAHILDA_SMTP_PORT="587"
+export MAHILDA_SMTP_USER="you@example.com"
+export MAHILDA_SMTP_PASSWORD="your-smtp-password"
+export MAHILDA_SMTP_STARTTLS="1"
+```
+
+Then run the benchmark normally:
+
+```bash
+uv run mahilda paper-benchmark --settings configs/paper/benchmark_83.yaml --email-to you@example.com
+```
+
+Equivalent CLI flags are available: `--email-to`, `--email-from`, `--smtp-host`, `--smtp-port`, `--smtp-user`, `--smtp-password-env`, and `--smtp-starttls`. If `--email-to` and `MAHILDA_EMAIL_TO` are both unset, no email is sent.
+
 ## Documentation
 
 - `docs/architecture.md`: package structure, active modules, and runtime data flow
