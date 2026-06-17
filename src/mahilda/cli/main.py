@@ -91,6 +91,13 @@ def main(argv: list[str] | None = None) -> int:
     paper_parser.add_argument("--host", default=None)
     paper_parser.add_argument("--hosts", default=None)
     paper_parser.add_argument("--dry-run", action="store_true")
+    paper_parser.add_argument("--email-to", default=None)
+    paper_parser.add_argument("--email-from", default=None)
+    paper_parser.add_argument("--smtp-host", default=None)
+    paper_parser.add_argument("--smtp-port", type=int, default=None)
+    paper_parser.add_argument("--smtp-user", default=None)
+    paper_parser.add_argument("--smtp-password-env", default="MAHILDA_SMTP_PASSWORD")
+    paper_parser.add_argument("--smtp-starttls", action="store_true")
 
     pipeline_parser = subparsers.add_parser("paper-pipeline", help="Run the full paper experiment pipeline")
     pipeline_parser.add_argument("--settings", default="configs/paper/benchmark_83.yaml")
@@ -194,6 +201,20 @@ def main(argv: list[str] | None = None) -> int:
             paper_args.extend(["--hosts", args.hosts])
         if args.dry_run:
             paper_args.append("--dry-run")
+        if args.email_to:
+            paper_args.extend(["--email-to", args.email_to])
+        if args.email_from:
+            paper_args.extend(["--email-from", args.email_from])
+        if args.smtp_host:
+            paper_args.extend(["--smtp-host", args.smtp_host])
+        if args.smtp_port is not None:
+            paper_args.extend(["--smtp-port", str(args.smtp_port)])
+        if args.smtp_user:
+            paper_args.extend(["--smtp-user", args.smtp_user])
+        if args.smtp_password_env != "MAHILDA_SMTP_PASSWORD":
+            paper_args.extend(["--smtp-password-env", args.smtp_password_env])
+        if args.smtp_starttls:
+            paper_args.append("--smtp-starttls")
         return paper_benchmark.main(paper_args)
 
     if args.command == "paper-pipeline":

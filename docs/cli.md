@@ -137,8 +137,25 @@ Important flags:
 - `--timeout`: per-run timeout in seconds, default `7200`
 - `--memory-gb`: per-run RSS limit, default `15`
 - `--dry-run`: generate configs and `summary.json` / `summary.md` without executing commands
+- `--email-to`: send a best-effort completion email after the run; SMTP can be configured with `--email-from`, `--smtp-host`, `--smtp-port`, `--smtp-user`, `--smtp-password-env`, and `--smtp-starttls`
 
 The generated MAHILDA configs set `disjoint_semantics: true` and keep that setting editable under `algorithm.parameters`.
+
+Email notifications can also be configured with environment variables:
+
+```bash
+export MAHILDA_EMAIL_TO="you@example.com"
+export MAHILDA_EMAIL_FROM="you@example.com"
+export MAHILDA_SMTP_HOST="smtp.example.com"
+export MAHILDA_SMTP_PORT="587"
+export MAHILDA_SMTP_USER="you@example.com"
+export MAHILDA_SMTP_PASSWORD="your-smtp-password"
+export MAHILDA_SMTP_STARTTLS="1"
+
+uv run mahilda paper-benchmark --settings configs/paper/benchmark_83.yaml --email-to you@example.com
+```
+
+The notification is attempted on success, normal failure, uncaught exceptions, `SIGINT`, and `SIGTERM`. It cannot be sent after `SIGKILL`, machine crashes, network outages, or SMTP outages.
 
 ## `smoke`
 
