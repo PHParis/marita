@@ -1,3 +1,4 @@
+import datetime as dt
 from pathlib import Path
 from typing import Any
 
@@ -346,3 +347,46 @@ def test_paper_benchmark_dry_run_sends_email(monkeypatch, tmp_path: Path) -> Non
     assert sent_messages[0]["To"] == "to@example.com"
     assert "success" in sent_messages[0]["Subject"]
     assert "Status: success" in sent_messages[0].get_content()
+
+
+def test_notification_status_distinguishes_completed_child_failures() -> None:
+    results = [
+        {"status": "success"},
+        {"status": "oom"},
+        {"status": "timeout"},
+        {"status": "error"},
+    ]
+
+    status = paper_benchmark._notification_status(exit_code=1, error=None, results=results, planned_runs=4)
+
+    assert status == "completed with non-success runs"
+
+
+def test_email_body_reports_controller_and_outcome_breakdown(tmp_path: Path) -> None:
+    started_at = dt.datetime(2026, 6, 17, 14, 52, tzinfo=dt.timezone.utc)
+    ended_at = dt.datetime(2026, 6, 18, 1, 0, tzinfo=dt.timezone.utc)
+    results = [
+        {"status": "success"},
+        {"status": "oom"},
+        {"status": "oom"},
+        {"status": "timeout"},
+        {"status": "error"},
+    ]
+
+    body = paper_benchmark._format_email_body(
+        status="completed with non-success runs",
+        exit_code=1,
+        started_at=started_at,
+        ended_at=ended_at,
+        host="tipi01",
+        output_dir=tmp_path / "results",
+        summary_path=tmp_path / "results" / "summary_tipi01.json",
+        planned_runs=5,
+        results=results,
+        error=None,
+    )
+
+    assert "Status: completed with non-success runs" in body
+    assert "Controller: completed all planned runs" in body
+    assert "Runs: 5 planned, 5 completed, 1 success, 4 non-success" in body
+    assert "Outcomes: 1 success, 2 oom, 1 timeout, 1 error" in body

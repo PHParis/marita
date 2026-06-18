@@ -86,6 +86,7 @@ class EmailNotifier:
         host: str | None,
         output_dir: Path | None,
         summary_path: Path | None,
+        planned_runs: int | None,
         results: list[dict[str, Any]],
         error: str | None = None,
     ) -> None:
@@ -102,6 +103,7 @@ class EmailNotifier:
                 host=host,
                 output_dir=output_dir,
                 summary_path=summary_path,
+                planned_runs=planned_runs,
                 results=results,
                 error=error,
             )
@@ -182,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     host: str | None = None
     output_dir: Path | None = None
     results: list[dict[str, Any]] = []
+    planned_runs: int | None = None
     exit_code: int | None = None
     error: str | None = None
 
@@ -195,6 +198,7 @@ def main(argv: list[str] | None = None) -> int:
             host=host,
             output_dir=output_dir,
             summary_path=_summary_path(output_dir, host, ".json") if output_dir else None,
+            planned_runs=planned_runs,
             results=results,
             error=f"Received signal {signum}",
         )
@@ -211,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
             for signum, handler in previous_handlers.items():
                 signal.signal(signum, handler)
         ended_at = dt.datetime.now(dt.timezone.utc)
-        status = "success" if exit_code == 0 else "failed"
+        status = _notification_status(exit_code=exit_code, error=error, results=results, planned_runs=planned_runs)
         notifier.send_once(
             status=status,
             exit_code=exit_code,
@@ -220,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
             host=host,
             output_dir=output_dir,
             summary_path=_summary_path(output_dir, host, ".json") if output_dir else None,
+            planned_runs=planned_runs,
             results=results,
             error=error,
         )
@@ -292,6 +297,7 @@ def main(argv: list[str] | None = None) -> int:
 
         databases = _shard_databases(databases, hosts, host)
         specs = [spec for spec in specs if spec.database in databases]
+        planned_runs = len(specs)
 
         if args.dry_run:
             _write_summary(output_dir, specs, [], dry_run=True, host=host)
@@ -385,6 +391,7 @@ def _send_email_notification(
     host: str | None,
     output_dir: Path | None,
     summary_path: Path | None,
+    planned_runs: int | None,
     results: list[dict[str, Any]],
     error: str | None,
 ) -> None:
@@ -402,6 +409,7 @@ def _send_email_notification(
             host=host_name,
             output_dir=output_dir,
             summary_path=summary_path,
+            planned_runs=planned_runs,
             results=results,
             error=error,
         )
@@ -425,16 +433,22 @@ def _format_email_body(
     host: str,
     output_dir: Path | None,
     summary_path: Path | None,
+    planned_runs: int | None,
     results: list[dict[str, Any]],
     error: str | None,
 ) -> str:
     elapsed = ended_at - started_at
     success_count = sum(1 for result in results if result.get("status") == "success")
     failed_count = sum(1 for result in results if result.get("status") != "success")
+    completed_count = len(results)
+    outcome_counts = _outcome_counts(results)
+    planned_label = str(planned_runs) if planned_runs is not None else "unknown"
+    controller_status = _controller_status(status=status, planned_runs=planned_runs, completed_runs=completed_count)
     lines = [
         "MAHILDA paper benchmark notification",
         "",
         f"Status: {status}",
+        f"Controller: {controller_status}",
         f"Exit code: {exit_code if exit_code is not None else 'unknown'}",
         f"Host: {host}",
         f"Started at: {started_at.isoformat()}",
@@ -442,11 +456,56 @@ def _format_email_body(
         f"Elapsed: {format_duration(elapsed.total_seconds())}",
         f"Output directory: {output_dir if output_dir else 'unknown'}",
         f"Summary: {summary_path if summary_path else 'unknown'}",
-        f"Runs: {len(results)} total, {success_count} success, {failed_count} non-success",
+        f"Runs: {planned_label} planned, {completed_count} completed, {success_count} success, {failed_count} non-success",
     ]
+    if outcome_counts:
+        lines.append(f"Outcomes: {_format_outcome_counts(outcome_counts)}")
     if error:
         lines.extend(["", f"Error: {error}"])
     return "\n".join(lines) + "\n"
+
+
+def _notification_status(
+    *, exit_code: int | None, error: str | None, results: list[dict[str, Any]], planned_runs: int | None
+) -> str:
+    if exit_code == 0:
+        return "success"
+    if exit_code == 130:
+        return "interrupted"
+    if error:
+        return "failed"
+    if results and planned_runs is not None and len(results) >= planned_runs:
+        return "completed with non-success runs"
+    if results:
+        return "incomplete with non-success runs"
+    return "failed"
+
+
+def _controller_status(*, status: str, planned_runs: int | None, completed_runs: int) -> str:
+    if status == "interrupted" or status.startswith("interrupted by signal"):
+        return "interrupted"
+    if status == "failed":
+        return "failed"
+    if planned_runs is not None and completed_runs >= planned_runs:
+        return "completed all planned runs"
+    if planned_runs is None:
+        return "unknown"
+    return "incomplete"
+
+
+def _outcome_counts(results: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for result in results:
+        status = str(result.get("status") or "unknown")
+        counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
+def _format_outcome_counts(counts: dict[str, int]) -> str:
+    ordered_statuses = ["success", "oom", "timeout", "error"]
+    parts = [f"{counts[status]} {status}" for status in ordered_statuses if status in counts]
+    parts.extend(f"{count} {status}" for status, count in sorted(counts.items()) if status not in ordered_statuses)
+    return ", ".join(parts)
 
 
 def _load_profile(path: str | None) -> dict[str, Any]:
