@@ -46,6 +46,49 @@ def test_main_routes_benchmark_input_tsv(monkeypatch) -> None:
     assert captured["argv"] == ["--config", "cfg.yml", "--baseline", "AMIE3", "--input-tsv", "kg.tsv"]
 
 
+def test_main_routes_audit_command(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_audit_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 19
+
+    monkeypatch.setattr("mahilda.cli.audit.main", fake_audit_main)
+    exit_code = main(
+        [
+            "audit",
+            "--results-dir",
+            "results/x",
+            "--database-dir",
+            "data/x",
+            "--output-dir",
+            "results/x/audit",
+            "--competitors",
+            "MATILDA",
+            "--strict",
+        ]
+    )
+
+    assert exit_code == 19
+    assert captured["argv"] == [
+        "--results-dir",
+        "results/x",
+        "--database-dir",
+        "data/x",
+        "--target",
+        "MAHILDA",
+        "--competitors",
+        "MATILDA",
+        "--confidence-threshold",
+        "1.0",
+        "--max-examples",
+        "25",
+        "--output-dir",
+        "results/x/audit",
+        "--strict",
+    ]
+
+
 def test_main_routes_import_rdf_command(monkeypatch) -> None:
     captured: dict[str, list[str]] = {}
 

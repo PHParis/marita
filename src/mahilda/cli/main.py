@@ -1,6 +1,7 @@
 import argparse
 
 from mahilda.cli import (
+    audit,
     batch,
     benchmark,
     download_databases,
@@ -44,6 +45,17 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Prebuilt TSV input for AMIE3; skips relational triple export when provided",
     )
+
+    audit_parser = subparsers.add_parser("audit", help="Audit competitor rule coverage by MAHILDA")
+    audit_parser.add_argument("--results-dir", default="results/paper_table2")
+    audit_parser.add_argument("--database-dir", default="data/relational")
+    audit_parser.add_argument("--output-dir", default=None)
+    audit_parser.add_argument("--target", default="MAHILDA")
+    audit_parser.add_argument("--competitors", default="AMIE3,MATILDA,SPIDER,POPPER")
+    audit_parser.add_argument("--confidence-threshold", type=float, default=1.0)
+    audit_parser.add_argument("--max-examples", type=int, default=25)
+    audit_parser.add_argument("--strict", action="store_true")
+    audit_parser.add_argument("--no-progress", action="store_true")
 
     import_rdf_parser = subparsers.add_parser("import-rdf", help="Import RDF/Turtle into benchmark artifacts")
     import_rdf_parser.add_argument("--input", required=True)
@@ -133,6 +145,29 @@ def main(argv: list[str] | None = None) -> int:
         if args.input_tsv:
             benchmark_args.extend(["--input-tsv", args.input_tsv])
         return benchmark.main(benchmark_args)
+
+    if args.command == "audit":
+        audit_args: list[str] = [
+            "--results-dir",
+            args.results_dir,
+            "--database-dir",
+            args.database_dir,
+            "--target",
+            args.target,
+            "--competitors",
+            args.competitors,
+            "--confidence-threshold",
+            str(args.confidence_threshold),
+            "--max-examples",
+            str(args.max_examples),
+        ]
+        if args.output_dir:
+            audit_args.extend(["--output-dir", args.output_dir])
+        if args.strict:
+            audit_args.append("--strict")
+        if args.no_progress:
+            audit_args.append("--no-progress")
+        return audit.main(audit_args)
 
     if args.command == "import-rdf":
         import_args = ["--input", args.input, "--output-dir", args.output_dir, "--variants", args.variants]
