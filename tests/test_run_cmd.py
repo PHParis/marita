@@ -92,6 +92,24 @@ def test_run_cmd_success(monkeypatch) -> None:
     assert run_cmd_module.run_cmd("python -V", logger=logger) is True
 
 
+def test_run_cmd_success_writes_stderr_path(monkeypatch, tmp_path: Path) -> None:
+    logger = DummyLogger()
+    stderr_path = tmp_path / "stderr.log"
+
+    def fake_popen(*args, **kwargs):
+        kwargs["stderr"].write("diagnostic line\n")
+        kwargs["stderr"].flush()
+        return FakeProcess(returncode=0)
+
+    monkeypatch.setattr(run_cmd_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(run_cmd_module, "_start_memory_monitor", lambda **kwargs: None)
+    monkeypatch.setattr(run_cmd_module, "_wrap_with_systemd_scope", lambda command_args, **kwargs: command_args)
+    monkeypatch.setattr(run_cmd_module.os, "killpg", lambda *args, **kwargs: (_ for _ in ()).throw(OSError()))
+
+    assert run_cmd_module.run_cmd("python -V", stderr_path=stderr_path, logger=logger) is True
+    assert stderr_path.read_text(encoding="utf-8") == "diagnostic line\n"
+
+
 def test_run_cmd_failure_with_stderr(monkeypatch) -> None:
     logger = DummyLogger()
 

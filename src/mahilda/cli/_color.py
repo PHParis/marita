@@ -11,6 +11,7 @@ try:
     Fore: Any = _Fore
     Style: Any = _Style
 except ImportError:
+
     class _FallbackFore:
         GREEN = YELLOW = BLUE = CYAN = RED = MAGENTA = WHITE = RESET = ""
 

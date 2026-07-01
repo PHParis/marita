@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 from importlib import resources
 from typing import TYPE_CHECKING
@@ -118,9 +119,9 @@ def test_prepare_redumps_empty_sql_files(monkeypatch, tmp_path: Path) -> None:
     assert (tmp_path / "one.sql").stat().st_size > 0
 
 
-def test_dump_database_cleans_failed_empty_dump_and_masks_password(
-    monkeypatch, tmp_path: Path, caplog
-) -> None:
+def test_dump_database_cleans_failed_empty_dump_and_masks_password(monkeypatch, tmp_path: Path, caplog) -> None:
+    monkeypatch.setattr(logging.getLogger("mahilda"), "propagate", True)
+    caplog.set_level(logging.ERROR, logger=relational.LOGGER.name)
     settings = RelationalDownloadSettings(output_dir=tmp_path, password="secret")
     preparer = RelationalDatasetPreparer(settings)
     output_file = tmp_path / "demo.sql"

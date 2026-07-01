@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from mahilda.cli.runtime import initialize_directories, mlflow_run_context, scoped_env_vars
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_initialize_directories_creates_paths(tmp_path: Path) -> None:

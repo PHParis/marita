@@ -334,7 +334,18 @@ class BaselineProcessor:
             result_path = artifacts.result_json
             number_of_rules = RuleIO.save_rules_to_json(rules, str(result_path))
 
-            top_rules = [rule for rule in rules if hasattr(rule, "accuracy") and hasattr(rule, "confidence")]
+            top_rules: list[Any] = []
+            for rule in rules:
+                accuracy = getattr(rule, "accuracy", None)
+                confidence = getattr(rule, "confidence", None)
+                if accuracy is None or confidence is None:
+                    continue
+                try:
+                    float(accuracy)
+                    float(confidence)
+                except (TypeError, ValueError):
+                    continue
+                top_rules.append(rule)
             top_rules_sorted = sorted(top_rules, key=lambda rule: -float(rule.accuracy))[:5]
             elapsed = time.time() - start
             self.generate_report(number_of_rules, result_path, top_rules_sorted, elapsed)

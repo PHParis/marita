@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from mahilda.algorithms import mahilda as mahilda_module
 from mahilda.algorithms.mahilda import MAHILDA, HornRuleExtended
 from mahilda.algorithms.mahilda_core.constraint_graph import IndexedAttribute, JoinableIndexedAttributes
 from mahilda.utils.rules import Predicate, TGDRule
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _one_head_rule(display: str, support: float, confidence: float) -> TGDRule:

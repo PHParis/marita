@@ -70,4 +70,3 @@ class DataExporter:
                     file.write("\t".join(triple) + "\n")
         except Exception as e:
             self.logger_query_time.error(f"Error writing TSV file '{tsv_filename}': {e}")
-

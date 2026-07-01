@@ -270,12 +270,8 @@ class Popper(BaseAlgorithm):
             with open(os.path.join(dir_path, "bk.pl"), "w", encoding="utf-8") as bk_file:
                 bk_file.writelines(bk_predicates)
 
-            bias_content = (
-                f"max_body({max_body}).\n"
-                f"max_vars({max_vars}).\n"
-                "allow_singletons.\n"
-                f"{head_pred}"
-                + "".join(body_preds)
+            bias_content = f"max_body({max_body}).\nmax_vars({max_vars}).\nallow_singletons.\n{head_pred}" + "".join(
+                body_preds
             )
 
             with open(os.path.join(dir_path, "bias.pl"), "w", encoding="utf-8") as bias_file:

@@ -67,7 +67,9 @@ def test_external_popper_failure_raises(monkeypatch, tmp_path: Path) -> None:
     popper = Popper(_DummyDatabase())
 
     with pytest.raises(RuntimeError, match="External Popper command failed"):
-        popper.discover_rules(results_dir=str(tmp_path), runtime_dir=str(tmp_path / "runtime"), popper_command="fake-popper")
+        popper.discover_rules(
+            results_dir=str(tmp_path), runtime_dir=str(tmp_path / "runtime"), popper_command="fake-popper"
+        )
 
 
 def test_external_popper_command_and_parse(monkeypatch, tmp_path: Path) -> None:

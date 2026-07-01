@@ -10,6 +10,7 @@ from mahilda.cli import benchmark as benchmark_cli
 from mahilda.cli import processors as processors_cli
 from mahilda.cli import run as run_cli
 from mahilda.cli.processors import BaselineProcessor, DatabaseProcessor
+from mahilda.utils.rules import InclusionDependency
 
 
 class _FakeAlchemyUtility:
@@ -128,6 +129,57 @@ def test_benchmark_processor_uses_expected_output_paths(monkeypatch, tmp_path: P
     assert count == 1
     assert captured["results_dir"].endswith("SPIDER_demo")
     assert captured["json_path"].endswith("SPIDER_demo_results.json")
+
+
+def test_benchmark_processor_ignores_unscored_spider_rules_for_top_rules(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeSpider:
+        def __init__(self, db_util) -> None:
+            del db_util
+
+        def discover_rules(self, **kwargs):
+            del kwargs
+            return [
+                InclusionDependency(
+                    table_dependant="child",
+                    columns_dependant=("id",),
+                    table_referenced="parent",
+                    columns_referenced=("id",),
+                )
+            ]
+
+    def fake_save_rules(rules, path: str) -> int:
+        captured["rules"] = list(rules)
+        captured["json_path"] = path
+        return len(rules)
+
+    def fake_generate_report(self, number_of_rules, result_path, top_rules, execution_time=None) -> None:
+        del self, execution_time
+        captured["report_number_of_rules"] = number_of_rules
+        captured["report_result_path"] = result_path
+        captured["report_top_rules"] = list(top_rules)
+
+    monkeypatch.setattr(processors_cli, "Spider", FakeSpider)
+    monkeypatch.setattr(processors_cli, "AlchemyUtility", _FakeAlchemyUtility)
+    monkeypatch.setattr(processors_cli.RuleIO, "save_rules_to_json", fake_save_rules)
+    monkeypatch.setattr(BaselineProcessor, "generate_report", fake_generate_report)
+
+    processor = BaselineProcessor(
+        baseline_name="SPIDER",
+        database_name=Path("demo.db"),
+        database_path=tmp_path,
+        results_dir=tmp_path / "results",
+        logger=logging.getLogger("test_benchmark_processor_unscored_spider"),
+    )
+
+    count = processor.discover_rules()
+
+    assert count == 1
+    assert captured["json_path"] == str(tmp_path / "results" / "SPIDER_demo" / "SPIDER_demo_results.json")
+    assert captured["report_number_of_rules"] == 1
+    assert captured["report_result_path"] == tmp_path / "results" / "SPIDER_demo" / "SPIDER_demo_results.json"
+    assert captured["report_top_rules"] == []
 
 
 def test_benchmark_processor_passes_timeout_to_amie3(monkeypatch, tmp_path: Path) -> None:

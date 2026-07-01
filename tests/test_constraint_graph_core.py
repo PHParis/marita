@@ -46,7 +46,6 @@ def test_attribute_compatibility_and_overlap_methods() -> None:
     assert a.is_compatible(b, db_inspector=insp) is True
 
     c = Attribute("a", "val")
-    d = Attribute("b", "val")
     insp.values[("a", "val")] = ["x", "y", None]
     insp.values[("b", "val")] = ["y", "z"]
     assert c.has_common_elements_above_threshold(insp, "a", "val", "b", "val", 0) is True
@@ -112,8 +111,12 @@ def test_constraint_graph_core_behaviors() -> None:
     low = JoinableIndexedAttributes(IndexedAttribute(0, 0, 0), IndexedAttribute(1, 0, 0))
     graph2.add_node(high)
     graph2.add_node(low)
-    with pytest.raises(Exception):
+    try:
         graph2.add_edge(high, low)
+    except Exception as exc:
+        assert "Source node must" in str(exc)
+    else:
+        raise AssertionError("Expected source/target ordering exception")
 
 
 def test_is_compatible_fk_only_no_overlap_returns_false(monkeypatch) -> None:

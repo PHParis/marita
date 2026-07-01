@@ -237,7 +237,7 @@ class MAHILDA(BaseAlgorithm):
         previous_full_join = mahilda_core.APPLY_FULL_JOINABILITY
         mahilda_core.APPLY_DISJOINT = disjoint_semantics
         mahilda_core.SPLIT_PRUNING_MEAN_THRESHOLD = split_mean_threshold
-        mahilda_core.APPLY_FULL_JOINABILITY = (joinability == "full")
+        mahilda_core.APPLY_FULL_JOINABILITY = joinability == "full"
 
         start_time = time.time()
 

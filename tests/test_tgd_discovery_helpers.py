@@ -80,7 +80,7 @@ def test_duplicate_test_detects_duplicates() -> None:
 
     try:
         duplicate_test(["a", "a"])
-        assert False, "Expected ValueError"
+        raise AssertionError("Expected ValueError")
     except ValueError:
         assert True
 
@@ -115,7 +115,6 @@ def test_construct_predicates_smoke_with_mapper() -> None:
         table_name_to_index={"a": 0, "b": 1},
         attribute_name_to_index={"a": {"id": 0}, "b": {"id": 0}},
     )
-    n1 = _jia(_ia(0, 0, 0), _ia(1, 0, 0))
     split = ({(0, 0)}, {(1, 0)})
     assigned = assign_variables([{_ia(0, 0, 0)}, {_ia(1, 0, 0)}], split)
     tgd = construct_tgd_string("a_0(id=x0)", "b_0(id=z0)", assigned, split[0], split[1])

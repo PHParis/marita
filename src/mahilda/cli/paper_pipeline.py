@@ -212,7 +212,9 @@ def write_pipeline_manifest(settings: PipelineSettings, jobs: list[dict[str, Any
     payload = {
         "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "jobs": len(jobs),
-        "stages": [{"id": stage.id, "jobs": sum(1 for job in jobs if job["stage"] == stage.id)} for stage in settings.stages],
+        "stages": [
+            {"id": stage.id, "jobs": sum(1 for job in jobs if job["stage"] == stage.id)} for stage in settings.stages
+        ],
     }
     (settings.queue_dir / "pipeline.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -309,7 +311,16 @@ def _b1_jobs(
 def _command_for_algorithm(algorithm: str, config_path: Path) -> list[str]:
     if algorithm == "MAHILDA":
         return [sys.executable, "-m", "mahilda.cli.main", "run", "--config", str(config_path)]
-    return [sys.executable, "-m", "mahilda.cli.main", "benchmark", "--config", str(config_path), "--baseline", algorithm]
+    return [
+        sys.executable,
+        "-m",
+        "mahilda.cli.main",
+        "benchmark",
+        "--config",
+        str(config_path),
+        "--baseline",
+        algorithm,
+    ]
 
 
 def _b2_jobs(
@@ -482,7 +493,9 @@ def run_pipeline(settings: PipelineSettings, host: str) -> None:
 
 def run_stage(settings: PipelineSettings, stage: StageSettings, host: str) -> None:
     with ThreadPoolExecutor(max_workers=stage.workers_per_host) as executor:
-        futures: set[Future[None]] = {executor.submit(worker_loop, settings, stage, host) for _ in range(stage.workers_per_host)}
+        futures: set[Future[None]] = {
+            executor.submit(worker_loop, settings, stage, host) for _ in range(stage.workers_per_host)
+        }
         while futures:
             done, futures = wait(futures, return_when=FIRST_COMPLETED)
             for future in done:
@@ -669,7 +682,9 @@ def write_b2_coords() -> None:
     lines = ["mode\tN\trules\twall_s"]
     for mode in ("disjoint", "nondisjoint"):
         for walk_length in range(1, 11):
-            et = Path(f"results/ablation_{mode}/N{walk_length}/MAHILDA_Biodegradability/execution_time_Biodegradability.json")
+            et = Path(
+                f"results/ablation_{mode}/N{walk_length}/MAHILDA_Biodegradability/execution_time_Biodegradability.json"
+            )
             if not et.exists():
                 et = Path(f"results/ablation_{mode}/N{walk_length}/execution_time_Biodegradability.json")
             if not et.exists():
@@ -697,8 +712,12 @@ def write_b3_comparison(database_dir: Path) -> None:
         if not fj_et.exists():
             fj_et = Path(f"results/ablation_join/full_join/{db}/execution_time_{db}.json")
         h1, h2 = _rule_set_hash(fk_rules), _rule_set_hash(fj_rules)
-        fk_t = json.loads(fk_et.read_text(encoding="utf-8")).get("execution_time_seconds", "-") if fk_et.exists() else "-"
-        fj_t = json.loads(fj_et.read_text(encoding="utf-8")).get("execution_time_seconds", "-") if fj_et.exists() else "-"
+        fk_t = (
+            json.loads(fk_et.read_text(encoding="utf-8")).get("execution_time_seconds", "-") if fk_et.exists() else "-"
+        )
+        fj_t = (
+            json.loads(fj_et.read_text(encoding="utf-8")).get("execution_time_seconds", "-") if fj_et.exists() else "-"
+        )
         lines.append(f"{db}\t{h1}\t{h2}\t{'OK' if h1 == h2 else 'DIFF'}\t{fk_t}\t{fj_t}")
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -731,7 +750,9 @@ def print_status(settings: PipelineSettings) -> None:
     for stage in settings.stages:
         base = settings.queue_dir / "queue" / stage.id
         counts = {state: len(list((base / state).glob("*.json"))) for state in ("pending", "running", "done", "failed")}
-        print(f"{stage.id}: pending={counts['pending']} running={counts['running']} done={counts['done']} failed={counts['failed']}")
+        print(
+            f"{stage.id}: pending={counts['pending']} running={counts['running']} done={counts['done']} failed={counts['failed']}"
+        )
 
 
 if __name__ == "__main__":

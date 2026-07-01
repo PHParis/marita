@@ -1,4 +1,4 @@
-import ast
+import json
 import logging
 import os
 from datetime import datetime
@@ -15,22 +15,25 @@ class Spider(BaseAlgorithm):
     def discover_rules(self, **kwargs) -> Rule:
         rules = {}
         script_dir = Path(__file__).resolve().parent
-        results_path = str(kwargs.get("results_dir", "results"))
-        os.makedirs(results_path, exist_ok=True)
+        results_path = Path(str(kwargs.get("results_dir", "results")))
+        results_path.mkdir(parents=True, exist_ok=True)
 
         algorithm_name = "SPIDER"
         timeout = int(kwargs.get("timeout", 300))
         memory_gb = float(kwargs.get("memory_gb", 15.0))
         java_heap_gb = int(kwargs.get("java_heap_gb", max(1, int(memory_gb) - 2)))
         class_path = "de.metanome.algorithms.spider.SPIDERFile"
-        rule_type = "inds"
         csv_files = [
             os.path.join(self.database.base_csv_dir, str(table)) for table in os.listdir(self.database.base_csv_dir)
         ]
         current_time = datetime.now()
         jar_path = script_dir.parent / "third_party" / "metanome"
         file_name = f"{current_time.strftime('%Y-%m-%d_%H-%M-%S')}_{algorithm_name}"
-        output_prefix = os.path.join(results_path, file_name)
+        metanome_work_dir = results_path / "_metanome_spider" / file_name
+        metanome_work_dir.mkdir(parents=True, exist_ok=True)
+        output_prefix = "raw"
+        result_file_path = metanome_work_dir / "results" / f"{output_prefix}_inds"
+        stderr_path = metanome_work_dir / "stderr.log"
 
         cmd = [
             "java",
@@ -50,23 +53,35 @@ class Spider(BaseAlgorithm):
             f"file:{output_prefix}",
             "--header",
         ]
-        if not run_cmd(cmd, timeout=timeout, memory_limit_gb=memory_gb, logger=logger):
+        if not run_cmd(
+            cmd,
+            timeout=timeout,
+            memory_limit_gb=memory_gb,
+            stderr_path=stderr_path,
+            cwd=metanome_work_dir,
+            logger=logger,
+        ):
             raise RuntimeError("SPIDER command failed, timed out, or exceeded memory limit.")
 
-        result_file_path = f"{output_prefix}_{rule_type}"
         try:
-            with open(result_file_path) as f:
+            with result_file_path.open(encoding="utf-8") as f:
                 raw_rules = [line for line in f if line.strip()]
-        except FileNotFoundError:
-            return rules
-
-        if os.path.exists(result_file_path):
-            os.remove(result_file_path)
+        except FileNotFoundError as exc:
+            diagnostic = ""
+            if stderr_path.exists():
+                diagnostic = stderr_path.read_text(encoding="utf-8", errors="replace").strip()
+            message = f"SPIDER did not produce expected Metanome output file: {result_file_path}"
+            if diagnostic:
+                message = f"{message}. stderr: {diagnostic}"
+            raise RuntimeError(message) from exc
 
         for raw_rule in raw_rules:
             try:
-                raw_rule = ast.literal_eval(raw_rule)
-            except (ValueError, SyntaxError):
+                raw_rule = json.loads(raw_rule)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f"SPIDER produced malformed JSON result: {raw_rule.strip()}") from exc
+
+            if raw_rule.get("type") != "InclusionDependency":
                 continue
 
             try:
@@ -81,7 +96,7 @@ class Spider(BaseAlgorithm):
                     columns_referenced=columns_referenced,
                 )
                 rules[inclusion_dependency] = (1, 1)
-            except (KeyError, IndexError, AttributeError):
-                continue
+            except (KeyError, IndexError, AttributeError, TypeError) as exc:
+                raise RuntimeError(f"SPIDER produced unsupported inclusion dependency result: {raw_rule}") from exc
 
         return rules

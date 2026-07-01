@@ -1487,6 +1487,7 @@ datasets = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "beautifulsoup4" },
     { name = "coverage" },
     { name = "pre-commit" },
     { name = "pyright" },
@@ -1512,6 +1513,7 @@ provides-extras = ["benchmark", "datasets"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "beautifulsoup4", specifier = ">=4.12" },
     { name = "coverage", specifier = ">=7.6.0" },
     { name = "pre-commit", specifier = ">=4.0.0" },
     { name = "pyright", specifier = ">=1.1.389" },

@@ -26,6 +26,7 @@ def run_cmd(
     timeout: int | None = None,
     memory_limit_gb: float | None = 30,
     stdout_path: str | Path | None = None,
+    stderr_path: str | Path | None = None,
     cwd: str | Path | None = None,
     logger: logging.Logger | None = None,
 ) -> bool:
@@ -39,12 +40,17 @@ def run_cmd(
     active_logger.info("Executing command: %s", " ".join(command_args))
 
     stdout_handle = None
+    stderr_handle = None
     process: subprocess.Popen[str] | None = None
     try:
         if redirected_stdout is not None:
             output_file = Path(redirected_stdout)
             output_file.parent.mkdir(parents=True, exist_ok=True)
             stdout_handle = output_file.open("w", encoding="utf-8")
+        if stderr_path is not None:
+            error_file = Path(stderr_path)
+            error_file.parent.mkdir(parents=True, exist_ok=True)
+            stderr_handle = error_file.open("w", encoding="utf-8")
 
         command_args = _wrap_with_systemd_scope(
             command_args,
@@ -56,7 +62,7 @@ def run_cmd(
         process = subprocess.Popen(
             command_args,
             stdout=stdout_handle if stdout_handle else subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=stderr_handle if stderr_handle else subprocess.PIPE,
             text=True,
             cwd=str(cwd) if cwd else None,
             start_new_session=True,
@@ -74,6 +80,9 @@ def run_cmd(
 
         try:
             _, stderr = process.communicate(timeout=timeout)
+            if stderr_handle is not None:
+                stderr_handle.flush()
+                stderr = ""
         except subprocess.TimeoutExpired:
             active_logger.error("Command timed out after %s seconds", timeout)
             _terminate_process(process)
@@ -105,6 +114,8 @@ def run_cmd(
     finally:
         if stdout_handle is not None:
             stdout_handle.close()
+        if stderr_handle is not None:
+            stderr_handle.close()
 
 
 def _logger(logger: logging.Logger | None) -> logging.Logger:
