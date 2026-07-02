@@ -52,6 +52,15 @@ def main(argv: list[str] | None = None) -> int:
     audit_parser.add_argument("--output-dir", default=None)
     audit_parser.add_argument("--target", default="MAHILDA")
     audit_parser.add_argument("--competitors", default="AMIE3,MATILDA,SPIDER,POPPER")
+    audit_parser.add_argument("--settings", default=None)
+    audit_parser.add_argument("--coverage", choices=("alpha", "subsumption", "instance"), default="alpha")
+    audit_parser.add_argument("--walk-length", type=int, default=None)
+    audit_parser.add_argument("--max-tables", type=int, default=None)
+    audit_parser.add_argument("--max-variables", type=int, default=None)
+    audit_parser.add_argument("--joinability", choices=("fk", "full"), default=None)
+    audit_parser.add_argument("--no-disjoint-semantics", action="store_true")
+    audit_parser.add_argument("--no-diagnose-unmatched", action="store_true")
+    audit_parser.add_argument("--include-amie-rdf", action="store_true")
     audit_parser.add_argument("--confidence-threshold", type=float, default=1.0)
     audit_parser.add_argument("--max-examples", type=int, default=25)
     audit_parser.add_argument("--strict", action="store_true")
@@ -156,6 +165,8 @@ def main(argv: list[str] | None = None) -> int:
             args.target,
             "--competitors",
             args.competitors,
+            "--coverage",
+            args.coverage,
             "--confidence-threshold",
             str(args.confidence_threshold),
             "--max-examples",
@@ -163,10 +174,26 @@ def main(argv: list[str] | None = None) -> int:
         ]
         if args.output_dir:
             audit_args.extend(["--output-dir", args.output_dir])
+        if args.settings:
+            audit_args.extend(["--settings", args.settings])
+        if args.walk_length is not None:
+            audit_args.extend(["--walk-length", str(args.walk_length)])
+        if args.max_tables is not None:
+            audit_args.extend(["--max-tables", str(args.max_tables)])
+        if args.max_variables is not None:
+            audit_args.extend(["--max-variables", str(args.max_variables)])
+        if args.joinability is not None:
+            audit_args.extend(["--joinability", args.joinability])
         if args.strict:
             audit_args.append("--strict")
         if args.no_progress:
             audit_args.append("--no-progress")
+        if args.no_disjoint_semantics:
+            audit_args.append("--no-disjoint-semantics")
+        if args.no_diagnose_unmatched:
+            audit_args.append("--no-diagnose-unmatched")
+        if args.include_amie_rdf:
+            audit_args.append("--include-amie-rdf")
         return audit.main(audit_args)
 
     if args.command == "import-rdf":

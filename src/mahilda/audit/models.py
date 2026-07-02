@@ -20,7 +20,22 @@ class MatchStatus(str, Enum):
     NOT_APPLICABLE = "not_applicable"
     RECALLED_ALPHA = "recalled_alpha"
     RECALLED_SUBSUMED = "recalled_subsumed"
+    COVERED_ON_INSTANCE = "covered_on_instance"
     UNMATCHED = "unmatched"
+
+
+class ScopeStatus(str, Enum):
+    NOT_PARSED = "not_parsed"
+    UNSUPPORTED_REPRESENTATION = "unsupported_representation"
+    IN_TARGET_CLASS = "in_target_class"
+    EMPTY_BODY = "empty_body"
+    HEAD_ONLY_VARIABLE = "head_only_variable"
+    OUTSIDE_BOUNDS = "outside_bounds"
+    OUTSIDE_FK_JOINABILITY = "outside_fk_joinability"
+    OUTSIDE_RELATION_DISJOINTNESS = "outside_relation_disjointness"
+    MISSING_DATABASE = "missing_database"
+    MISSING_PK = "missing_pk"
+    EVALUATOR_ERROR = "evaluator_error"
 
 
 @dataclass(frozen=True, order=True)
@@ -114,6 +129,14 @@ class AuditRecord:
     rule_index: int
     classification: AuditClassification
     match_status: MatchStatus
+    scope_status: ScopeStatus
+    scope_reason: str
+    target_class_member: bool
+    coverage_alpha: bool
+    coverage_subsumption: bool
+    coverage_instance: bool
+    diagnosis: str
+    claim_relevant: bool
     reason: str
     support: int | None
     predictions: int | None

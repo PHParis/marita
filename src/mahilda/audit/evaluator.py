@@ -16,8 +16,9 @@ class AuditEvaluationError(ValueError):
 
 
 class SQLiteRuleEvaluator:
-    def __init__(self, database_path: Path) -> None:
+    def __init__(self, database_path: Path, *, relation_disjoint: bool = True) -> None:
         self.database_path = database_path
+        self.relation_disjoint = relation_disjoint
         self.connection = sqlite3.connect(database_path)
         self.connection.row_factory = sqlite3.Row
         self._tables = self._load_tables()
@@ -31,6 +32,16 @@ class SQLiteRuleEvaluator:
         predictions = self._count_assignments(rule.body, sorted(rule.body_variables()))
         support = self._count_assignments(rule.all_atoms(), sorted(rule.body_variables()))
         return Evaluation(support=support, predictions=predictions)
+
+    def projected_head_rows(self, rule: RelationalRule) -> set[tuple[object, ...]]:
+        atoms = rule.all_atoms()
+        head_variables = [variable for _, variable in rule.head.terms]
+        query, params = self._build_select_query(atoms, head_variables)
+        try:
+            rows = self.connection.execute(query, params).fetchall()
+        except sqlite3.Error as exc:
+            raise AuditEvaluationError(str(exc)) from exc
+        return {tuple(row) for row in rows}
 
     def is_fk_joinable(self, rule: RelationalRule) -> bool:
         occurrences = _indexed_atoms(rule.all_atoms())
@@ -82,6 +93,12 @@ class SQLiteRuleEvaluator:
         return int(row[0] or 0)
 
     def _build_count_query(self, atoms: tuple[Atom, ...], count_variables: list[str]) -> tuple[str, list[object]]:
+        select_query, params = self._build_select_query(atoms, count_variables)
+        if "SELECT DISTINCT" not in select_query:
+            return select_query.replace("SELECT *", "SELECT COUNT(*)", 1), params
+        return f"SELECT COUNT(*) FROM ({select_query})", params
+
+    def _build_select_query(self, atoms: tuple[Atom, ...], variables: list[str]) -> tuple[str, list[object]]:
         aliases = _indexed_atoms(atoms)
         from_clause = ", ".join(f"{_quote(atom.table)} AS {_quote(alias)}" for alias, atom in aliases)
         where_clauses: list[str] = []
@@ -102,13 +119,14 @@ class SQLiteRuleEvaluator:
             for other in refs[1:]:
                 where_clauses.append(f"{first} = {other}")
 
-        where_clauses.extend(self._relation_disjoint_conditions(aliases))
+        if self.relation_disjoint:
+            where_clauses.extend(self._relation_disjoint_conditions(aliases))
         where_sql = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
-        select_cols = self._select_columns_for_variables(variable_refs, count_variables)
+        select_cols = self._select_columns_for_variables(variable_refs, variables)
         if not select_cols:
-            return f"SELECT COUNT(*) FROM {from_clause}{where_sql}", params
+            return f"SELECT * FROM {from_clause}{where_sql}", params
         select_sql = ", ".join(select_cols)
-        return f"SELECT COUNT(*) FROM (SELECT DISTINCT {select_sql} FROM {from_clause}{where_sql})", params
+        return f"SELECT DISTINCT {select_sql} FROM {from_clause}{where_sql}", params
 
     def _relation_disjoint_conditions(self, aliases: tuple[tuple[str, Atom], ...]) -> list[str]:
         conditions: list[str] = []

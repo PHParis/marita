@@ -9,12 +9,14 @@ from typing import TYPE_CHECKING
 from tqdm import tqdm
 
 from mahilda.audit.evaluator import AuditEvaluationError, SQLiteRuleEvaluator
+from mahilda.audit.matching import alpha_equivalent, covered_on_instance, subsumes
 from mahilda.audit.models import (
     AuditClassification,
     AuditRecord,
     MatchStatus,
     ParsedRule,
     RelationalRule,
+    ScopeStatus,
 )
 from mahilda.audit.parsing import load_source_rules, parse_source_rule
 
@@ -33,6 +35,14 @@ class AuditConfig:
     max_examples: int = 25
     strict: bool = False
     show_progress: bool = True
+    walk_length: int = 3
+    max_tables: int = 3
+    max_variables: int = 3
+    disjoint_semantics: bool = True
+    joinability: str = "fk"
+    coverage: str = "alpha"
+    diagnose_unmatched: bool = True
+    include_amie_rdf: bool = False
 
 
 def run_audit(config: AuditConfig) -> list[AuditRecord]:
@@ -41,6 +51,8 @@ def run_audit(config: AuditConfig) -> list[AuditRecord]:
     records: list[AuditRecord] = []
 
     for algorithm in config.competitors:
+        if algorithm == "AMIE3" and not config.include_amie_rdf:
+            continue
         sources = load_source_rules(config.results_dir, algorithm)
         iterator = tqdm(
             sources,
@@ -50,7 +62,7 @@ def run_audit(config: AuditConfig) -> list[AuditRecord]:
         )
         for source in iterator:
             parsed = parse_source_rule(source)
-            records.append(_audit_rule(config, parsed, target_rules_by_db.get(parsed.source.database, {})))
+            records.append(_audit_rule(config, parsed, target_rules_by_db.get(parsed.source.database, [])))
 
     _write_outputs(config, records)
     if config.strict and any(record.match_status == MatchStatus.UNMATCHED for record in records):
@@ -58,41 +70,45 @@ def run_audit(config: AuditConfig) -> list[AuditRecord]:
     return records
 
 
-def _load_target_rules(config: AuditConfig) -> dict[str, dict[str, RelationalRule]]:
-    by_database: dict[str, dict[str, RelationalRule]] = defaultdict(dict)
+def _load_target_rules(config: AuditConfig) -> dict[str, list[RelationalRule]]:
+    by_database: dict[str, list[RelationalRule]] = defaultdict(list)
     for source in load_source_rules(config.results_dir, config.target):
         parsed = parse_source_rule(source)
         if parsed.rule is not None:
-            by_database[source.database][parsed.rule.canonical_key()] = parsed.rule
+            by_database[source.database].append(parsed.rule)
     return dict(by_database)
 
 
 def _audit_rule(
     config: AuditConfig,
     parsed: ParsedRule,
-    target_rules: dict[str, RelationalRule],
+    target_rules: list[RelationalRule],
 ) -> AuditRecord:
     source = parsed.source
-    if parsed.rule is None:
-        classification = (
-            AuditClassification.OUT_OF_SCOPE
-            if parsed.unsupported_reason and parsed.unsupported_reason.endswith("_rule")
-            else AuditClassification.PARSE_FAILED
-        )
+    rule = parsed.rule
+    if rule is None:
+        unsupported = bool(parsed.unsupported_reason and parsed.unsupported_reason.endswith("_rule"))
+        classification = AuditClassification.OUT_OF_SCOPE if unsupported else AuditClassification.PARSE_FAILED
+        scope_status = ScopeStatus.UNSUPPORTED_REPRESENTATION if unsupported else ScopeStatus.NOT_PARSED
         return _record(
             parsed=parsed,
             classification=classification,
             match_status=MatchStatus.NOT_APPLICABLE,
+            scope_status=scope_status,
+            scope_reason=parsed.unsupported_reason or "parse_failed",
+            diagnosis=scope_status.value,
             reason=parsed.unsupported_reason or "parse_failed",
         )
 
-    rule = parsed.rule
-    scope_reason = _scope_reason(rule)
-    if scope_reason is not None:
+    scope_status, scope_reason = _static_scope_status(config, rule)
+    if scope_status != ScopeStatus.IN_TARGET_CLASS:
         return _record(
             parsed=parsed,
             classification=AuditClassification.OUT_OF_SCOPE,
             match_status=MatchStatus.NOT_APPLICABLE,
+            scope_status=scope_status,
+            scope_reason=scope_reason,
+            diagnosis=scope_status.value,
             reason=scope_reason,
         )
 
@@ -102,66 +118,101 @@ def _audit_rule(
             parsed=parsed,
             classification=AuditClassification.PARSE_FAILED,
             match_status=MatchStatus.NOT_APPLICABLE,
+            scope_status=ScopeStatus.MISSING_DATABASE,
+            scope_reason=f"missing_database:{database_path}",
+            diagnosis=ScopeStatus.MISSING_DATABASE.value,
             reason=f"missing_database:{database_path}",
         )
 
-    evaluator = SQLiteRuleEvaluator(database_path)
+    evaluator = SQLiteRuleEvaluator(database_path, relation_disjoint=config.disjoint_semantics)
     try:
-        if not evaluator.is_fk_joinable(rule):
+        try:
+            if config.joinability == "fk" and not evaluator.is_fk_joinable(rule):
+                return _record(
+                    parsed=parsed,
+                    classification=AuditClassification.OUT_OF_SCOPE,
+                    match_status=MatchStatus.NOT_APPLICABLE,
+                    scope_status=ScopeStatus.OUTSIDE_FK_JOINABILITY,
+                    scope_reason="not_foreign_key_joinable",
+                    diagnosis=ScopeStatus.OUTSIDE_FK_JOINABILITY.value,
+                    reason="not_foreign_key_joinable",
+                )
+            if _has_head_atom_in_body(rule) or (
+                config.disjoint_semantics and evaluator.is_relation_disjoint_vacuous(rule)
+            ):
+                return _record(
+                    parsed=parsed,
+                    classification=AuditClassification.VACUOUS,
+                    match_status=MatchStatus.NOT_APPLICABLE,
+                    scope_status=ScopeStatus.OUTSIDE_RELATION_DISJOINTNESS,
+                    scope_reason="vacuous_under_relation_disjoint_semantics",
+                    diagnosis=ScopeStatus.OUTSIDE_RELATION_DISJOINTNESS.value,
+                    reason="vacuous_under_relation_disjoint_semantics",
+                )
+            evaluation = evaluator.evaluate(rule)
+        except AuditEvaluationError as exc:
+            reason = str(exc)
+            scope_status = (
+                ScopeStatus.MISSING_PK if reason.startswith("missing_primary_key") else ScopeStatus.EVALUATOR_ERROR
+            )
             return _record(
                 parsed=parsed,
                 classification=AuditClassification.OUT_OF_SCOPE,
                 match_status=MatchStatus.NOT_APPLICABLE,
-                reason="not_foreign_key_joinable",
+                scope_status=scope_status,
+                scope_reason=reason,
+                diagnosis=scope_status.value,
+                reason=reason,
             )
-        if _has_head_atom_in_body(rule) or evaluator.is_relation_disjoint_vacuous(rule):
+
+        if evaluation.confidence < config.confidence_threshold:
             return _record(
                 parsed=parsed,
-                classification=AuditClassification.VACUOUS,
+                classification=AuditClassification.APPROXIMATE,
                 match_status=MatchStatus.NOT_APPLICABLE,
-                reason="vacuous_under_relation_disjoint_semantics",
+                scope_status=ScopeStatus.IN_TARGET_CLASS,
+                scope_reason=ScopeStatus.IN_TARGET_CLASS.value,
+                diagnosis=AuditClassification.APPROXIMATE.value,
+                reason="confidence_below_threshold",
+                support=evaluation.support,
+                predictions=evaluation.predictions,
+                confidence=evaluation.confidence,
             )
-        evaluation = evaluator.evaluate(rule)
-    except AuditEvaluationError as exc:
+
+        match_status, matched_rule = _match_rule(evaluator, rule, target_rules)
+        diagnosis = _diagnosis_for_match(match_status)
         return _record(
             parsed=parsed,
-            classification=AuditClassification.OUT_OF_SCOPE,
-            match_status=MatchStatus.NOT_APPLICABLE,
-            reason=str(exc),
+            classification=AuditClassification.COMPARABLE_TRUE,
+            match_status=match_status,
+            scope_status=ScopeStatus.IN_TARGET_CLASS,
+            scope_reason=ScopeStatus.IN_TARGET_CLASS.value,
+            diagnosis=diagnosis,
+            reason="matched" if match_status != MatchStatus.UNMATCHED else "claim_relevant_uncovered",
+            support=evaluation.support,
+            predictions=evaluation.predictions,
+            confidence=evaluation.confidence,
+            matched_rule=matched_rule,
         )
     finally:
         evaluator.close()
 
-    if evaluation.confidence < config.confidence_threshold:
-        return _record(
-            parsed=parsed,
-            classification=AuditClassification.APPROXIMATE,
-            match_status=MatchStatus.NOT_APPLICABLE,
-            reason="confidence_below_threshold",
-            support=evaluation.support,
-            predictions=evaluation.predictions,
-            confidence=evaluation.confidence,
-        )
 
-    match_status, matched_rule = _match_rule(rule, target_rules)
-    return _record(
-        parsed=parsed,
-        classification=AuditClassification.COMPARABLE_TRUE,
-        match_status=match_status,
-        reason="matched" if match_status != MatchStatus.UNMATCHED else "no_matching_mahilda_rule",
-        support=evaluation.support,
-        predictions=evaluation.predictions,
-        confidence=evaluation.confidence,
-        matched_rule=matched_rule,
-    )
-
-
-def _scope_reason(rule: RelationalRule) -> str | None:
+def _static_scope_status(config: AuditConfig, rule: RelationalRule) -> tuple[ScopeStatus, str]:
     if not rule.body:
-        return "empty_body"
+        return ScopeStatus.EMPTY_BODY, "empty_body"
     if rule.head_variables() - rule.body_variables():
-        return "existential_or_head_only_variable"
-    return None
+        return ScopeStatus.HEAD_ONLY_VARIABLE, "existential_or_head_only_variable"
+    total_atoms = len(rule.body) + 1
+    if total_atoms > config.walk_length:
+        return ScopeStatus.OUTSIDE_BOUNDS, f"outside_walk_length:{total_atoms}>{config.walk_length}"
+    tables = {atom.table for atom in rule.all_atoms()}
+    if len(tables) > config.max_tables:
+        return ScopeStatus.OUTSIDE_BOUNDS, f"outside_max_tables:{len(tables)}>{config.max_tables}"
+    variables = rule.body_variables() | rule.head_variables()
+    if len(variables) > config.max_variables:
+        return ScopeStatus.OUTSIDE_BOUNDS, f"outside_max_variables:{len(variables)}>{config.max_variables}"
+    return ScopeStatus.IN_TARGET_CLASS, ScopeStatus.IN_TARGET_CLASS.value
 
 
 def _has_head_atom_in_body(rule: RelationalRule) -> bool:
@@ -169,19 +220,30 @@ def _has_head_atom_in_body(rule: RelationalRule) -> bool:
     return any(atom.without_occurrence() == head for atom in rule.body)
 
 
-def _match_rule(rule: RelationalRule, target_rules: dict[str, RelationalRule]) -> tuple[MatchStatus, str]:
-    canonical_key = rule.canonical_key()
-    if canonical_key in target_rules:
-        return MatchStatus.RECALLED_ALPHA, canonical_key
-
-    competitor_body = rule.canonical_body_atoms()
-    competitor_head = rule.canonical_head_key()
-    for target_key, target_rule in target_rules.items():
-        if target_rule.canonical_head_key() != competitor_head:
-            continue
-        if target_rule.canonical_body_atoms().issubset(competitor_body):
-            return MatchStatus.RECALLED_SUBSUMED, target_key
+def _match_rule(
+    evaluator: SQLiteRuleEvaluator,
+    rule: RelationalRule,
+    target_rules: list[RelationalRule],
+) -> tuple[MatchStatus, str]:
+    for target_rule in target_rules:
+        if alpha_equivalent(rule, target_rule):
+            return MatchStatus.RECALLED_ALPHA, target_rule.canonical_key()
+    for target_rule in target_rules:
+        if subsumes(target_rule, rule):
+            return MatchStatus.RECALLED_SUBSUMED, target_rule.canonical_key()
+    if covered_on_instance(evaluator, rule, target_rules):
+        return MatchStatus.COVERED_ON_INSTANCE, "finite_instance_coverage"
     return MatchStatus.UNMATCHED, ""
+
+
+def _diagnosis_for_match(match_status: MatchStatus) -> str:
+    if match_status == MatchStatus.RECALLED_ALPHA:
+        return "covered_by_alpha_equivalence"
+    if match_status == MatchStatus.RECALLED_SUBSUMED:
+        return "covered_by_logical_subsumption"
+    if match_status == MatchStatus.COVERED_ON_INSTANCE:
+        return "covered_on_finite_instance"
+    return "claim_relevant_uncovered"
 
 
 def _record(
@@ -189,6 +251,9 @@ def _record(
     parsed: ParsedRule,
     classification: AuditClassification,
     match_status: MatchStatus,
+    scope_status: ScopeStatus,
+    scope_reason: str,
+    diagnosis: str,
     reason: str,
     support: int | None = None,
     predictions: int | None = None,
@@ -196,6 +261,15 @@ def _record(
     matched_rule: str = "",
 ) -> AuditRecord:
     rule = parsed.rule
+    coverage_alpha = match_status == MatchStatus.RECALLED_ALPHA
+    coverage_subsumption = match_status in {MatchStatus.RECALLED_ALPHA, MatchStatus.RECALLED_SUBSUMED}
+    coverage_instance = match_status in {
+        MatchStatus.RECALLED_ALPHA,
+        MatchStatus.RECALLED_SUBSUMED,
+        MatchStatus.COVERED_ON_INSTANCE,
+    }
+    target_class_member = scope_status == ScopeStatus.IN_TARGET_CLASS
+    claim_relevant = classification == AuditClassification.COMPARABLE_TRUE
     return AuditRecord(
         algorithm=parsed.source.algorithm,
         database=parsed.source.database,
@@ -203,6 +277,14 @@ def _record(
         rule_index=parsed.source.index,
         classification=classification,
         match_status=match_status,
+        scope_status=scope_status,
+        scope_reason=scope_reason,
+        target_class_member=target_class_member,
+        coverage_alpha=coverage_alpha,
+        coverage_subsumption=coverage_subsumption,
+        coverage_instance=coverage_instance,
+        diagnosis=diagnosis,
+        claim_relevant=claim_relevant,
         reason=reason,
         support=support,
         predictions=predictions,
@@ -215,9 +297,15 @@ def _record(
 
 def _write_outputs(config: AuditConfig, records: list[AuditRecord]) -> None:
     _write_rules_csv(config.output_dir / "audit_rules.csv", records)
-    _write_summary_json(config.output_dir / "audit_summary.json", records)
+    _write_summary_json(config.output_dir / "audit_summary.json", records, config)
     _write_unmatched_markdown(config.output_dir / "audit_unmatched.md", records, config.max_examples)
-    _write_claims_markdown(config.output_dir / "audit_claims.md", records)
+    _write_diagnosis_markdown(
+        config.output_dir / "audit_diagnosis.md",
+        records,
+        config.max_examples,
+        diagnose_unmatched=config.diagnose_unmatched,
+    )
+    _write_claims_markdown(config.output_dir / "audit_claims.md", records, config)
 
 
 def _write_rules_csv(path: Path, records: list[AuditRecord]) -> None:
@@ -229,16 +317,24 @@ def _write_rules_csv(path: Path, records: list[AuditRecord]) -> None:
             writer.writerow({field: getattr(record, field) for field in fieldnames})
 
 
-def _write_summary_json(path: Path, records: list[AuditRecord]) -> None:
+def _write_summary_json(path: Path, records: list[AuditRecord], config: AuditConfig) -> None:
     by_algorithm: dict[str, Counter[str]] = defaultdict(Counter)
     by_database: dict[str, Counter[str]] = defaultdict(Counter)
+    by_scope_status = Counter(record.scope_status.value for record in records)
+    by_diagnosis = Counter(record.diagnosis for record in records)
     for record in records:
         by_algorithm[record.algorithm][record.classification.value] += 1
         by_algorithm[record.algorithm][record.match_status.value] += 1
+        by_algorithm[record.algorithm][record.scope_status.value] += 1
+        by_algorithm[record.algorithm][record.diagnosis] += 1
         by_database[record.database][record.classification.value] += 1
+        by_database[record.database][record.diagnosis] += 1
 
     payload = {
+        "coverage_mode": config.coverage,
         "totals": _totals(records),
+        "by_scope_status": dict(sorted(by_scope_status.items())),
+        "by_diagnosis": dict(sorted(by_diagnosis.items())),
         "by_algorithm": {algorithm: dict(counter) for algorithm, counter in sorted(by_algorithm.items())},
         "by_database": {database: dict(counter) for database, counter in sorted(by_database.items())},
     }
@@ -252,15 +348,32 @@ def _totals(records: list[AuditRecord]) -> dict[str, int | float]:
     alpha_or_subsumed = sum(
         record.match_status in {MatchStatus.RECALLED_ALPHA, MatchStatus.RECALLED_SUBSUMED} for record in records
     )
+    alpha_subsumed_or_instance = sum(
+        record.match_status
+        in {MatchStatus.RECALLED_ALPHA, MatchStatus.RECALLED_SUBSUMED, MatchStatus.COVERED_ON_INSTANCE}
+        for record in records
+    )
     unmatched = sum(record.match_status == MatchStatus.UNMATCHED for record in records)
+    alpha_uncovered = comparable - alpha
+    subsumption_uncovered = comparable - alpha_or_subsumed
+    instance_uncovered = comparable - alpha_subsumed_or_instance
     return {
         "audited_rules": len(records),
         "comparable_true": comparable,
+        "alpha_claim_denominator": comparable,
+        "subsumption_claim_denominator": comparable,
+        "instance_claim_denominator": comparable,
         "recalled_alpha": alpha,
         "recalled_alpha_or_subsumed": alpha_or_subsumed,
+        "recalled_alpha_subsumed_or_instance": alpha_subsumed_or_instance,
         "unmatched": unmatched,
+        "claim_relevant_rules": comparable,
+        "claim_relevant_uncovered": alpha_uncovered,
+        "subsumption_uncovered": subsumption_uncovered,
+        "instance_uncovered": instance_uncovered,
         "alpha_recall": alpha / comparable if comparable else 0.0,
         "alpha_or_subsumed_recall": alpha_or_subsumed / comparable if comparable else 0.0,
+        "alpha_subsumed_or_instance_recall": alpha_subsumed_or_instance / comparable if comparable else 0.0,
     }
 
 
@@ -291,12 +404,75 @@ def _write_unmatched_markdown(path: Path, records: list[AuditRecord], max_exampl
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def _write_claims_markdown(path: Path, records: list[AuditRecord]) -> None:
+def _write_diagnosis_markdown(
+    path: Path,
+    records: list[AuditRecord],
+    max_examples: int,
+    *,
+    diagnose_unmatched: bool,
+) -> None:
+    diagnosis_counts = Counter(record.diagnosis for record in records)
+    scope_counts = Counter(record.scope_status.value for record in records)
+    alpha_uncovered = [record for record in records if record.claim_relevant and not record.coverage_alpha]
+    lines = [
+        "# Audit Diagnosis",
+        "",
+        "This report explains why rules are or are not usable for a MAHILDA coverage claim.",
+        "",
+        "## Scope Status Counts",
+        "",
+    ]
+    for status, count in scope_counts.most_common():
+        lines.append(f"- {status}: {count}")
+    lines.extend(["", "## Diagnosis Counts", ""])
+    for diagnosis, count in diagnosis_counts.most_common():
+        lines.append(f"- {diagnosis}: {count}")
+    lines.extend(["", "## Claim-Relevant Uncovered Examples", ""])
+    if not diagnose_unmatched:
+        lines.append("Unmatched-rule diagnosis examples were disabled with `--no-diagnose-unmatched`.")
+    elif not alpha_uncovered:
+        lines.append("No claim-relevant uncovered rules were found under alpha-equivalence.")
+    else:
+        lines.append(f"Showing up to {max_examples} rules that block an alpha-equivalence 100% coverage claim.")
+        lines.append("")
+        for record in alpha_uncovered[:max_examples]:
+            lines.extend(
+                [
+                    f"### {record.algorithm} / {record.database} / rule {record.rule_index}",
+                    "",
+                    f"- Diagnosis: {record.diagnosis}",
+                    f"- Scope: {record.scope_status.value}",
+                    f"- Support: {record.support}",
+                    f"- Predictions: {record.predictions}",
+                    f"- Confidence: {record.confidence}",
+                    f"- Canonical: `{record.canonical_rule}`",
+                    "",
+                    "```text",
+                    record.display,
+                    "```",
+                    "",
+                ]
+            )
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _write_claims_markdown(path: Path, records: list[AuditRecord], config: AuditConfig) -> None:
     totals = _totals(records)
     comparable = int(totals["comparable_true"])
     alpha = int(totals["recalled_alpha"])
     alpha_or_subsumed = int(totals["recalled_alpha_or_subsumed"])
+    alpha_subsumed_or_instance = int(totals["recalled_alpha_subsumed_or_instance"])
     unmatched = int(totals["unmatched"])
+    claim_relevant_uncovered = int(totals["claim_relevant_uncovered"])
+    if config.coverage == "subsumption":
+        selected_uncovered = int(totals["subsumption_uncovered"])
+        selected_label = "alpha-equivalence or logical subsumption"
+    elif config.coverage == "instance":
+        selected_uncovered = int(totals["instance_uncovered"])
+        selected_label = "alpha-equivalence, logical subsumption, or finite-instance coverage"
+    else:
+        selected_uncovered = claim_relevant_uncovered
+        selected_label = "alpha-equivalence"
 
     lines = [
         "# Audit Claims",
@@ -309,21 +485,25 @@ def _write_claims_markdown(path: Path, records: list[AuditRecord]) -> None:
         f"- Comparable true rules: {comparable}",
         f"- Recalled by alpha-equivalence: {alpha}",
         f"- Recalled by alpha-equivalence or subsumption: {alpha_or_subsumed}",
+        f"- Recalled by alpha-equivalence, subsumption, or finite-instance coverage: {alpha_subsumed_or_instance}",
         f"- Unmatched comparable true rules: {unmatched}",
+        f"- Claim-relevant uncovered rules under alpha-equivalence: {claim_relevant_uncovered}",
+        f"- Selected coverage criterion: {selected_label}",
+        f"- Uncovered rules under selected criterion: {selected_uncovered}",
         "",
         "## Permitted Claim",
         "",
     ]
-    if comparable and unmatched == 0:
+    if comparable and selected_uncovered == 0:
         lines.append(
             "After excluding approximate, vacuous, unparseable, and out-of-scope rules, "
             "MAHILDA recovered 100% of the remaining comparable true competitor rules "
-            "under the reported audit criterion."
+            f"under {selected_label}."
         )
     elif comparable:
         lines.append(
-            "The current audited artifacts do not support a 100% recall claim because at least one "
-            "comparable true competitor rule is unmatched."
+            f"The current audited artifacts do not support a 100% recall claim under {selected_label} because at least "
+            "one comparable true competitor rule is uncovered."
         )
     else:
         lines.append("No comparable true competitor rules were found, so recall is not meaningful.")

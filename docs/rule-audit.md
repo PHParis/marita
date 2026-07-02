@@ -20,11 +20,19 @@ Useful options:
 ```sh
 uv run mahilda audit --competitors MATILDA
 uv run mahilda audit --confidence-threshold 1.0 --strict
+uv run mahilda audit --settings configs/paper/benchmark_83.yaml
+uv run mahilda audit --coverage subsumption
+uv run mahilda audit --coverage instance
+uv run mahilda audit --include-amie-rdf
 uv run mahilda audit --no-progress
 ```
 
 `--strict` exits with code `2` if any comparable true competitor rule is not recovered by MAHILDA.
 Progress bars are enabled by default and show one bar per competitor algorithm. Use `--no-progress` for CI logs or redirected output.
+
+The default audit target-class settings match the paper benchmark defaults: `walk_length=3`, `max_tables=3`, `max_variables=3`, `joinability=fk`, and relation-disjoint semantics enabled. Override these with `--walk-length`, `--max-tables`, `--max-variables`, `--joinability`, `--no-disjoint-semantics`, or load a YAML config with `--settings`.
+
+AMIE3 RDF/triple rules are skipped by default because no relational back-translation is implemented. Use `--include-amie-rdf` only to count them as unsupported audit rows; they remain outside the claim denominator.
 
 ## Inputs
 
@@ -49,7 +57,7 @@ Each competitor rule receives exactly one formal classification.
 
 `parse_failed`: the rule cannot be parsed into a known representation.
 
-`out_of_scope`: the rule is parseable or recognized, but not comparable to MAHILDA's audited target class. Examples include RDF/triple AMIE3 rules that cannot be translated to relational atoms, ILP/Popper rules that remain outside the relational formula parser, rules with head-only variables, non-FK joins, missing database tables or columns, and unsupported inclusion-dependency shapes.
+`out_of_scope`: the rule is parseable or recognized, but not comparable to MAHILDA's audited target class. Examples include RDF/triple AMIE3 rules that cannot be translated to relational atoms, ILP/Popper rules that remain outside the relational formula parser, rules with head-only variables, non-FK joins, missing database tables or columns, rules outside the configured MAHILDA bounds, and unsupported inclusion-dependency shapes.
 
 `vacuous`: the rule is formally redundant under the audit definition. The current checks mark a rule vacuous when the head atom is already present in the body after canonicalization, or when repeated occurrences of the same relation force reuse of the same primary-key tuple under relation-disjoint semantics.
 
@@ -57,17 +65,21 @@ Each competitor rule receives exactly one formal classification.
 
 `comparable_true`: the rule is parseable, in scope, non-vacuous, and exact on the database instance.
 
+The CSV also records `scope_status`, `scope_reason`, `target_class_member`, and `diagnosis`. These fields explain why a rule is excluded from or included in the claim denominator.
+
 ## Matching Against MAHILDA
 
 Comparable true rules are matched against MAHILDA rules for the same database.
 
 `recalled_alpha`: the competitor rule and a MAHILDA rule have the same canonical form modulo variable renaming and body atom order.
 
-`recalled_subsumed`: no alpha-equivalent MAHILDA rule exists, but a MAHILDA rule with the same canonical head has a body contained in the competitor body under the current canonical-body check.
+`recalled_subsumed`: no alpha-equivalent MAHILDA rule exists, but a MAHILDA rule logically subsumes the competitor rule under a rule homomorphism preserving relation names, columns, and shared variables.
+
+`covered_on_instance`: no alpha-equivalent or subsuming MAHILDA rule exists, but the MAHILDA output covers the competitor rule's head projections on the current SQLite instance. This is a finite-instance diagnostic, not a logical recall proof.
 
 `unmatched`: no alpha-equivalent or subsuming MAHILDA rule was found.
 
-The primary recall claim should use alpha-equivalence. Subsumption recall is reported separately because it is a more permissive criterion.
+The primary recall claim should use alpha-equivalence. Subsumption recall is reported separately because it is a more permissive logical criterion. Finite-instance coverage is weaker still and should be used only as a diagnostic unless the paper explicitly says the claim is instance-level.
 
 ## Outputs
 
@@ -77,6 +89,7 @@ The command writes:
 audit_summary.json
 audit_rules.csv
 audit_unmatched.md
+audit_diagnosis.md
 audit_claims.md
 ```
 
@@ -86,15 +99,19 @@ audit_claims.md
 
 `audit_unmatched.md` lists examples of comparable true rules not recovered by MAHILDA.
 
+`audit_diagnosis.md` groups rules by scope status and diagnosis, and lists claim-relevant uncovered examples.
+
 `audit_claims.md` gives conservative claim text generated from the computed counts.
 
 ## Claims The Audit Can Support
 
-If there are comparable true rules and no unmatched comparable true rules, the following claim is supported for the audited artifacts:
+If there are comparable true rules and no uncovered comparable true rules under the selected coverage criterion, the following claim is supported for the audited artifacts:
 
-> After excluding approximate, vacuous, unparseable, and out-of-scope rules, MAHILDA recovered 100% of the remaining comparable true competitor rules under the reported audit criterion.
+> After excluding approximate, vacuous, unparseable, and out-of-scope rules, MAHILDA recovered 100% of the remaining comparable true competitor rules under [alpha-equivalence / logical subsumption / finite-instance coverage].
 
-If unmatched comparable true rules exist, the audit does not support a 100% recall claim. The unmatched examples should be inspected as implementation bugs, scope mismatches, or evidence that MAHILDA does not recover all comparable rules.
+If uncovered comparable true rules exist under the selected criterion, the audit does not support a 100% recall claim. The examples should be inspected as implementation bugs, scope mismatches, audit-model limitations, or evidence that MAHILDA does not recover all comparable rules.
+
+For paper use, prefer the alpha-equivalence claim if it succeeds. A subsumption claim is acceptable only if the paper defines the subsumption relation. A finite-instance claim must be described as instance-level coverage, not logical recall.
 
 ## Claims The Audit Does Not Support
 

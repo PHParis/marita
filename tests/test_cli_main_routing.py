@@ -79,6 +79,8 @@ def test_main_routes_audit_command(monkeypatch) -> None:
         "MAHILDA",
         "--competitors",
         "MATILDA",
+        "--coverage",
+        "alpha",
         "--confidence-threshold",
         "1.0",
         "--max-examples",

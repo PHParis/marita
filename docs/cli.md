@@ -40,6 +40,30 @@ uv run mahilda benchmark --config configs/config.example.yaml --baseline AMIE3 -
 - Baseline selection comes from `--baseline` first, then `benchmark.baseline`, then `algorithm.name`.
 - `--input-tsv` lets AMIE3 consume a prebuilt RDF benchmark TSV directly.
 
+## `audit`
+
+Audits competitor rule artifacts against MAHILDA outputs under formal target-class and coverage criteria.
+
+```bash
+uv run mahilda audit --results-dir results/paper_table2 --database-dir data/relational
+uv run mahilda audit --competitors MATILDA --coverage subsumption
+uv run mahilda audit --settings configs/paper/benchmark_83.yaml --no-progress
+```
+
+Important flags:
+
+- `--results-dir`: benchmark result root, default `results/paper_table2`
+- `--database-dir`: SQLite database root, default `data/relational`
+- `--output-dir`: audit report directory, default `<results-dir>/audit`
+- `--coverage`: claim criterion, one of `alpha`, `subsumption`, or `instance`
+- `--settings`: optional YAML config used to load MAHILDA bounds
+- `--walk-length`, `--max-tables`, `--max-variables`, `--joinability`: explicit target-class bounds
+- `--include-amie-rdf`: include AMIE3 RDF rows as unsupported diagnostics; default is to skip them
+- `--no-diagnose-unmatched`: generate counts but suppress unmatched examples in `audit_diagnosis.md`
+- `--strict`: exit `2` when comparable true rules remain uncovered under the selected criterion
+
+Outputs include `audit_summary.json`, `audit_rules.csv`, `audit_unmatched.md`, `audit_diagnosis.md`, and `audit_claims.md`. See `docs/rule-audit.md` for the exact claim semantics.
+
 ## `import-rdf`
 
 Imports an RDF/Turtle knowledge graph into auditable benchmark artifacts.
