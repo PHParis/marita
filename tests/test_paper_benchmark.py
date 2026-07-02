@@ -199,8 +199,9 @@ def test_run_command_writes_running_and_final_progress(monkeypatch, tmp_path: Pa
     class FakeProcess:
         pid = 12345
 
-        def __init__(self, *_args, **_kwargs):
-            return None
+        def __init__(self, *_args, **kwargs):
+            kwargs["stdout"].write("2026-07-02 [INFO] - Discovered 42 rules with SPIDER.\n")
+            kwargs["stdout"].flush()
 
         def wait(self, timeout=None):
             return 0
@@ -229,6 +230,32 @@ def test_run_command_writes_running_and_final_progress(monkeypatch, tmp_path: Pa
     assert progress["algorithm"] == "POPPER"
     assert progress["database"] == "Demo.db"
     assert progress["stdout"] == str(spec.stdout_path)
+    assert progress["rules_count"] == 42
+
+
+def test_parse_rules_count_from_stdout(tmp_path: Path) -> None:
+    stdout_path = tmp_path / "stdout.log"
+    stdout_path.write_text(
+        "\n".join(
+            [
+                "2026-07-02 [INFO] - Discovered 3 rules with SPIDER.",
+                "2026-07-02 [INFO] - Discovered 7 rules with SPIDER.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert paper_benchmark._parse_rules_count_from_stdout(stdout_path) == 7
+
+
+def test_parse_rules_count_from_stdout_handles_missing_or_zero(tmp_path: Path) -> None:
+    stdout_path = tmp_path / "stdout.log"
+    stdout_path.write_text("2026-07-02 [INFO] - Discovered 0 rules with SPIDER.\n", encoding="utf-8")
+    assert paper_benchmark._parse_rules_count_from_stdout(stdout_path) == 0
+
+    stdout_path.write_text("2026-07-02 [INFO] - Command executed successfully.\n", encoding="utf-8")
+    assert paper_benchmark._parse_rules_count_from_stdout(stdout_path) is None
+    assert paper_benchmark._parse_rules_count_from_stdout(tmp_path / "missing.log") is None
 
 
 def test_print_progress_status_overlays_shared_progress(tmp_path: Path, capsys) -> None:

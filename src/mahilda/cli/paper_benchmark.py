@@ -43,6 +43,7 @@ MEMORY_BYTES_PER_GB = 1024**3
 TIMEOUT_EXIT_CODE = 124
 PR_SET_PDEATHSIG = 1
 SUBPROCESS_CLEANUP_GRACE_SECONDS = 30
+DISCOVERED_RULES_RE = re.compile(r"\bDiscovered\s+(\d+)\s+rules\b")
 
 
 @dataclass(frozen=True)
@@ -832,6 +833,7 @@ def _run_command(spec: RunSpec, *, timeout: int, memory_gb: float) -> dict[str, 
         stdout_handle.close()
 
     ended_at = dt.datetime.now(dt.timezone.utc)
+    rules_count = _parse_rules_count_from_stdout(spec.stdout_path)
     result = {
         "algorithm": spec.algorithm,
         "database": spec.database.name,
@@ -846,8 +848,21 @@ def _run_command(spec: RunSpec, *, timeout: int, memory_gb: float) -> dict[str, 
         "peak_rss_bytes": peak_rss["bytes"],
         "host": host,
     }
+    if rules_count is not None:
+        result["rules_count"] = rules_count
     _write_progress(spec, result)
     return result
+
+
+def _parse_rules_count_from_stdout(stdout_path: Path) -> int | None:
+    try:
+        text = stdout_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    matches = DISCOVERED_RULES_RE.findall(text)
+    if not matches:
+        return None
+    return int(matches[-1])
 
 
 def _progress_path(output_dir: Path, algorithm: str, database: Path) -> Path:
