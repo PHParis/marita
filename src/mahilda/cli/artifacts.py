@@ -43,6 +43,31 @@ def format_duration(seconds: float) -> str:
     return f"{hours}h {minutes}m"
 
 
+def _format_rule_description(rule: Any) -> str:
+    display = getattr(rule, "display", None)
+    if display:
+        return str(display)
+
+    table_dependant = getattr(rule, "table_dependant", None)
+    columns_dependant = getattr(rule, "columns_dependant", None)
+    table_referenced = getattr(rule, "table_referenced", None)
+    columns_referenced = getattr(rule, "columns_referenced", None)
+    if table_dependant and columns_dependant and table_referenced and columns_referenced:
+        dependant = f"{table_dependant}({', '.join(map(str, columns_dependant))})"
+        referenced = f"{table_referenced}({', '.join(map(str, columns_referenced))})"
+        return f"{dependant} <= {referenced}"
+
+    return str(rule)
+
+
+def _format_optional_score(value: Any) -> str:
+    if value is None:
+        return "N/A"
+    if isinstance(value, int | float):
+        return f"{float(value):.3f}"
+    return str(value)
+
+
 def write_markdown_report(
     *,
     report_path: Path,
@@ -75,12 +100,12 @@ def write_markdown_report(
     ]
 
     for index, rule in enumerate(top_rules[:5], start=1):
-        rule_desc = str(getattr(rule, "display", rule)).replace("\n", " ").replace("|", "\\|")
+        rule_desc = _format_rule_description(rule).replace("\n", " ").replace("|", "\\|")
         accuracy = getattr(rule, "accuracy", "N/A")
         confidence = getattr(rule, "confidence", "N/A")
 
-        support_display = f"{float(accuracy):.3f}" if isinstance(accuracy, int | float) else str(accuracy)
-        confidence_display = f"{float(confidence):.3f}" if isinstance(confidence, int | float) else str(confidence)
+        support_display = _format_optional_score(accuracy)
+        confidence_display = _format_optional_score(confidence)
         lines.append(f"| {index} | {rule_desc} | {support_display} | {confidence_display} |")
 
     lines.extend(

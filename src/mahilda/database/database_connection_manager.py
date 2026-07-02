@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import MetaData, create_engine
+from sqlalchemy import MetaData, String, create_engine
+from sqlalchemy.sql.sqltypes import Date, DateTime, Time
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Connection, Engine
@@ -19,10 +20,18 @@ class DatabaseConnectionManager:
             self.engine = create_engine(db_url)
             self.metadata = MetaData()
             self.metadata.reflect(bind=self.engine)
+            if self.engine.dialect.name == "sqlite":
+                self._coerce_sqlite_datetime_columns_to_string()
             self.conn = self.engine.connect()
         except Exception:
             self.close()
             raise
+
+    def _coerce_sqlite_datetime_columns_to_string(self) -> None:
+        for table in self.metadata.tables.values():
+            for column in table.columns:
+                if isinstance(column.type, Date | DateTime | Time):
+                    column.type = String()
 
     def close(self) -> None:
         if self.conn is not None:

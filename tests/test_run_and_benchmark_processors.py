@@ -131,7 +131,7 @@ def test_benchmark_processor_uses_expected_output_paths(monkeypatch, tmp_path: P
     assert captured["json_path"].endswith("SPIDER_demo_results.json")
 
 
-def test_benchmark_processor_ignores_unscored_spider_rules_for_top_rules(monkeypatch, tmp_path: Path) -> None:
+def test_benchmark_processor_reports_unscored_spider_rules(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 
     class FakeSpider:
@@ -179,7 +179,7 @@ def test_benchmark_processor_ignores_unscored_spider_rules_for_top_rules(monkeyp
     assert captured["json_path"] == str(tmp_path / "results" / "SPIDER_demo" / "SPIDER_demo_results.json")
     assert captured["report_number_of_rules"] == 1
     assert captured["report_result_path"] == tmp_path / "results" / "SPIDER_demo" / "SPIDER_demo_results.json"
-    assert captured["report_top_rules"] == []
+    assert captured["report_top_rules"] == captured["rules"]
 
 
 def test_benchmark_processor_passes_timeout_to_amie3(monkeypatch, tmp_path: Path) -> None:

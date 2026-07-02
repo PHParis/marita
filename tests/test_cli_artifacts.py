@@ -12,6 +12,7 @@ from mahilda.cli.artifacts import (
     write_execution_time_metrics,
     write_markdown_report,
 )
+from mahilda.utils.rules import InclusionDependency
 
 
 def test_build_command_artifacts_paths(tmp_path: Path) -> None:
@@ -54,6 +55,34 @@ def test_write_markdown_report_and_escape(tmp_path: Path) -> None:
     assert "0.123" in text
     assert "0.568" in text
     assert "raw rule" in text
+
+
+def test_write_markdown_report_renders_unscored_inclusion_dependency(tmp_path: Path) -> None:
+    report = tmp_path / "report.md"
+    top_rules = [
+        InclusionDependency(
+            table_dependant="child",
+            columns_dependant=("parent_id",),
+            table_referenced="parent",
+            columns_referenced=("id",),
+        )
+    ]
+
+    write_markdown_report(
+        report_path=report,
+        report_title="Demo Report",
+        subject_label="Baseline",
+        subject_name="SPIDER",
+        database_name="demo.db",
+        number_of_rules=1,
+        result_path=tmp_path / "results.json",
+        top_rules=top_rules,
+        execution_time=1.2,
+    )
+
+    text = report.read_text(encoding="utf-8")
+    assert "child(parent_id) <= parent(id)" in text
+    assert "| 1 | child(parent_id) <= parent(id) | N/A | N/A |" in text
 
 
 def test_write_execution_time_metrics_payload(tmp_path: Path) -> None:

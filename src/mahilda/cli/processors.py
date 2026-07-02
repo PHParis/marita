@@ -43,6 +43,23 @@ def normalise_baseline_name(name: str) -> str:
     return cleaned
 
 
+def _top_report_rules(rules: list[Any]) -> list[Any]:
+    scored_rules: list[tuple[float, Any]] = []
+    unscored_rules: list[Any] = []
+    for rule in rules:
+        accuracy = getattr(rule, "accuracy", None)
+        if accuracy is None:
+            unscored_rules.append(rule)
+            continue
+        try:
+            scored_rules.append((float(accuracy), rule))
+        except (TypeError, ValueError):
+            unscored_rules.append(rule)
+
+    sorted_scored_rules = [rule for _, rule in sorted(scored_rules, key=lambda item: -item[0])]
+    return (sorted_scored_rules + unscored_rules)[:5]
+
+
 @contextmanager
 def benchmark_timeout(seconds: int):
     if seconds <= 0 or not hasattr(signal, "SIGALRM") or threading.current_thread() is not threading.main_thread():
@@ -168,7 +185,7 @@ class DatabaseProcessor:
 
                 elapsed = time.time() - start
 
-                top_rules = sorted(rules, key=lambda x: -x.accuracy)[:5]
+                top_rules = _top_report_rules(rules)
                 self.generate_report(number_of_rules, result_path, top_rules, elapsed)
 
                 if self.use_mlflow:
@@ -334,19 +351,7 @@ class BaselineProcessor:
             result_path = artifacts.result_json
             number_of_rules = RuleIO.save_rules_to_json(rules, str(result_path))
 
-            top_rules: list[Any] = []
-            for rule in rules:
-                accuracy = getattr(rule, "accuracy", None)
-                confidence = getattr(rule, "confidence", None)
-                if accuracy is None or confidence is None:
-                    continue
-                try:
-                    float(accuracy)
-                    float(confidence)
-                except (TypeError, ValueError):
-                    continue
-                top_rules.append(rule)
-            top_rules_sorted = sorted(top_rules, key=lambda rule: -float(rule.accuracy))[:5]
+            top_rules_sorted = _top_report_rules(rules)
             elapsed = time.time() - start
             self.generate_report(number_of_rules, result_path, top_rules_sorted, elapsed)
 
