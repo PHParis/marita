@@ -100,13 +100,13 @@ def main(argv: list[str] | None = None) -> int:
     batch_parser.add_argument("-w", "--workers", type=int, default=None)
 
     paper_parser = subparsers.add_parser("paper-benchmark", help="Run ISWC 2026 paper benchmark protocol")
-    paper_parser.add_argument("--database-dir", default="data/relational")
-    paper_parser.add_argument("--output", default="results/iswc2026")
-    paper_parser.add_argument("--logs", default="logs/iswc2026")
-    paper_parser.add_argument("--algorithms", default="MAHILDA")
-    paper_parser.add_argument("--databases", default="paper")
-    paper_parser.add_argument("--timeout", type=int, default=7200)
-    paper_parser.add_argument("--memory-gb", type=float, default=15.0)
+    paper_parser.add_argument("--database-dir", default=None)
+    paper_parser.add_argument("--output", default=None)
+    paper_parser.add_argument("--logs", default=None)
+    paper_parser.add_argument("--algorithms", default=None)
+    paper_parser.add_argument("--databases", default=None)
+    paper_parser.add_argument("--timeout", type=int, default=None)
+    paper_parser.add_argument("--memory-gb", type=float, default=None)
     paper_parser.add_argument("--java-heap-gb", type=int, default=None)
     paper_parser.add_argument("--settings", default=None)
     paper_parser.add_argument("--host", default=None)
@@ -238,22 +238,21 @@ def main(argv: list[str] | None = None) -> int:
         return batch.main(batch_args)
 
     if args.command == "paper-benchmark":
-        paper_args: list[str] = [
-            "--database-dir",
-            args.database_dir,
-            "--output",
-            args.output,
-            "--logs",
-            args.logs,
-            "--algorithms",
-            args.algorithms,
-            "--databases",
-            args.databases,
-            "--timeout",
-            str(args.timeout),
-            "--memory-gb",
-            str(args.memory_gb),
-        ]
+        paper_args: list[str] = []
+        if args.database_dir is not None:
+            paper_args.extend(["--database-dir", args.database_dir])
+        if args.output is not None:
+            paper_args.extend(["--output", args.output])
+        if args.logs is not None:
+            paper_args.extend(["--logs", args.logs])
+        if args.algorithms is not None:
+            paper_args.extend(["--algorithms", args.algorithms])
+        if args.databases is not None:
+            paper_args.extend(["--databases", args.databases])
+        if args.timeout is not None:
+            paper_args.extend(["--timeout", str(args.timeout)])
+        if args.memory_gb is not None:
+            paper_args.extend(["--memory-gb", str(args.memory_gb)])
         if args.java_heap_gb is not None:
             paper_args.extend(["--java-heap-gb", str(args.java_heap_gb)])
         if args.settings:

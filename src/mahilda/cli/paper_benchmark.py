@@ -39,6 +39,13 @@ PAPER_DATABASES = [
 ]
 
 ALGORITHMS = ("MAHILDA", "AMIE3", "SPIDER", "POPPER", "MATILDA")
+DEFAULT_DATABASE_DIR = "data/relational"
+DEFAULT_OUTPUT_DIR = "results/iswc2026"
+DEFAULT_LOG_DIR = "logs/iswc2026"
+DEFAULT_ALGORITHMS = "MAHILDA"
+DEFAULT_DATABASES = "paper"
+DEFAULT_TIMEOUT_SECONDS = 7200
+DEFAULT_MEMORY_GB = 15.0
 MEMORY_BYTES_PER_GB = 1024**3
 TIMEOUT_EXIT_CODE = 124
 PR_SET_PDEATHSIG = 1
@@ -119,31 +126,31 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--database-dir",
-        default="data/relational",
+        default=None,
         help="Directory containing relational benchmark .db files (default: data/relational).",
     )
     parser.add_argument(
         "--output",
-        default="results/iswc2026",
+        default=None,
         help="Output directory for generated configs, run artifacts, and summary (default: results/iswc2026).",
     )
     parser.add_argument(
         "--logs",
-        default="logs/iswc2026",
+        default=None,
         help="Log root for generated configs (default: logs/iswc2026).",
     )
     parser.add_argument(
         "--algorithms",
-        default="MAHILDA",
+        default=None,
         help="Comma-separated algorithms to run: MAHILDA, AMIE3, SPIDER, POPPER, MATILDA, or ALL (default: MAHILDA).",
     )
     parser.add_argument(
         "--databases",
-        default="paper",
+        default=None,
         help="Comma-separated database names, 'paper' for the 10 reported DBs, or 'all' for every .db (default: paper).",
     )
-    parser.add_argument("--timeout", type=int, default=7200, help="Per-run wall-clock timeout in seconds.")
-    parser.add_argument("--memory-gb", type=float, default=15.0, help="Per-run RSS memory limit in GB.")
+    parser.add_argument("--timeout", type=int, default=None, help="Per-run wall-clock timeout in seconds.")
+    parser.add_argument("--memory-gb", type=float, default=None, help="Per-run RSS memory limit in GB.")
     parser.add_argument("--java-heap-gb", type=int, default=None, help="Java -Xmx heap size for Java baselines.")
     parser.add_argument("--settings", default=None, help="YAML benchmark profile with hosts, limits, and workers.")
     parser.add_argument("--host", default=None, help="Host shard to run, or 'auto' to use hostname -s.")
@@ -233,6 +240,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         profile = _load_profile(args.settings)
         _apply_profile_defaults(args, profile)
+        _apply_builtin_defaults(args)
         hosts = _resolve_hosts(args.hosts, profile)
         host = _resolve_host(args.host, hosts)
     except ValueError as exc:
@@ -273,6 +281,8 @@ def main(argv: list[str] | None = None) -> int:
         output_dir.mkdir(parents=True, exist_ok=True)
         (output_dir / "configs").mkdir(parents=True, exist_ok=True)
         log_root.mkdir(parents=True, exist_ok=True)
+        status_databases = _shard_databases(databases, hosts, host) if host else databases
+        run_databases = _shard_databases(databases, hosts, host)
 
         specs = [
             _build_run_spec(
@@ -287,7 +297,7 @@ def main(argv: list[str] | None = None) -> int:
                 write_config=not args.status,
             )
             for algorithm in algorithms
-            for db in databases
+            for db in status_databases
         ]
 
         if args.status:
@@ -296,8 +306,21 @@ def main(argv: list[str] | None = None) -> int:
             finish()
             return exit_code
 
-        databases = _shard_databases(databases, hosts, host)
-        specs = [spec for spec in specs if spec.database in databases]
+        if run_databases != status_databases:
+            specs = [
+                _build_run_spec(
+                    algorithm=algorithm,
+                    database=db,
+                    database_dir=database_dir,
+                    output_dir=output_dir,
+                    log_root=log_root,
+                    timeout=args.timeout,
+                    memory_gb=args.memory_gb,
+                    java_heap_gb=java_heap_gb,
+                )
+                for algorithm in algorithms
+                for db in run_databases
+            ]
         planned_runs = len(specs)
 
         if args.dry_run:
@@ -523,24 +546,41 @@ def _load_profile(path: str | None) -> dict[str, Any]:
 def _apply_profile_defaults(args: argparse.Namespace, profile: dict[str, Any]) -> None:
     if not profile:
         return
-    if "database_dir" in profile:
+    if args.database_dir is None and "database_dir" in profile:
         args.database_dir = str(profile["database_dir"])
-    if "output" in profile:
+    if args.output is None and "output" in profile:
         args.output = str(profile["output"])
-    if "logs" in profile:
+    if args.logs is None and "logs" in profile:
         args.logs = str(profile["logs"])
-    if "databases" in profile:
+    if args.databases is None and "databases" in profile:
         args.databases = str(profile["databases"])
-    if "algorithms" in profile and args.algorithms == "MAHILDA":
+    if args.algorithms is None and "algorithms" in profile:
         args.algorithms = ",".join(str(item) for item in profile["algorithms"])
     limits_raw = profile.get("limits")
     limits = cast("dict[str, Any]", limits_raw) if isinstance(limits_raw, dict) else {}
-    if "timeout_seconds" in limits:
+    if args.timeout is None and "timeout_seconds" in limits:
         args.timeout = int(limits["timeout_seconds"])
-    if "memory_gb" in limits:
+    if args.memory_gb is None and "memory_gb" in limits:
         args.memory_gb = float(limits["memory_gb"])
     if "java_heap_gb" in limits and args.java_heap_gb is None:
         args.java_heap_gb = int(limits["java_heap_gb"])
+
+
+def _apply_builtin_defaults(args: argparse.Namespace) -> None:
+    if args.database_dir is None:
+        args.database_dir = DEFAULT_DATABASE_DIR
+    if args.output is None:
+        args.output = DEFAULT_OUTPUT_DIR
+    if args.logs is None:
+        args.logs = DEFAULT_LOG_DIR
+    if args.algorithms is None:
+        args.algorithms = DEFAULT_ALGORITHMS
+    if args.databases is None:
+        args.databases = DEFAULT_DATABASES
+    if args.timeout is None:
+        args.timeout = DEFAULT_TIMEOUT_SECONDS
+    if args.memory_gb is None:
+        args.memory_gb = DEFAULT_MEMORY_GB
 
 
 def _resolve_hosts(value: str | None, profile: dict[str, Any]) -> list[str]:

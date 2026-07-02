@@ -256,6 +256,9 @@ def test_main_routes_paper_benchmark_status(monkeypatch) -> None:
 
     assert exit_code == 29
     assert "--status" in captured["argv"]
+    assert "--databases" not in captured["argv"]
+    assert "--algorithms" not in captured["argv"]
+    assert "--timeout" not in captured["argv"]
 
 
 def test_main_routes_paper_benchmark_email_options(monkeypatch) -> None:

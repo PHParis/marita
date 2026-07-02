@@ -25,6 +25,119 @@ def test_resolve_named_databases_matches_stems_case_insensitively(tmp_path: Path
     assert [path.name for path in resolved] == ["CORA.db", "nations.db"]
 
 
+def test_cli_databases_override_profile_databases(tmp_path: Path) -> None:
+    db_dir = tmp_path / "dbs"
+    db_dir.mkdir()
+    (db_dir / "Accidents.db").touch()
+    (db_dir / "Basketball_men.db").touch()
+    output_dir = tmp_path / "results"
+    settings = tmp_path / "settings.yaml"
+    settings.write_text(
+        yaml.safe_dump(
+            {
+                "database_dir": str(db_dir),
+                "output": str(output_dir),
+                "logs": str(tmp_path / "logs"),
+                "databases": "all",
+                "algorithms": ["POPPER", "AMIE3"],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = paper_benchmark.main(
+        [
+            "--settings",
+            str(settings),
+            "--databases",
+            "Basketball_men",
+            "--dry-run",
+        ]
+    )
+
+    assert exit_code == 0
+    summary = paper_benchmark.json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["planned_runs"] == 2
+    assert {(item["algorithm"], item["database"]) for item in summary["plan"]} == {
+        ("POPPER", "Basketball_men.db"),
+        ("AMIE3", "Basketball_men.db"),
+    }
+    assert sorted(path.name for path in (output_dir / "configs").glob("*.yaml")) == [
+        "amie3_Basketball_men.yaml",
+        "popper_Basketball_men.yaml",
+    ]
+
+
+def test_status_honors_cli_databases_override_profile_databases(tmp_path: Path, capsys) -> None:
+    db_dir = tmp_path / "dbs"
+    db_dir.mkdir()
+    (db_dir / "Accidents.db").touch()
+    (db_dir / "Basketball_men.db").touch()
+    output_dir = tmp_path / "results"
+    settings = tmp_path / "settings.yaml"
+    settings.write_text(
+        yaml.safe_dump(
+            {
+                "database_dir": str(db_dir),
+                "output": str(output_dir),
+                "logs": str(tmp_path / "logs"),
+                "databases": "all",
+                "algorithms": ["POPPER"],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = paper_benchmark.main(
+        [
+            "--settings",
+            str(settings),
+            "--databases",
+            "Basketball_men",
+            "--status",
+        ]
+    )
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "Overall 0/1 done" in output
+    assert "POPPER: 0/1 done" in output
+    assert "Accidents.db" not in output
+
+
+def test_host_sharded_dry_run_writes_only_selected_shard_configs(tmp_path: Path) -> None:
+    db_dir = tmp_path / "dbs"
+    db_dir.mkdir()
+    for name in ["A.db", "B.db", "C.db"]:
+        (db_dir / name).touch()
+    output_dir = tmp_path / "results"
+    settings = tmp_path / "settings.yaml"
+    settings.write_text(
+        yaml.safe_dump(
+            {
+                "database_dir": str(db_dir),
+                "output": str(output_dir),
+                "logs": str(tmp_path / "logs"),
+                "databases": "all",
+                "algorithms": ["POPPER"],
+                "hosts": ["h0", "h1"],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = paper_benchmark.main(["--settings", str(settings), "--host", "h1", "--dry-run"])
+
+    assert exit_code == 0
+    summary = paper_benchmark.json.loads((output_dir / "summary_h1.json").read_text(encoding="utf-8"))
+    assert summary["planned_runs"] == 1
+    assert [(item["algorithm"], item["database"]) for item in summary["plan"]] == [("POPPER", "B.db")]
+    assert sorted(path.name for path in (output_dir / "configs").glob("*.yaml")) == ["popper_B.yaml"]
+
+
 def test_build_mahilda_config_uses_paper_parameters(tmp_path: Path) -> None:
     db_dir = tmp_path / "dbs"
     db_dir.mkdir()
