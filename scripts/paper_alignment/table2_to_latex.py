@@ -54,16 +54,16 @@ def main() -> int:
     with input_path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle, delimiter="\t"))
 
-    column_spec = "@{}l" + "rrrr" * len(ALGOS) + "@{}"
+    column_spec = "@{}l" + "rrr" * len(ALGOS) + "@{}"
     group_header = [""]
     cmidrules = []
     sub_header = ["Database"]
     col = 2
     for algo in ALGOS:
-        group_header.append(rf"\multicolumn{{4}}{{c}}{{{col_header(algo)}}}")
-        cmidrules.append(rf"\cmidrule(lr){{{col}-{col + 3}}}")
-        sub_header.extend(["St.", r"\#R", "Time", "RSS"])
-        col += 4
+        group_header.append(rf"\multicolumn{{3}}{{c}}{{{col_header(algo)}}}")
+        cmidrules.append(rf"\cmidrule(lr){{{col}-{col + 2}}}")
+        sub_header.extend([r"\#R", "Time", "RSS"])
+        col += 3
 
     lines = [
         "% Auto-generated from results/paper_table2/table2.tsv by scripts/paper_alignment/table2_to_latex.py.",
@@ -87,7 +87,7 @@ def main() -> int:
         r"\midrule",
         r"\endhead",
         r"\midrule",
-        rf"\multicolumn{{{1 + 4 * len(ALGOS)}}}{{r}}{{Continued on next page}} \\",
+        f"\\multicolumn{{{1 + 3 * len(ALGOS)}}}{{r}}{{Continued on next page}} \\\\",
         r"\endfoot",
         r"\bottomrule",
         r"\endlastfoot",
@@ -98,7 +98,6 @@ def main() -> int:
         for algo in ALGOS:
             cells.extend(
                 [
-                    display_value(row[f"{algo}_status"]),
                     display_value(row[f"{algo}_rules"]),
                     display_value(row[f"{algo}_time_s"]),
                     display_value(row[f"{algo}_rss_GB"]),

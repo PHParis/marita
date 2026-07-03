@@ -23,6 +23,8 @@ def covered_on_instance(
     evaluator: SQLiteRuleEvaluator,
     rule: RelationalRule,
     target_rules: list[RelationalRule],
+    *,
+    projected_head_rows_cache: dict[str, set[tuple[object, ...]]] | None = None,
 ) -> bool:
     try:
         expected_rows = evaluator.projected_head_rows(rule)
@@ -35,10 +37,17 @@ def covered_on_instance(
     for target_rule in target_rules:
         if not _same_head_shape(rule.head, target_rule.head):
             continue
-        try:
-            covered_rows.update(evaluator.projected_head_rows(target_rule))
-        except AuditEvaluationError:
-            continue
+        cache_key = target_rule.canonical_key()
+        if projected_head_rows_cache is not None and cache_key in projected_head_rows_cache:
+            target_rows = projected_head_rows_cache[cache_key]
+        else:
+            try:
+                target_rows = evaluator.projected_head_rows(target_rule)
+            except AuditEvaluationError:
+                continue
+            if projected_head_rows_cache is not None:
+                projected_head_rows_cache[cache_key] = target_rows
+        covered_rows.update(target_rows)
     return expected_rows.issubset(covered_rows)
 
 
@@ -49,6 +58,7 @@ def _match_body_atoms(
 ) -> bool:
     if not general_atoms:
         return True
+
     first, *rest = general_atoms
     for candidate in specific_atoms:
         candidate_mapping = dict(mapping)
@@ -63,15 +73,16 @@ def _match_body_atoms(
 def _extend_atom_mapping(general: Atom, specific: Atom, mapping: dict[str, str]) -> bool:
     if general.table != specific.table:
         return False
+
     specific_terms = dict(specific.terms)
     for column, general_variable in general.terms:
-        if column not in specific_terms:
+        specific_variable = specific_terms.get(column)
+        if specific_variable is None:
             return False
-        specific_variable = specific_terms[column]
-        mapped = mapping.get(general_variable)
-        if mapped is None:
+        existing = mapping.get(general_variable)
+        if existing is None:
             mapping[general_variable] = specific_variable
-        elif mapped != specific_variable:
+        elif existing != specific_variable:
             return False
     return True
 

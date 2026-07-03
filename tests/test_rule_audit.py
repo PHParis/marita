@@ -15,6 +15,10 @@ from mahilda.cli.audit import main as audit_main
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
+    from mahilda.audit.models import RelationalRule
+
 
 def test_parse_formula_canonicalizes_variable_names() -> None:
     first = parse_formula("∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)")
@@ -29,7 +33,6 @@ def test_sqlite_evaluator_recomputes_confidence(tmp_path: Path) -> None:
     try:
         exact = parse_formula("∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)")
         approximate = parse_formula("∀ x0: parent_0(id=x0) ⇒ child_0(parent_id=x0)")
-
         exact_eval = evaluator.evaluate(exact)
         approximate_eval = evaluator.evaluate(approximate)
     finally:
@@ -47,14 +50,14 @@ def test_rule_matching_alpha_subsumption_and_instance_coverage(tmp_path: Path) -
     db_path = _write_tiny_database(tmp_path)
     competitor = parse_formula("∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)")
     alpha_target = parse_formula("∀ y0: child_7(parent_id=y0) ⇒ parent_3(id=y0)")
-    general_target = parse_formula("∀ z0: child_0(parent_id=z0) ⇒ parent_0(id=z0)")
-    specific = parse_formula("∀ z0, z1: child_0(parent_id=z0, id=z1) ⇒ parent_0(id=z0)")
+    general_target = parse_formula("∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)")
+    specific_rule = parse_formula("∀ x0, y0: child_0(parent_id=x0, id=y0) ⇒ parent_0(id=x0)")
     instance_target = parse_formula("∀ x0, y0: child_0(parent_id=x0, id=y0) ⇒ parent_0(id=x0)")
 
     evaluator = SQLiteRuleEvaluator(db_path)
     try:
         assert alpha_equivalent(competitor, alpha_target)
-        assert subsumes(general_target, specific)
+        assert subsumes(general_target, specific_rule)
         assert covered_on_instance(evaluator, competitor, [instance_target])
     finally:
         evaluator.close()
@@ -108,9 +111,11 @@ def test_run_audit_classifies_and_reports(tmp_path: Path) -> None:
     assert (output_dir / "audit_rules.csv").exists()
     assert (output_dir / "audit_diagnosis.md").exists()
     assert (output_dir / "audit_claims.md").exists()
+
     summary = json.loads((output_dir / "audit_summary.json").read_text(encoding="utf-8"))
     assert summary["coverage_mode"] == "alpha"
     assert "in_target_class" in summary["by_scope_status"]
+
     with (output_dir / "audit_rules.csv").open(encoding="utf-8", newline="") as handle:
         row = next(csv.DictReader(handle))
     assert "scope_status" in row
@@ -125,9 +130,9 @@ def test_audit_skips_amie_rdf_by_default(tmp_path: Path) -> None:
     database_dir.mkdir()
     _write_tiny_database(database_dir, "tiny.db")
     _write_results(results_dir, "MAHILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
-    _write_results(results_dir, "AMIE3", "tiny", ["?x <p> ?y => ?x <q> ?y"])
+    _write_results(results_dir, "AMIE3", "tiny", ["parent(x0, y0) => child(x0, y0)"])
 
-    skipped = run_audit(
+    records = run_audit(
         AuditConfig(
             results_dir=results_dir,
             database_dir=database_dir,
@@ -136,22 +141,23 @@ def test_audit_skips_amie_rdf_by_default(tmp_path: Path) -> None:
             show_progress=False,
         )
     )
+    assert records == []
+
     included = run_audit(
         AuditConfig(
             results_dir=results_dir,
             database_dir=database_dir,
             output_dir=output_dir,
             competitors=("AMIE3",),
-            show_progress=False,
             include_amie_rdf=True,
+            show_progress=False,
         )
     )
-
-    assert skipped == []
+    assert len(included) == 1
     assert included[0].scope_status == ScopeStatus.UNSUPPORTED_REPRESENTATION
 
 
-def test_audit_cli_settings_and_explicit_flags_precedence(tmp_path: Path, monkeypatch) -> None:
+def test_cli_audit_merges_settings_and_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, AuditConfig] = {}
     settings_path = tmp_path / "settings.yaml"
     settings_path.write_text(
@@ -170,7 +176,6 @@ def test_audit_cli_settings_and_explicit_flags_precedence(tmp_path: Path, monkey
         return []
 
     monkeypatch.setattr("mahilda.cli.audit.run_audit", fake_run_audit)
-
     exit_code = audit_main(
         [
             "--results-dir",
@@ -196,6 +201,172 @@ def test_audit_cli_settings_and_explicit_flags_precedence(tmp_path: Path, monkey
     assert captured["config"].joinability == "full"
     assert captured["config"].include_amie_rdf is True
     assert captured["config"].diagnose_unmatched is False
+
+
+def test_alpha_coverage_skips_instance_matching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_dir, results_dir, output_dir = _setup_subsumption_fixture(tmp_path)
+
+    def fail_if_called(*args: object, **kwargs: object) -> bool:
+        raise AssertionError("covered_on_instance should not run in alpha mode")
+
+    monkeypatch.setattr("mahilda.audit.runner.covered_on_instance", fail_if_called)
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            coverage="alpha",
+            show_progress=False,
+        )
+    )
+
+    assert [record.match_status for record in records] == [MatchStatus.UNMATCHED]
+
+
+def test_subsumption_coverage_skips_instance_matching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_dir, results_dir, output_dir = _setup_subsumption_fixture(tmp_path)
+
+    def fail_if_called(*args: object, **kwargs: object) -> bool:
+        raise AssertionError("covered_on_instance should not run in subsumption mode")
+
+    monkeypatch.setattr("mahilda.audit.runner.covered_on_instance", fail_if_called)
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            coverage="subsumption",
+            show_progress=False,
+        )
+    )
+
+    assert [record.match_status for record in records] == [MatchStatus.RECALLED_SUBSUMED]
+
+
+def test_run_audit_reuses_one_evaluator_per_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_dir, results_dir, output_dir = _setup_evaluator_reuse_fixture(tmp_path)
+    init_calls: list[Path] = []
+    original = SQLiteRuleEvaluator
+
+    class CountingEvaluator(original):
+        def __init__(self, database_path: Path, *, relation_disjoint: bool = True) -> None:
+            init_calls.append(database_path)
+            super().__init__(database_path, relation_disjoint=relation_disjoint)
+
+    monkeypatch.setattr("mahilda.audit.runner.SQLiteRuleEvaluator", CountingEvaluator)
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=False,
+        )
+    )
+
+    assert len(records) == 2
+    assert init_calls == [database_dir / "tiny.db"]
+
+
+def test_instance_coverage_caches_target_projected_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_dir, results_dir, output_dir, target_rule = _setup_instance_fixture(tmp_path)
+    counts: dict[str, int] = {}
+    original = SQLiteRuleEvaluator.projected_head_rows
+    target_key = target_rule.canonical_key()
+
+    def counting_projected_head_rows(self: SQLiteRuleEvaluator, rule) -> set[tuple[object, ...]]:
+        if rule.canonical_key() == target_key:
+            counts[target_key] = counts.get(target_key, 0) + 1
+        return original(self, rule)
+
+    monkeypatch.setattr(SQLiteRuleEvaluator, "projected_head_rows", counting_projected_head_rows)
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            coverage="instance",
+            show_progress=False,
+        )
+    )
+
+    assert [record.match_status for record in records] == [
+        MatchStatus.COVERED_ON_INSTANCE,
+        MatchStatus.COVERED_ON_INSTANCE,
+    ]
+    assert counts[target_key] == 1
+
+
+def _setup_subsumption_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
+    database_dir = tmp_path / "data"
+    results_dir = tmp_path / "results"
+    output_dir = tmp_path / "audit"
+    database_dir.mkdir()
+    _write_tiny_database(database_dir, "tiny.db")
+    _write_results(
+        results_dir,
+        "MAHILDA",
+        "tiny",
+        ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"],
+    )
+    _write_results(
+        results_dir,
+        "MATILDA",
+        "tiny",
+        ["∀ x0, y0: child_0(parent_id=x0, id=y0) ⇒ parent_0(id=x0)"],
+    )
+    return database_dir, results_dir, output_dir
+
+
+def _setup_evaluator_reuse_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
+    database_dir = tmp_path / "data"
+    results_dir = tmp_path / "results"
+    output_dir = tmp_path / "audit"
+    database_dir.mkdir()
+    _write_tiny_database(database_dir, "tiny.db")
+    _write_results(
+        results_dir,
+        "MAHILDA",
+        "tiny",
+        [
+            "∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)",
+            "∀ x0, y0: child_0(parent_id=x0, id=y0) ⇒ parent_0(id=x0)",
+        ],
+    )
+    _write_results(
+        results_dir,
+        "MATILDA",
+        "tiny",
+        [
+            "∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)",
+            "∀ x0, y0: child_0(parent_id=x0, id=y0) ⇒ parent_0(id=x0)",
+        ],
+    )
+    return database_dir, results_dir, output_dir
+
+
+def _setup_instance_fixture(tmp_path: Path) -> tuple[Path, Path, Path, RelationalRule]:
+    database_dir = tmp_path / "data"
+    results_dir = tmp_path / "results"
+    output_dir = tmp_path / "audit"
+    database_dir.mkdir()
+    _write_tiny_database(database_dir, "tiny.db")
+    target_display = "∀ x0, y0: child_0(parent_id=x0, id=y0) ⇒ parent_0(id=x0)"
+    target_rule = parse_formula(target_display)
+    _write_results(results_dir, "MAHILDA", "tiny", [target_display])
+    _write_results(
+        results_dir,
+        "MATILDA",
+        "tiny",
+        [
+            "∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)",
+            "∀ x0, z0: child_0(parent_id=x0, label=z0) ⇒ parent_0(id=x0)",
+        ],
+    )
+    return database_dir, results_dir, output_dir, target_rule
 
 
 def _write_tiny_database(directory: Path, name: str = "tiny.db") -> Path:
