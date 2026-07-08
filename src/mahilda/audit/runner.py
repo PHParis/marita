@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
+import os
+import shutil
+import socket
 from collections import Counter, defaultdict
+from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
 
 from tqdm import tqdm
 
@@ -17,11 +23,24 @@ from mahilda.audit.models import (
     ParsedRule,
     RelationalRule,
     ScopeStatus,
+    SourceRule,
 )
 from mahilda.audit.parsing import load_source_rules, parse_source_rule
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
+
+
+STATE_PENDING = "pending"
+STATE_RUNNING = "running"
+STATE_COMPLETED = "completed"
+STATE_FAILED = "failed"
+STATE_INTERRUPTED = "interrupted"
+
+STATE_DIRNAME = ".audit_state"
+SHARDS_DIRNAME = "shards"
+STATE_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -43,6 +62,10 @@ class AuditConfig:
     coverage: str = "alpha"
     diagnose_unmatched: bool = True
     include_amie_rdf: bool = False
+    workers: int = 1
+    resume: bool = False
+    reset_state: bool = False
+    status_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -50,6 +73,21 @@ class TargetRuleIndex:
     rules: list[RelationalRule]
     rules_by_canonical_key: dict[str, RelationalRule]
     rules_by_head_key: dict[str, list[RelationalRule]]
+
+
+@dataclass(frozen=True)
+class AuditShard:
+    algorithm: str
+    database: str
+    database_path: Path
+    sources: tuple[SourceRule, ...]
+    target_index: TargetRuleIndex
+    source_signature: str
+    target_signature: str
+
+    @property
+    def key(self) -> str:
+        return f"{self.algorithm}__{self.database}"
 
 
 @dataclass
@@ -73,33 +111,432 @@ class AuditRuntime:
             evaluator.close()
 
 
+@dataclass(frozen=True)
+class ShardPaths:
+    base_dir: Path
+    csv_path: Path
+    summary_path: Path
+    unmatched_path: Path
+    diagnosis_path: Path
+    claims_path: Path
+    state_path: Path
+
+
+@dataclass(frozen=True)
+class ShardResult:
+    key: str
+    algorithm: str
+    database: str
+    status: str
+    processed_rules: int
+    total_rules: int
+    error: str | None = None
+
+
 def run_audit(config: AuditConfig) -> list[AuditRecord]:
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    runtime = AuditRuntime(target_indexes_by_db=_load_target_rule_indexes(config))
-    records: list[AuditRecord] = []
+    shards = build_audit_plan(config)
+    state_dir = _state_dir(config)
+    existing_state = state_dir.exists()
+
+    if config.reset_state and existing_state:
+        shutil.rmtree(state_dir)
+    elif existing_state and not (config.resume or config.status_only):
+        raise SystemExit("Existing audit state found. Use --resume, --status, or --reset-state.")
+
+    manifest = _build_manifest(config, shards)
+    _initialize_state(config, shards, manifest)
+
+    if config.status_only:
+        _refresh_run_summary(config, shards)
+        return []
 
     try:
-        for algorithm in config.competitors:
-            if algorithm == "AMIE3" and not config.include_amie_rdf:
-                continue
-            sources = load_source_rules(config.results_dir, algorithm)
-            iterator = tqdm(
-                sources,
-                desc=f"Auditing {algorithm}",
-                disable=not config.show_progress,
-                unit="rule",
-            )
-            for source in iterator:
-                parsed = parse_source_rule(source)
-                target_index = runtime.target_indexes_by_db.get(source.database, _empty_target_rule_index())
-                records.append(_audit_rule(config, runtime, parsed, target_index))
-    finally:
-        runtime.close()
+        _execute_shards(config, shards)
+    except KeyboardInterrupt as exc:
+        _refresh_run_summary(config, shards)
+        raise SystemExit(130) from exc
 
+    records = _collect_records(config, shards)
     _write_outputs(config, records)
+    _refresh_run_summary(config, shards)
     if config.strict and any(record.match_status == MatchStatus.UNMATCHED for record in records):
         raise SystemExit(2)
     return records
+
+
+def build_audit_plan(config: AuditConfig) -> list[AuditShard]:
+    target_indexes = _load_target_rule_indexes(config)
+    shards: list[AuditShard] = []
+    for algorithm in config.competitors:
+        if algorithm == "AMIE3" and not config.include_amie_rdf:
+            continue
+        grouped: dict[str, list[SourceRule]] = defaultdict(list)
+        for source in load_source_rules(config.results_dir, algorithm):
+            grouped[source.database].append(source)
+        for database, sources in sorted(grouped.items()):
+            database_path = config.database_dir / f"{database}.db"
+            shards.append(
+                AuditShard(
+                    algorithm=algorithm,
+                    database=database,
+                    database_path=database_path,
+                    sources=tuple(sources),
+                    target_index=target_indexes.get(database, _empty_target_rule_index()),
+                    source_signature=_file_signature(sources[0].source_path) if sources else "",
+                    target_signature=_target_signature(config, database),
+                )
+            )
+    return shards
+
+
+def get_audit_status(config: AuditConfig) -> dict[str, object]:
+    shards = build_audit_plan(config)
+    _initialize_state(config, shards, _build_manifest(config, shards))
+    return _refresh_run_summary(config, shards)
+
+
+def _execute_shards(config: AuditConfig, shards: list[AuditShard]) -> None:
+    pending = {
+        shard.key: shard
+        for shard in shards
+        if _shard_state(_shard_paths(config, shard)).get("status") != STATE_COMPLETED
+    }
+    if not pending:
+        return
+    if config.workers <= 1:
+        for shard in pending.values():
+            _run_audit_shard(config, shard)
+            _refresh_run_summary(config, shards)
+        return
+
+    max_workers = max(1, config.workers)
+    in_flight: dict[Future[ShardResult], AuditShard] = {}
+    active_databases: set[str] = set()
+    remaining = list(pending.values())
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        while remaining or in_flight:
+            while remaining and len(in_flight) < max_workers:
+                shard = next((candidate for candidate in remaining if candidate.database not in active_databases), None)
+                if shard is None:
+                    break
+                remaining.remove(shard)
+                future = executor.submit(_run_audit_shard, config, shard)
+                in_flight[future] = shard
+                active_databases.add(shard.database)
+            if not in_flight:
+                continue
+            done, _ = wait(in_flight.keys(), return_when=FIRST_COMPLETED)
+            for future in done:
+                shard = in_flight.pop(future)
+                active_databases.discard(shard.database)
+                future.result()
+                _refresh_run_summary(config, shards)
+
+
+def _run_audit_shard(config: AuditConfig, shard: AuditShard) -> ShardResult:
+    paths = _shard_paths(config, shard)
+    state = _shard_state(paths)
+    start_index = _int_from_state(state.get("processed_rules")) if config.resume else 0
+    if state.get("status") == STATE_COMPLETED:
+        return ShardResult(
+            key=shard.key,
+            algorithm=shard.algorithm,
+            database=shard.database,
+            status=STATE_COMPLETED,
+            processed_rules=len(shard.sources),
+            total_rules=len(shard.sources),
+        )
+
+    runtime = AuditRuntime(target_indexes_by_db={shard.database: shard.target_index})
+    iterator: Iterable[SourceRule]
+    iterator = shard.sources[start_index:]
+    progress = tqdm(
+        iterator,
+        desc=f"Auditing {shard.algorithm}/{shard.database}",
+        disable=not config.show_progress,
+        unit="rule",
+        total=len(shard.sources),
+        initial=start_index,
+    )
+    processed_rules = start_index
+    try:
+        _write_shard_state(
+            paths,
+            shard,
+            status=STATE_RUNNING,
+            processed_rules=processed_rules,
+            total_rules=len(shard.sources),
+            last_rule_index=shard.sources[processed_rules - 1].index if processed_rules else None,
+            error=None,
+        )
+        if start_index == 0:
+            _initialize_rules_csv(paths.csv_path)
+        for source in progress:
+            parsed = parse_source_rule(source)
+            record = _audit_rule(config, runtime, parsed, shard.target_index)
+            _append_record(paths.csv_path, record)
+            processed_rules += 1
+            _write_shard_state(
+                paths,
+                shard,
+                status=STATE_RUNNING,
+                processed_rules=processed_rules,
+                total_rules=len(shard.sources),
+                last_rule_index=source.index,
+                error=None,
+            )
+        records = _load_records_from_csv(paths.csv_path)
+        _write_outputs_in_dir(
+            paths.base_dir,
+            records,
+            config,
+            summary_path=paths.summary_path,
+            unmatched_path=paths.unmatched_path,
+            diagnosis_path=paths.diagnosis_path,
+            claims_path=paths.claims_path,
+        )
+        _write_shard_state(
+            paths,
+            shard,
+            status=STATE_COMPLETED,
+            processed_rules=processed_rules,
+            total_rules=len(shard.sources),
+            last_rule_index=shard.sources[-1].index if shard.sources else None,
+            error=None,
+        )
+        return ShardResult(
+            key=shard.key,
+            algorithm=shard.algorithm,
+            database=shard.database,
+            status=STATE_COMPLETED,
+            processed_rules=processed_rules,
+            total_rules=len(shard.sources),
+        )
+    except KeyboardInterrupt:
+        _write_shard_state(
+            paths,
+            shard,
+            status=STATE_INTERRUPTED,
+            processed_rules=processed_rules,
+            total_rules=len(shard.sources),
+            last_rule_index=shard.sources[processed_rules - 1].index if processed_rules else None,
+            error="interrupted",
+        )
+        raise
+    except Exception as exc:
+        _write_shard_state(
+            paths,
+            shard,
+            status=STATE_FAILED,
+            processed_rules=processed_rules,
+            total_rules=len(shard.sources),
+            last_rule_index=shard.sources[processed_rules - 1].index if processed_rules else None,
+            error=str(exc),
+        )
+        raise
+    finally:
+        runtime.close()
+
+
+def _state_dir(config: AuditConfig) -> Path:
+    return config.output_dir / STATE_DIRNAME
+
+
+def _manifest_path(config: AuditConfig) -> Path:
+    return _state_dir(config) / "manifest.json"
+
+
+def _run_summary_path(config: AuditConfig) -> Path:
+    return _state_dir(config) / "run_summary.json"
+
+
+def _shard_paths(config: AuditConfig, shard: AuditShard) -> ShardPaths:
+    base_dir = config.output_dir / SHARDS_DIRNAME / shard.algorithm / shard.database
+    return ShardPaths(
+        base_dir=base_dir,
+        csv_path=base_dir / "audit_rules.csv",
+        summary_path=base_dir / "summary.json",
+        unmatched_path=base_dir / "unmatched.md",
+        diagnosis_path=base_dir / "diagnosis.md",
+        claims_path=base_dir / "claims.md",
+        state_path=_state_dir(config) / "shards" / f"{shard.key}.json",
+    )
+
+
+def _initialize_state(config: AuditConfig, shards: list[AuditShard], manifest: dict[str, object]) -> None:
+    state_dir = _state_dir(config)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "shards").mkdir(parents=True, exist_ok=True)
+    manifest_path = _manifest_path(config)
+    if manifest_path.exists():
+        current = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if current.get("fingerprint") != manifest["fingerprint"] and not config.reset_state:
+            raise SystemExit("Audit state does not match current inputs. Use --reset-state to recompute.")
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    for shard in shards:
+        paths = _shard_paths(config, shard)
+        paths.base_dir.mkdir(parents=True, exist_ok=True)
+        if not paths.state_path.exists():
+            _write_shard_state(
+                paths,
+                shard,
+                status=STATE_PENDING,
+                processed_rules=0,
+                total_rules=len(shard.sources),
+                last_rule_index=None,
+                error=None,
+            )
+
+
+def _refresh_run_summary(config: AuditConfig, shards: list[AuditShard]) -> dict[str, object]:
+    states = [_shard_state(_shard_paths(config, shard)) for shard in shards]
+    summary = {
+        "updated_at": _utc_now(),
+        "totals": {
+            "shards": len(states),
+            "pending": sum(state.get("status") == STATE_PENDING for state in states),
+            "running": sum(state.get("status") == STATE_RUNNING for state in states),
+            "completed": sum(state.get("status") == STATE_COMPLETED for state in states),
+            "failed": sum(state.get("status") == STATE_FAILED for state in states),
+            "interrupted": sum(state.get("status") == STATE_INTERRUPTED for state in states),
+            "processed_rules": sum(_int_from_state(state.get("processed_rules")) for state in states),
+            "total_rules": sum(_int_from_state(state.get("total_rules")) for state in states),
+        },
+        "shards": states,
+    }
+    _run_summary_path(config).write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    return summary
+
+
+def _build_manifest(config: AuditConfig, shards: list[AuditShard]) -> dict[str, object]:
+    payload = {
+        "version": STATE_VERSION,
+        "target": config.target,
+        "competitors": list(config.competitors),
+        "coverage": config.coverage,
+        "confidence_threshold": config.confidence_threshold,
+        "walk_length": config.walk_length,
+        "max_tables": config.max_tables,
+        "max_variables": config.max_variables,
+        "disjoint_semantics": config.disjoint_semantics,
+        "joinability": config.joinability,
+        "diagnose_unmatched": config.diagnose_unmatched,
+        "include_amie_rdf": config.include_amie_rdf,
+        "results_dir": str(config.results_dir),
+        "database_dir": str(config.database_dir),
+        "shards": [
+            {
+                "key": shard.key,
+                "algorithm": shard.algorithm,
+                "database": shard.database,
+                "source_signature": shard.source_signature,
+                "target_signature": shard.target_signature,
+                "total_rules": len(shard.sources),
+            }
+            for shard in shards
+        ],
+    }
+    payload["fingerprint"] = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+    return payload
+
+
+def _write_shard_state(
+    paths: ShardPaths,
+    shard: AuditShard,
+    *,
+    status: str,
+    processed_rules: int,
+    total_rules: int,
+    last_rule_index: int | None,
+    error: str | None,
+) -> None:
+    now = _utc_now()
+    previous = _shard_state(paths)
+    payload = {
+        "key": shard.key,
+        "algorithm": shard.algorithm,
+        "database": shard.database,
+        "status": status,
+        "processed_rules": processed_rules,
+        "total_rules": total_rules,
+        "last_rule_index": last_rule_index,
+        "error": error,
+        "host": socket.gethostname(),
+        "pid": os.getpid(),
+        "updated_at": now,
+        "started_at": previous.get("started_at") or now,
+        "completed_at": now if status == STATE_COMPLETED else None,
+        "csv_path": str(paths.csv_path),
+        "summary_path": str(paths.summary_path),
+        "source_signature": shard.source_signature,
+        "target_signature": shard.target_signature,
+    }
+    paths.state_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _shard_state(paths: ShardPaths) -> dict[str, Any]:
+    if not paths.state_path.exists():
+        return {}
+    return json.loads(paths.state_path.read_text(encoding="utf-8"))
+
+
+def _collect_records(config: AuditConfig, shards: list[AuditShard]) -> list[AuditRecord]:
+    records: list[AuditRecord] = []
+    for shard in sorted(shards, key=lambda item: (item.algorithm, item.database)):
+        paths = _shard_paths(config, shard)
+        if not paths.csv_path.exists():
+            continue
+        records.extend(_load_records_from_csv(paths.csv_path))
+    return sorted(records, key=lambda record: (record.algorithm, record.database, record.rule_index))
+
+
+def _load_records_from_csv(path: Path) -> list[AuditRecord]:
+    if not path.exists():
+        return []
+    records: list[AuditRecord] = []
+    with path.open(encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            records.append(
+                AuditRecord(
+                    algorithm=row["algorithm"],
+                    database=row["database"],
+                    source_path=row["source_path"],
+                    rule_index=int(row["rule_index"]),
+                    classification=AuditClassification(row["classification"]),
+                    match_status=MatchStatus(row["match_status"]),
+                    scope_status=ScopeStatus(row["scope_status"]),
+                    scope_reason=row["scope_reason"],
+                    target_class_member=row["target_class_member"] == "True",
+                    coverage_alpha=row["coverage_alpha"] == "True",
+                    coverage_subsumption=row["coverage_subsumption"] == "True",
+                    coverage_instance=row["coverage_instance"] == "True",
+                    diagnosis=row["diagnosis"],
+                    claim_relevant=row["claim_relevant"] == "True",
+                    reason=row["reason"],
+                    support=_optional_int(row["support"]),
+                    predictions=_optional_int(row["predictions"]),
+                    confidence=_optional_float(row["confidence"]),
+                    canonical_rule=row["canonical_rule"],
+                    matched_rule=row["matched_rule"],
+                    display=row["display"],
+                )
+            )
+    return records
+
+
+def _initialize_rules_csv(path: Path) -> None:
+    fieldnames = list(AuditRecord.__dataclass_fields__.keys())
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        csv.DictWriter(handle, fieldnames=fieldnames).writeheader()
+
+
+def _append_record(path: Path, record: AuditRecord) -> None:
+    fieldnames = list(AuditRecord.__dataclass_fields__.keys())
+    with path.open("a", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writerow({field: getattr(record, field) for field in fieldnames})
 
 
 def _empty_target_rule_index() -> TargetRuleIndex:
@@ -373,16 +810,37 @@ def _record(
 
 
 def _write_outputs(config: AuditConfig, records: list[AuditRecord]) -> None:
-    _write_rules_csv(config.output_dir / "audit_rules.csv", records)
-    _write_summary_json(config.output_dir / "audit_summary.json", records, config)
-    _write_unmatched_markdown(config.output_dir / "audit_unmatched.md", records, config.max_examples)
+    _write_outputs_in_dir(
+        config.output_dir,
+        records,
+        config,
+        summary_path=config.output_dir / "audit_summary.json",
+        unmatched_path=config.output_dir / "audit_unmatched.md",
+        diagnosis_path=config.output_dir / "audit_diagnosis.md",
+        claims_path=config.output_dir / "audit_claims.md",
+    )
+
+
+def _write_outputs_in_dir(
+    output_dir: Path,
+    records: list[AuditRecord],
+    config: AuditConfig,
+    *,
+    summary_path: Path,
+    unmatched_path: Path,
+    diagnosis_path: Path,
+    claims_path: Path,
+) -> None:
+    _write_rules_csv(output_dir / "audit_rules.csv", records)
+    _write_summary_json(summary_path, records, config)
+    _write_unmatched_markdown(unmatched_path, records, config.max_examples)
     _write_diagnosis_markdown(
-        config.output_dir / "audit_diagnosis.md",
+        diagnosis_path,
         records,
         config.max_examples,
         diagnose_unmatched=config.diagnose_unmatched,
     )
-    _write_claims_markdown(config.output_dir / "audit_claims.md", records, config)
+    _write_claims_markdown(claims_path, records, config)
 
 
 def _write_rules_csv(path: Path, records: list[AuditRecord]) -> None:
@@ -539,14 +997,13 @@ def _write_claims_markdown(path: Path, records: list[AuditRecord], config: Audit
     alpha = int(totals["recalled_alpha"])
     alpha_or_subsumed = int(totals["recalled_alpha_or_subsumed"])
     alpha_subsumed_or_instance = int(totals["recalled_alpha_subsumed_or_instance"])
-    unmatched = int(totals["unmatched"])
     claim_relevant_uncovered = int(totals["claim_relevant_uncovered"])
     if config.coverage == "subsumption":
         selected_uncovered = int(totals["subsumption_uncovered"])
         selected_label = "alpha-equivalence or logical subsumption"
     elif config.coverage == "instance":
         selected_uncovered = int(totals["instance_uncovered"])
-        selected_label = "alpha-equivalence, logical subsumption, or finite-instance coverage"
+        selected_label = "alpha-equivalence, logical subsumption, finite-instance coverage"
     else:
         selected_uncovered = claim_relevant_uncovered
         selected_label = "alpha-equivalence"
@@ -562,35 +1019,64 @@ def _write_claims_markdown(path: Path, records: list[AuditRecord], config: Audit
         f"- Comparable true rules: {comparable}",
         f"- Recalled by alpha-equivalence: {alpha}",
         f"- Recalled by alpha-equivalence or subsumption: {alpha_or_subsumed}",
-        f"- Recalled by alpha-equivalence, subsumption, or finite-instance coverage: {alpha_subsumed_or_instance}",
-        f"- Unmatched comparable true rules: {unmatched}",
-        f"- Claim-relevant uncovered rules under alpha-equivalence: {claim_relevant_uncovered}",
-        f"- Selected coverage criterion: {selected_label}",
-        f"- Uncovered rules under selected criterion: {selected_uncovered}",
+        f"- Recalled by alpha-equivalence, subsumption, finite-instance coverage: {alpha_subsumed_or_instance}",
+        f"- Unmatched comparable true rules under {selected_label}: {selected_uncovered}",
         "",
-        "## Permitted Claim",
+        "## Supported Claim Shape",
         "",
     ]
-    if comparable and selected_uncovered == 0:
+    if comparable == 0:
+        lines.append("- No comparable true competitor rules were found, so no empirical coverage claim is supported.")
+    elif selected_uncovered == 0:
         lines.append(
-            "After excluding approximate, vacuous, unparseable, and out-of-scope rules, "
-            f"MAHILDA recovered 100% of the remaining comparable true competitor rules under {selected_label}."
-        )
-    elif comparable:
-        lines.append(
-            f"The current audited artifacts do not support a 100% recall claim under {selected_label} because at least "
-            "one comparable true competitor rule is uncovered."
+            f"- Under the configured audit scope, MAHILDA achieves 100% recall of comparable true rules by {selected_label}."
         )
     else:
-        lines.append("No comparable true competitor rules found, so recall is not meaningful.")
+        lines.append(f"- Under the configured audit scope, MAHILDA does not achieve 100% recall by {selected_label}.")
     lines.extend(
         [
             "",
             "## Not Supported",
             "",
-            "- audit does not prove that MAHILDA finds all true rules in the database.",
+            "- The audit does not prove that MAHILDA finds all true rules in the database.",
             "- The audit does not judge whether a true rule is useful or interesting.",
-            "- audit does not support calling competitor rules incorrect without formal category counts.",
+            "- The audit does not support calling competitor rules incorrect without formal category counts.",
         ]
     )
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _target_signature(config: AuditConfig, database: str) -> str:
+    target_path = (
+        config.results_dir / config.target / f"{config.target}_{database}" / f"{config.target}_{database}_results.json"
+    )
+    return _file_signature(target_path)
+
+
+def _file_signature(path: Path) -> str:
+    if not path.exists():
+        return "missing"
+    stat = path.stat()
+    return f"{stat.st_mtime_ns}:{stat.st_size}"
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _int_from_state(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        return int(value)
+    return 0
+
+
+def _optional_int(value: str) -> int | None:
+    return int(value) if value not in {"", "None"} else None
+
+
+def _optional_float(value: str) -> float | None:
+    return float(value) if value not in {"", "None"} else None

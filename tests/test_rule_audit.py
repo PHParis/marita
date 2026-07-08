@@ -8,16 +8,14 @@ from typing import TYPE_CHECKING
 from mahilda.audit import AuditConfig, run_audit
 from mahilda.audit.evaluator import SQLiteRuleEvaluator
 from mahilda.audit.matching import alpha_equivalent, covered_on_instance, subsumes
-from mahilda.audit.models import AuditClassification, MatchStatus, ScopeStatus
+from mahilda.audit.models import AuditClassification, MatchStatus, RelationalRule, ScopeStatus
 from mahilda.audit.parsing import parse_formula
 from mahilda.cli.audit import main as audit_main
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
-
-    from mahilda.audit.models import RelationalRule
+import pytest
 
 
 def test_parse_formula_canonicalizes_variable_names() -> None:
@@ -151,6 +149,7 @@ def test_audit_skips_amie_rdf_by_default(tmp_path: Path) -> None:
             competitors=("AMIE3",),
             include_amie_rdf=True,
             show_progress=False,
+            reset_state=True,
         )
     )
     assert len(included) == 1
@@ -298,6 +297,93 @@ def test_instance_coverage_caches_target_projected_rows(tmp_path: Path, monkeypa
         MatchStatus.COVERED_ON_INSTANCE,
     ]
     assert counts[target_key] == 1
+
+
+def test_run_audit_writes_checkpoint_state_and_shards(tmp_path: Path) -> None:
+    database_dir = tmp_path / "data"
+    results_dir = tmp_path / "results"
+    output_dir = tmp_path / "audit"
+    database_dir.mkdir()
+    _write_tiny_database(database_dir, "alpha.db")
+    _write_tiny_database(database_dir, "beta.db")
+    _write_results(results_dir, "MAHILDA", "alpha", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    _write_results(results_dir, "MAHILDA", "beta", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    _write_results(results_dir, "MATILDA", "alpha", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    _write_results(results_dir, "MATILDA", "beta", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=False,
+            workers=2,
+        )
+    )
+
+    assert len(records) == 2
+    state_dir = output_dir / ".audit_state"
+    assert (state_dir / "manifest.json").exists()
+    summary = json.loads((state_dir / "run_summary.json").read_text(encoding="utf-8"))
+    assert summary["totals"]["completed"] == 2
+    shard_state = json.loads((state_dir / "shards" / "MATILDA__alpha.json").read_text(encoding="utf-8"))
+    assert shard_state["status"] == "completed"
+    assert (output_dir / "shards" / "MATILDA" / "alpha" / "audit_rules.csv").exists()
+
+
+def test_run_audit_requires_resume_when_state_exists(tmp_path: Path) -> None:
+    database_dir, results_dir, output_dir = _setup_evaluator_reuse_fixture(tmp_path)
+    run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=False,
+        )
+    )
+
+    with pytest.raises(SystemExit, match="Existing audit state found"):
+        run_audit(
+            AuditConfig(
+                results_dir=results_dir,
+                database_dir=database_dir,
+                output_dir=output_dir,
+                competitors=("MATILDA",),
+                show_progress=False,
+            )
+        )
+
+
+def test_run_audit_resume_skips_completed_shards(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_dir, results_dir, output_dir = _setup_evaluator_reuse_fixture(tmp_path)
+    run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=False,
+        )
+    )
+
+    def fail(*args: object, **kwargs: object) -> object:
+        raise AssertionError("completed shard should not rerun on resume")
+
+    monkeypatch.setattr("mahilda.audit.runner._run_audit_shard", fail)
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=False,
+            resume=True,
+        )
+    )
+
+    assert len(records) == 2
 
 
 def _setup_subsumption_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:

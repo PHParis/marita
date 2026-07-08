@@ -65,6 +65,10 @@ def main(argv: list[str] | None = None) -> int:
     audit_parser.add_argument("--max-examples", type=int, default=25)
     audit_parser.add_argument("--strict", action="store_true")
     audit_parser.add_argument("--no-progress", action="store_true")
+    audit_parser.add_argument("--workers", type=int, default=1)
+    audit_parser.add_argument("--resume", action="store_true")
+    audit_parser.add_argument("--reset-state", action="store_true")
+    audit_parser.add_argument("--status", action="store_true")
 
     import_rdf_parser = subparsers.add_parser("import-rdf", help="Import RDF/Turtle into benchmark artifacts")
     import_rdf_parser.add_argument("--input", required=True)
@@ -188,6 +192,14 @@ def main(argv: list[str] | None = None) -> int:
             audit_args.append("--strict")
         if args.no_progress:
             audit_args.append("--no-progress")
+        if args.workers != 1:
+            audit_args.extend(["--workers", str(args.workers)])
+        if args.resume:
+            audit_args.append("--resume")
+        if args.reset_state:
+            audit_args.append("--reset-state")
+        if args.status:
+            audit_args.append("--status")
         if args.no_disjoint_semantics:
             audit_args.append("--no-disjoint-semantics")
         if args.no_diagnose_unmatched:

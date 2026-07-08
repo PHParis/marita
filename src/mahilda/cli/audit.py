@@ -6,6 +6,7 @@ from pathlib import Path
 import yaml
 
 from mahilda.audit import AuditConfig, run_audit
+from mahilda.audit.runner import get_audit_status
 
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
@@ -32,6 +33,10 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-examples", type=int, default=25)
     parser.add_argument("--strict", action="store_true", help="Exit 2 if comparable true rules are unmatched.")
     parser.add_argument("--no-progress", action="store_true", help="Disable audit progress bars.")
+    parser.add_argument("--workers", type=int, default=1, help="Run audits concurrently across databases.")
+    parser.add_argument("--resume", action="store_true", help="Resume a checkpointed audit run.")
+    parser.add_argument("--reset-state", action="store_true", help="Discard checkpoint state and recompute.")
+    parser.add_argument("--status", action="store_true", help="Show audit checkpoint status and exit.")
     return parser.parse_args(argv)
 
 
@@ -69,7 +74,29 @@ def main(argv: list[str] | None = None) -> int:
         coverage=args.coverage,
         diagnose_unmatched=not args.no_diagnose_unmatched,
         include_amie_rdf=args.include_amie_rdf,
+        workers=args.workers,
+        resume=args.resume,
+        reset_state=args.reset_state,
+        status_only=args.status,
     )
+    if args.resume and args.reset_state:
+        raise SystemExit("--resume and --reset-state are mutually exclusive.")
+    if args.status:
+        summary = get_audit_status(config)
+        totals = summary["totals"]
+        if not isinstance(totals, dict):
+            raise SystemExit("Invalid audit status payload.")
+        totals_dict = {key: int(value) for key, value in totals.items() if key != "shards"}
+        print(
+            "audit status:"
+            f" completed={totals_dict['completed']}"
+            f" running={totals_dict['running']}"
+            f" pending={totals_dict['pending']}"
+            f" failed={totals_dict['failed']}"
+            f" interrupted={totals_dict['interrupted']}"
+            f" processed_rules={totals_dict['processed_rules']}/{totals_dict['total_rules']}"
+        )
+        return 0
     run_audit(config)
     return 0
 

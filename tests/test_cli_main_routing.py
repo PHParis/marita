@@ -91,6 +91,51 @@ def test_main_routes_audit_command(monkeypatch) -> None:
     ]
 
 
+def test_main_routes_audit_parallel_resume_flags(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_audit_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 19
+
+    monkeypatch.setattr("mahilda.cli.audit.main", fake_audit_main)
+    exit_code = main(
+        [
+            "audit",
+            "--results-dir",
+            "results/x",
+            "--database-dir",
+            "data/x",
+            "--workers",
+            "3",
+            "--resume",
+            "--status",
+        ]
+    )
+
+    assert exit_code == 19
+    assert captured["argv"] == [
+        "--results-dir",
+        "results/x",
+        "--database-dir",
+        "data/x",
+        "--target",
+        "MAHILDA",
+        "--competitors",
+        "AMIE3,MATILDA,SPIDER,POPPER",
+        "--coverage",
+        "alpha",
+        "--confidence-threshold",
+        "1.0",
+        "--max-examples",
+        "25",
+        "--workers",
+        "3",
+        "--resume",
+        "--status",
+    ]
+
+
 def test_main_routes_import_rdf_command(monkeypatch) -> None:
     captured: dict[str, list[str]] = {}
 
