@@ -512,6 +512,15 @@ class ConstraintGraph:
         return sorted(self.edges.get(node, set()))
         # return self.edges.get(node, set())
 
+    def all_neighbors(
+        self,
+        node: JoinableIndexedAttributes,
+    ) -> list[JoinableIndexedAttributes]:
+        """Return neighbors without depending on the canonical edge direction."""
+        neighbors = set(self.edges.get(node, set()))
+        neighbors.update(source for source, targets in self.edges.items() if node in targets)
+        return sorted(neighbors)
+
     def compute_metrics(self):
         # Convert the ConstraintGraph to a networkx graph
         G = nx.DiGraph()

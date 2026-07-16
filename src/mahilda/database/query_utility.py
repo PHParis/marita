@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from colorama import Fore, Style
-from sqlalchemy import MetaData, alias, and_, func, select
+from sqlalchemy import MetaData, alias, and_, false, func, or_, select
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -258,17 +258,33 @@ class QueryUtility:
         used_aliases_in_join.add(first_base_key)
         join_base = aliases[first_base_key].selectable
 
-        for alias_key1, alias_key2, join_condition in join_bases:
-            if alias_key2 is None:
-                where_constraints.append(join_condition)
-            elif alias_key1 in used_aliases_in_join and alias_key2 not in used_aliases_in_join:
-                used_aliases_in_join.add(alias_key2)
-                join_base = join_base.join(aliases[alias_key2], join_condition)
-            elif alias_key2 in used_aliases_in_join and alias_key1 not in used_aliases_in_join:
-                used_aliases_in_join.add(alias_key1)
-                join_base = join_base.join(aliases[alias_key1], join_condition)
-            elif alias_key1 in used_aliases_in_join and alias_key2 in used_aliases_in_join:
-                where_constraints.append(join_condition)
+        pending = list(join_bases)
+        while pending:
+            remaining: list[tuple[str, str | None, Any]] = []
+            progressed = False
+            for alias_key1, alias_key2, join_condition in pending:
+                if alias_key2 is None:
+                    if alias_key1 in used_aliases_in_join:
+                        where_constraints.append(join_condition)
+                        progressed = True
+                    else:
+                        remaining.append((alias_key1, alias_key2, join_condition))
+                elif alias_key1 in used_aliases_in_join and alias_key2 not in used_aliases_in_join:
+                    used_aliases_in_join.add(alias_key2)
+                    join_base = join_base.join(aliases[alias_key2], join_condition)
+                    progressed = True
+                elif alias_key2 in used_aliases_in_join and alias_key1 not in used_aliases_in_join:
+                    used_aliases_in_join.add(alias_key1)
+                    join_base = join_base.join(aliases[alias_key1], join_condition)
+                    progressed = True
+                elif alias_key1 in used_aliases_in_join and alias_key2 in used_aliases_in_join:
+                    where_constraints.append(join_condition)
+                    progressed = True
+                else:
+                    remaining.append((alias_key1, alias_key2, join_condition))
+            if not progressed:
+                break
+            pending = remaining
 
         return join_base, where_constraints
 
@@ -285,6 +301,9 @@ class QueryUtility:
 
             table_pk = self.metadata.tables[table_name].primary_key
             pks = [col.name for col in table_pk.columns] if table_pk else []
+            if not pks:
+                primary_key_conditions.append(false())
+                continue
             for occurrence1 in occurrences:
                 for occurrence2 in occurrences:
                     if occurrence1 >= occurrence2:
@@ -297,8 +316,8 @@ class QueryUtility:
 
                     alias1 = aliases[alias_key1]
                     alias2 = aliases[alias_key2]
-                    for pk in pks:
-                        primary_key_conditions.append(alias1.columns[pk] != alias2.columns[pk])
+                    inequalities = [alias1.columns[pk] != alias2.columns[pk] for pk in pks]
+                    primary_key_conditions.append(or_(*inequalities))
 
         return primary_key_conditions
 

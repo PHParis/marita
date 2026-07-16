@@ -77,3 +77,17 @@ def test_get_x_chains_filters_body_and_head() -> None:
     assert both == [[("a", 0, "id"), ("b", 0, "id")]]
     assert body_only == [[("a", 0, "id")]]
     assert head_only == [[("b", 0, "id")]]
+
+
+def test_chains_are_transitive_and_independent_of_pair_order() -> None:
+    a = _ia(0, 0, 0)
+    b = _ia(1, 0, 0)
+    c = _ia(2, 0, 0)
+    d = _ia(3, 0, 0)
+    pairs = [_jia(a, b), _jia(c, d), _jia(b, c)]
+
+    forward = CandidateRuleChains(pairs).cr_chains
+    reverse = CandidateRuleChains(list(reversed(pairs))).cr_chains
+
+    assert forward == [[a, b, c, d]]
+    assert reverse == forward

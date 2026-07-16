@@ -1,7 +1,7 @@
 from mahilda.algorithms.mahilda_core.constraint_graph import (
     AttributeMapper,
-    JoinableIndexedAttributes,
     IndexedAttribute,
+    JoinableIndexedAttributes,
 )
 
 TableOccurrence = tuple[int, int]
@@ -65,31 +65,35 @@ class CandidateRuleChains:
     def find_candidate_rule_chains(
         self,
         candidate_rule: CandidateRule,
-    ) -> list[set[IndexedAttribute]]:
-        """
-        Find chains of candidate rules.
-        :param candidate_rule: The candidate rule to be used for finding chains.
-        :return: A list of sets of IndexedAttribute, each set represents a chain.
-        """
-        # Initialize a list to hold sets of equivalent indexed attributes
-        chains = []
-        # Iterate over each pair in the candidate rule
-        for pair in candidate_rule:
-            # Check for direct equality or connectivity through the candidate rule
-            for other_pair in candidate_rule:
-                if pair == other_pair or self.is_directly_connected(
-                    pair, other_pair, candidate_rule
-                ):
-                    # Find or create the equivalence class for this pair
-                    self.add_to_chain(chains, pair, candidate_rule)
-        for i, eq in enumerate(chains):
-            ia_set = set()
-            for jia in eq:
-                for attr in jia:
-                    ia_set.add(attr)
-            chains[i] = sorted(ia_set)
-        # Return the list of chains
-        return chains
+    ) -> list[list[IndexedAttribute]]:
+        """Return the deterministic transitive closure of attribute equalities."""
+        if not candidate_rule:
+            return []
+
+        parent: dict[IndexedAttribute, IndexedAttribute] = {}
+
+        def find(attribute: IndexedAttribute) -> IndexedAttribute:
+            parent.setdefault(attribute, attribute)
+            if parent[attribute] != attribute:
+                parent[attribute] = find(parent[attribute])
+            return parent[attribute]
+
+        def union(left: IndexedAttribute, right: IndexedAttribute) -> None:
+            left_root = find(left)
+            right_root = find(right)
+            if left_root == right_root:
+                return
+            if right_root < left_root:
+                left_root, right_root = right_root, left_root
+            parent[right_root] = left_root
+
+        for left, right in candidate_rule:
+            union(left, right)
+
+        classes: dict[IndexedAttribute, set[IndexedAttribute]] = {}
+        for attribute in parent:
+            classes.setdefault(find(attribute), set()).add(attribute)
+        return [sorted(classes[root]) for root in sorted(classes)]
 
     def add_to_chain(
         self,

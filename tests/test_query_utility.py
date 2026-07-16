@@ -150,6 +150,85 @@ def test_construct_primary_key_conditions_for_multiple_occurrences() -> None:
     assert len(conds) == 1
 
 
+def test_relation_disjoint_composite_key_uses_tuple_inequality() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    metadata = MetaData()
+    composite = Table(
+        "composite",
+        metadata,
+        Column("left_id", Integer, primary_key=True),
+        Column("right_id", Integer, primary_key=True),
+    )
+    metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            composite.insert(),
+            [
+                {"left_id": 1, "right_id": 1},
+                {"left_id": 1, "right_id": 2},
+            ],
+        )
+
+    util = _utility(engine, metadata)
+    conditions = [("composite", 0, "left_id", "composite", 1, "left_id")]
+
+    assert util.get_join_row_count(conditions, disjoint_semantics=True) == 2
+
+
+def test_relation_disjoint_repeated_table_without_primary_key_has_no_witness() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    metadata = MetaData()
+    no_key = Table("no_key", metadata, Column("value", Integer))
+    metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(no_key.insert(), [{"value": 1}, {"value": 1}])
+
+    util = _utility(engine, metadata)
+    conditions = [("no_key", 0, "value", "no_key", 1, "value")]
+
+    assert util.get_join_row_count(conditions, disjoint_semantics=True) == 0
+
+
+def test_connected_join_construction_is_independent_of_condition_order() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    metadata = MetaData()
+    d = Table("d", metadata, Column("id", Integer, primary_key=True))
+    c = Table(
+        "c",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("d_id", Integer, ForeignKey("d.id")),
+    )
+    b = Table(
+        "b_chain",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("c_id", Integer, ForeignKey("c.id")),
+    )
+    a = Table(
+        "a_chain",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("b_id", Integer, ForeignKey("b_chain.id")),
+    )
+    metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(d.insert(), [{"id": 2}])
+        conn.execute(c.insert(), [{"id": 1, "d_id": None}])
+        conn.execute(b.insert(), [{"id": 1, "c_id": 1}])
+        conn.execute(a.insert(), [{"id": 1, "b_id": 1}])
+        conn.execute(c.update().values(d_id=99))
+
+    util = _utility(engine, metadata)
+    conditions = [
+        ("a_chain", 0, "b_id", "b_chain", 0, "id"),
+        ("c", 0, "d_id", "d", 0, "id"),
+        ("b_chain", 0, "c_id", "c", 0, "id"),
+    ]
+
+    assert util.get_join_row_count(conditions) == 0
+
+
 def test_count_over_alias_missing_raises() -> None:
     engine, metadata, _a, _b = _build_db()
     util = _utility(engine, metadata)

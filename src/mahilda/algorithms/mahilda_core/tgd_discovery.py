@@ -1,19 +1,20 @@
 import copy
-import os
-from collections.abc import Callable, Iterator
-from itertools import chain, combinations
-from statistics import mean
-import logging
-from collections import Counter, defaultdict
-from pathlib import Path
-from typing import Dict, Tuple
-
-from textwrap import indent
-from mahilda.utils.rules import Rule
 import json
+import logging
+import os
+import random
 import re
-from mahilda.utils.rules import Predicate, TGDRule
+import time
+from collections.abc import Callable, Iterator
+from itertools import chain as iter_chain
+from itertools import combinations
+from itertools import permutations, product
+from pathlib import Path
+from statistics import mean
+
 from tqdm import tqdm
+
+from mahilda.algorithms.mahilda_core.candidate_rule_chains import CandidateRuleChains
 from mahilda.algorithms.mahilda_core.constraint_graph import (
     Attribute,
     AttributeMapper,
@@ -21,9 +22,8 @@ from mahilda.algorithms.mahilda_core.constraint_graph import (
     IndexedAttribute,
     JoinableIndexedAttributes,
 )
-from mahilda.algorithms.mahilda_core.candidate_rule_chains import CandidateRuleChains
 from mahilda.database.alchemy_utility import AlchemyUtility
-import time
+from mahilda.utils.rules import Predicate, TGDRule
 
 # from runs_utils.postprocessing.analytics.generate_overall_table import logger
 
@@ -42,16 +42,18 @@ APPLY_FULL_JOINABILITY = False  # if True, is_compatible also accepts value-over
 SPLIT_PRUNING_MEAN_THRESHOLD = 0
 TableOccurrence = tuple[int, int]
 CandidateRule = list[JoinableIndexedAttributes]
+CandidateRuleKey = tuple[tuple[IndexedAttribute, ...], ...]
+HornRuleKey = tuple[
+    tuple[tuple[int, int], ...],
+    tuple[int, int],
+    tuple[tuple[tuple[int, int, int], ...], ...],
+]
 
-import json
-import logging
-import time
-from tqdm import tqdm
 
 def init(
     db_inspector: AlchemyUtility,
     max_nb_occurrence: int = 3,
-    max_nb_occurrence_per_table_and_column: dict[str, dict[str, int]] = {},
+    max_nb_occurrence_per_table_and_column: dict[str, dict[str, int]] | None = None,
     results_path: str = None,
 ) -> tuple[ConstraintGraph, AttributeMapper, list[JoinableIndexedAttributes]]:
     """
@@ -60,6 +62,9 @@ def init(
     :param max_nb_occurrence: Maximum number of occurrences for each table
     :return: A tuple containing the constraint graph, attribute mapper, and list of compatible indexed attributes
     """
+    if max_nb_occurrence_per_table_and_column is None:
+        max_nb_occurrence_per_table_and_column = {}
+
     # Input validation
     if not db_inspector or not hasattr(db_inspector, "base_name"):
         raise ValueError("Invalid db_inspector provided.")
@@ -201,8 +206,16 @@ def dfs(
     candidate_rule: CandidateRule = None,
         max_table: int = 3,
         max_vars: int = 4,
-        horn_rule_pruning_dict: Dict[JoinableIndexedAttributes, Tuple[float, float]] = dict(),
-) -> Iterator[CandidateRule, Tuple[JoinableIndexedAttributes, JoinableIndexedAttributes], Tuple[float, float]]:
+        horn_rule_pruning_dict: dict[TableOccurrence, tuple[float, float]] | None = None,
+        seen_candidates: set[CandidateRuleKey] | None = None,
+        emitted_rule_keys: set[HornRuleKey] | None = None,
+) -> Iterator[
+    tuple[
+        CandidateRule,
+        tuple[set[TableOccurrence], set[TableOccurrence]],
+        tuple[float, float],
+    ]
+]:
     """
     Perform a Depth-First Search (DFS) traversal with a path-based heuristic,
     yielding the candidate rule leading up to a heuristic-determined stop.
@@ -218,8 +231,14 @@ def dfs(
         visited: set[JoinableIndexedAttributes] = set()
     if candidate_rule is None:
         candidate_rule = []
+    if horn_rule_pruning_dict is None:
+        horn_rule_pruning_dict = {}
+    if seen_candidates is None:
+        seen_candidates = set()
+    if emitted_rule_keys is None:
+        emitted_rule_keys = set()
     if start_node is None:
-        for next_node in tqdm(graph.nodes, desc="Initial Nodes"):
+        for next_node in tqdm(sorted(graph.nodes), desc="Initial Nodes"):
             """
             note: mandatory because some jia are built with not the right order in table occurrences
             they are needed to have all the runs, but at init we prune them.
@@ -235,72 +254,66 @@ def dfs(
                     visited=set(),
                     candidate_rule=copy.deepcopy(candidate_rule),
                     max_table=max_table,
-                    max_vars=max_vars
+                    max_vars=max_vars,
+                    horn_rule_pruning_dict=horn_rule_pruning_dict,
+                    seen_candidates=seen_candidates,
+                    emitted_rule_keys=emitted_rule_keys,
                 )
         return
     visited.add(start_node)
     candidate_rule.append(start_node)
+    candidate_key = candidate_rule_key(candidate_rule)
+    if candidate_key in seen_candidates:
+        return
+    seen_candidates.add(candidate_key)
     # Apply the heuristic to the current path; if False,
     # yield the path without the last node and return
     if not pruning_prediction(candidate_rule, mapper, db_inspector):
         return
-    
+
     splits = split_candidate_rule(candidate_rule)
-    should_continue = False 
     for body, head in splits:
         if not body or not head : continue
-        if len(head) != 1: continue 
+        if len(head) != 1: continue
+        if not is_safe_split(candidate_rule, body, head):
+            continue
         head_relation = next(iter(head))
         condition_check, support, confidence = split_pruning(
             candidate_rule, body, head, db_inspector, mapper
         )
 
+        if not condition_check:
+            continue
+
+        rule_key = horn_rule_key(candidate_rule, body, head)
+        if rule_key in emitted_rule_keys:
+            continue
+
         new_metrics= (support,confidence)
         should_yield = False
-        if head_relation not in horn_rule_pruning_dict: 
+        if head_relation not in horn_rule_pruning_dict:
             horn_rule_pruning_dict[head_relation] = new_metrics
-            should_yield = True 
+            should_yield = True
             #print(f"New rule: {head_relation} with support {support} and confidence {confidence}")
         else:
             # prune on support
-            if horn_rule_pruning_dict[head_relation][0] < support:
+            if horn_rule_pruning_dict[head_relation][0] <= support:
                 horn_rule_pruning_dict[head_relation] = new_metrics
                 should_yield = True
         if should_yield:
+            emitted_rule_keys.add(rule_key)
             yield candidate_rule,(body, head), new_metrics
-            should_continue = True 
-    cr_chains = CandidateRuleChains(candidate_rule).cr_chains
-    # 2. Affecter les variables
-    variable_assignment = assign_variables(cr_chains, (body, head))
-    # 3. Récupérer les variables du head et du body
-    head_vars = set(variable_assignment[attr] for attr in variable_assignment if (attr.i, attr.j) in head)
-    body_vars = set(variable_assignment[attr] for attr in variable_assignment if (attr.i, attr.j) in body)
-    # 4. Vérifier la connexion
-    for var in head_vars:
-        if var not in body_vars:
-            # pass 
-            should_continue = True 
-            # print(f"Variable {var} in head is not connected to the body!")
-
-    if not should_continue :
-        #print("early stop, no splits found")
-        return 
-    
-    # pass 
-    #print("early stop, no splits found")    
-    # return 
-    # yield candidate_rule
 
     # for next_node in tqdm(graph.neighbors(start_node), desc=f"Expanding {start_node}", leave=False):
     # neighbours = graph.neighbors(start_node)
     # splits = split_candidate_rule(candidate_rule)
     # split = splits.pop()
     #debug = instantiate_tgd(candidate_rule, split, mapper)
-    big_neighbours = []
+    big_neighbours: set[JoinableIndexedAttributes] = set()
     for node in candidate_rule:
-        big_neighbours += [e for e in graph.neighbors(node) if e not in visited]
+        big_neighbours.update(e for e in graph.all_neighbors(node) if e not in visited)
     # big_neighbours = [e for e in graph.neighbors(node) for node in candidate_rule
-    for next_node in big_neighbours: # graph.neighbors(start_node):
+    for next_node in sorted(big_neighbours): # graph.neighbors(start_node):
         if next_node_test(candidate_rule, next_node, visited, max_table, max_vars):
             yield from dfs(
                 graph,
@@ -311,7 +324,10 @@ def dfs(
                 visited=visited,
                 candidate_rule=candidate_rule,
                 max_table=max_table,
-                max_vars=max_vars
+                max_vars=max_vars,
+                horn_rule_pruning_dict=horn_rule_pruning_dict,
+                seen_candidates=seen_candidates,
+                emitted_rule_keys=emitted_rule_keys,
             )
             visited.remove(next_node)
             candidate_rule.pop()
@@ -423,31 +439,10 @@ def split_pruning(
         return False, 0, 0  # invalid split, should not happen
     if len(body) == 0 or len(head) == 0:
         return False, 0, 0  # we prune empty body or head
-    
-    # pruning non-horn rules 
+
+    # pruning non-horn rules
     if len(head) != 1:
         return False, 0, 0
-    pairs_count = Counter((attr.i, attr.j) for jia in candidate_rule for attr in jia)
-
-    table_indexed = defaultdict(list)
-    for i, j in head | body:  # Union of both frozensets
-        table_indexed[i].append(j)
-    for i in table_indexed:
-        if len(table_indexed[i]) > 1:
-            if pairs_count[(i, table_indexed[i][0])] == 1:
-                return False, 0, 0
-            #return False, 0, 0
-
-
-    # for each table indexed , if the number of element is greater than 1, we prune if there is two tables with the same
-
-
-    # Filter out rules where the same table is repeated with the same variables
-    #body_tables={attr.i for attr in body}
-
-    #body_tables=
-    #if len(body_tables) < len(body) or len(head_tables) < len(head):
-    #    return False, 0, 0
     total_tuple_test = prediction(candidate_rule, mapper, db_inspector, body, head, threshold=0)
     if total_tuple_test is False:
         return False, 0, 0  # prune if the prediction is 0
@@ -466,7 +461,7 @@ def split_pruning(
 def powerset(iterable):
     "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2,) (1,3,) (2,3,) (1,2,3)"
     s = list(iterable)
-    return chain.from_iterable(combinations(s, r) for r in range(len(s) + 1))
+    return iter_chain.from_iterable(combinations(s, r) for r in range(len(s) + 1))
 
 
 def extract_table_occurrences(
@@ -543,6 +538,20 @@ def split_candidate_rule(
         if condition_met:
             valid_splits.add((frozenset(body), frozenset(head)))
     return valid_splits
+
+
+def is_safe_split(
+    candidate_rule: CandidateRule,
+    body: set[TableOccurrence],
+    head: set[TableOccurrence],
+) -> bool:
+    """Return whether every head variable also occurs in the body."""
+    for chain in CandidateRuleChains(candidate_rule).cr_chains:
+        occurs_in_head = any((attribute.i, attribute.j) in head for attribute in chain)
+        occurs_in_body = any((attribute.i, attribute.j) in body for attribute in chain)
+        if occurs_in_head and not occurs_in_body:
+            return False
+    return True
 
 
 def instantiate_tgd(
@@ -934,7 +943,7 @@ def is_start_node(
     """
     Check if the candidate rule is a start node.
     """
-    # 
+    #
     return len(candidate_rule) == 1
 
 def check_table_occurrences(
@@ -984,14 +993,87 @@ def check_minimal_candidate_rule(
     """
     test_candidate_rule = copy.deepcopy(candidate_rule)
     test_candidate_rule.append(next_node)
-    cr_chains = CandidateRuleChains(test_candidate_rule).cr_chains
-    min_candidate_rule = []
-    for chain in cr_chains:
-        for jia in build_minimal_chain(chain):
-            min_candidate_rule.append(jia)
-    if min_candidate_rule != test_candidate_rule:
-        return False
+    parent: dict[IndexedAttribute, IndexedAttribute] = {}
+
+    def find(attribute: IndexedAttribute) -> IndexedAttribute:
+        parent.setdefault(attribute, attribute)
+        if parent[attribute] != attribute:
+            parent[attribute] = find(parent[attribute])
+        return parent[attribute]
+
+    for left, right in test_candidate_rule:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root == right_root:
+            return False
+        parent[right_root] = left_root
     return True
+
+
+def candidate_rule_key(candidate_rule: CandidateRule) -> CandidateRuleKey:
+    """Canonical signature of the equality relation induced by a proto-rule."""
+    chains = CandidateRuleChains(candidate_rule).cr_chains
+    return tuple(sorted(tuple(chain) for chain in chains))
+
+
+def horn_rule_key(
+    candidate_rule: CandidateRule,
+    body: set[TableOccurrence],
+    head: set[TableOccurrence],
+) -> HornRuleKey:
+    """Canonicalize a Horn rule modulo repeated-occurrence renumbering."""
+    if len(head) != 1:
+        raise ValueError("Horn rule keys require exactly one head occurrence")
+    head_occurrence = next(iter(head))
+    occurrences = sorted(body | head)
+    occurrences_by_table: dict[int, list[int]] = {}
+    for table, occurrence in occurrences:
+        occurrences_by_table.setdefault(table, []).append(occurrence)
+
+    table_mappings: list[list[dict[int, int]]] = []
+    table_order = sorted(occurrences_by_table)
+    for table in table_order:
+        old_occurrences = sorted(occurrences_by_table[table])
+        mappings: list[dict[int, int]] = []
+        if table == head_occurrence[0]:
+            remaining = [value for value in old_occurrences if value != head_occurrence[1]]
+            for targets in permutations(range(1, len(old_occurrences))):
+                mapping = {head_occurrence[1]: 0}
+                mapping.update(dict(zip(remaining, targets, strict=True)))
+                mappings.append(mapping)
+        else:
+            for targets in permutations(range(len(old_occurrences))):
+                mappings.append(dict(zip(old_occurrences, targets, strict=True)))
+        table_mappings.append(mappings)
+
+    signatures: list[HornRuleKey] = []
+    chains = CandidateRuleChains(candidate_rule).cr_chains
+    for selected_mappings in product(*table_mappings):
+        occurrence_mapping = dict(zip(table_order, selected_mappings, strict=True))
+
+        def normalize_occurrence(value: TableOccurrence) -> TableOccurrence:
+            table, occurrence = value
+            return table, occurrence_mapping[table][occurrence]
+
+        normalized_body = tuple(sorted(normalize_occurrence(value) for value in body))
+        normalized_head = normalize_occurrence(head_occurrence)
+        normalized_chains = tuple(
+            sorted(
+                tuple(
+                    sorted(
+                        (
+                            attribute.i,
+                            occurrence_mapping[attribute.i][attribute.j],
+                            attribute.k,
+                        )
+                        for attribute in chain
+                    )
+                )
+                for chain in chains
+            )
+        )
+        signatures.append((normalized_body, normalized_head, normalized_chains))
+    return min(signatures)
 
 
 def check_max_table(
@@ -1013,7 +1095,9 @@ def check_max_vars(
     next_node: JoinableIndexedAttributes,
     max_vars: int,
 ):
-    return len(candidate_rule) + 1 <= max_vars
+    test_candidate_rule = copy.deepcopy(candidate_rule)
+    test_candidate_rule.append(next_node)
+    return len(CandidateRuleChains(test_candidate_rule).cr_chains) <= max_vars
 
 def build_minimal_chain(chain: set[JoinableIndexedAttributes]):
     """
@@ -1027,7 +1111,7 @@ def build_minimal_chain(chain: set[JoinableIndexedAttributes]):
             min_ia = ia
     # 2. generate the star pattern
     for ia in chain:
-        if min_ia is not ia:
+        if min_ia != ia:
             yield JoinableIndexedAttributes(min_ia, ia)
 
 
@@ -1043,14 +1127,8 @@ def duplicate_test(tgds):
     if duplicate_rules > 0:
         raise ValueError(f"Duplicate rules found: {duplicate_rules}")
     return duplicate_rules
-from mahilda.utils.rules import Rule
-import json
 
-import re
-from mahilda.utils.rules import Predicate, TGDRule
 
-import re
-import random
 def str_to_predicate(relation_str):
     relation_pattern = r"\s*(\w+)\((.*?)\)\s*"
     relation_match = re.match(relation_pattern, relation_str)
