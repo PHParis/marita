@@ -151,6 +151,16 @@ def main(argv: list[str] | None = None) -> int:
                 f"  {job.get('claimed_by', 'unknown')}  {job.get('database', job.get('job_id'))}"
                 f"  {job.get('processed_rules', 0)}/{job.get('total_rules', 0)} rules"
             )
+        by_host: dict[str, int] = {}
+        for job in jobs:
+            if job.get("queue_state") != "running":
+                continue
+            host_name = str(job.get("claimed_by") or "unknown")
+            by_host[host_name] = by_host.get(host_name, 0) + 1
+        if by_host:
+            print("hosts:")
+            for host_name, count in sorted(by_host.items()):
+                print(f"  {host_name} running={count}")
         return 0
     run_audit(config)
     return 0

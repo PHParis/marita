@@ -290,6 +290,44 @@ def test_cli_audit_merges_settings_and_overrides(tmp_path: Path, monkeypatch: py
     assert captured["config"].diagnose_unmatched is False
 
 
+def test_cli_audit_reads_distributed_settings_and_auto_host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, AuditConfig] = {}
+    settings_path = tmp_path / "settings.yaml"
+    settings_path.write_text(
+        "hosts: [local]\n"
+        "audit:\n"
+        "  workers_per_host: 3\n"
+        "  heartbeat_seconds: 7\n"
+        "  stale_after_seconds: 99\n"
+        "  max_attempts: 4\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_audit(config: AuditConfig) -> list[object]:
+        captured["config"] = config
+        return []
+
+    monkeypatch.setattr("mahilda.cli.audit.run_audit", fake_run_audit)
+    monkeypatch.setattr("mahilda.cli.audit.socket.gethostname", lambda: "local.example")
+
+    assert audit_main(
+        [
+            "--settings",
+            str(settings_path),
+            "--host",
+            "auto",
+            "--output-dir",
+            str(tmp_path / "audit"),
+        ]
+    ) == 0
+    assert captured["config"].host == "local"
+    assert captured["config"].hosts == ("local",)
+    assert captured["config"].workers == 3
+    assert captured["config"].heartbeat_seconds == 7
+    assert captured["config"].stale_after_seconds == 99
+    assert captured["config"].max_attempts == 4
+
+
 def test_alpha_coverage_skips_instance_matching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     database_dir, results_dir, output_dir = _setup_subsumption_fixture(tmp_path)
 

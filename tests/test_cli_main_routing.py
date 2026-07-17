@@ -136,6 +136,38 @@ def test_main_routes_audit_parallel_resume_flags(monkeypatch) -> None:
     ]
 
 
+def test_main_routes_audit_distributed_flags(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_audit_main(argv: list[str]) -> int:
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr("mahilda.cli.audit.main", fake_audit_main)
+    assert main(
+        [
+            "audit",
+            "--hosts",
+            "h0,h1",
+            "--host",
+            "auto",
+            "--workers",
+            "2",
+            "--heartbeat-seconds",
+            "9",
+            "--stale-after-seconds",
+            "99",
+            "--max-attempts",
+            "4",
+        ]
+    ) == 0
+    assert "--hosts" in captured["argv"]
+    assert "--host" in captured["argv"]
+    assert "--heartbeat-seconds" in captured["argv"]
+    assert "--stale-after-seconds" in captured["argv"]
+    assert "--max-attempts" in captured["argv"]
+
+
 def test_main_routes_import_rdf_command(monkeypatch) -> None:
     captured: dict[str, list[str]] = {}
 

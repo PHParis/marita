@@ -19,6 +19,7 @@ from tqdm import tqdm
 
 from mahilda.audit.distributed import (
     LeaseHeartbeat,
+    QueueLease,
     claim_job,
     finish_job,
     initialise_queue,
@@ -177,6 +178,10 @@ class ShardResult:
     processed_rules: int
     total_rules: int
     error: str | None = None
+
+
+class AuditLeaseLostError(RuntimeError):
+    """Raised when a distributed worker no longer owns its database lease."""
 
 
 def run_audit(config: AuditConfig) -> list[AuditRecord]:
@@ -609,6 +614,7 @@ def _initialize_distributed_queue(
         queue_manifest,
         jobs,
         retry_failed=config.resume,
+        max_attempts=config.max_attempts,
     )
 
 
@@ -648,18 +654,27 @@ def _distributed_worker_loop(
         heartbeat.start()
         database = str(payload["database"])
         try:
-            for shard in shards_by_database.get(database, []):
-                _run_audit_shard(config, shard)
+            database_shards = shards_by_database.get(database, [])
+            runtime = AuditRuntime(
+                target_indexes_by_db={database: database_shards[0].target_index} if database_shards else {}
+            )
+            try:
+                for shard in database_shards:
+                    _assert_lease_owned(lease)
+                    _run_audit_shard(config, shard, runtime=runtime)
+                _assert_lease_owned(lease)
+            finally:
+                runtime.close()
                 update_lease(
                     lease,
                     {
                         "processed_shards": sum(
                             _shard_state(_shard_paths(config, candidate)).get("status") == STATE_COMPLETED
-                            for candidate in shards_by_database.get(database, [])
+                            for candidate in database_shards
                         ),
                         "processed_rules": sum(
                             _int_from_state(_shard_state(_shard_paths(config, candidate)).get("processed_rules"))
-                            for candidate in shards_by_database.get(database, [])
+                            for candidate in database_shards
                         ),
                     },
                 )
@@ -725,8 +740,19 @@ def _queue_dir(config: AuditConfig) -> Path:
 
 def _distributed_status(config: AuditConfig, shards: list[AuditShard]) -> dict[str, object]:
     jobs = read_queue_jobs(_queue_dir(config), stale_after_seconds=config.stale_after_seconds)
+    shards_by_key = {shard.key: shard for shard in shards}
     total_rules = sum(len(shard.sources) for shard in shards)
-    processed_rules = sum(int(job.get("processed_rules", 0) or 0) for job in jobs)
+    processed_rules = 0
+    for job in jobs:
+        job_shards = [shards_by_key[key] for key in job.get("shards", []) if key in shards_by_key]
+        job["total_rules"] = sum(len(shard.sources) for shard in job_shards)
+        job["processed_rules"] = sum(
+            _int_from_state(_shard_state(_shard_paths(config, shard)).get("processed_rules")) for shard in job_shards
+        )
+        job["processed_shards"] = sum(
+            _shard_state(_shard_paths(config, shard)).get("status") == STATE_COMPLETED for shard in job_shards
+        )
+        processed_rules += int(job["processed_rules"])
     totals = {
         "shards": len(shards),
         "pending": sum(job.get("queue_state") == "pending" for job in jobs),
@@ -774,7 +800,21 @@ def _planned_distributed_status(config: AuditConfig, shards: list[AuditShard]) -
     }
 
 
-def _run_audit_shard(config: AuditConfig, shard: AuditShard) -> ShardResult:
+def _assert_lease_owned(lease: QueueLease) -> None:
+    try:
+        payload = json.loads(lease.path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        raise AuditLeaseLostError(f"Audit lease disappeared for {lease.job_id}") from None
+    if payload.get("lease_token") != lease.token:
+        raise AuditLeaseLostError(f"Audit lease was replaced for {lease.job_id}")
+
+
+def _run_audit_shard(
+    config: AuditConfig,
+    shard: AuditShard,
+    *,
+    runtime: AuditRuntime | None = None,
+) -> ShardResult:
     paths = _shard_paths(config, shard)
     state = _shard_state(paths)
     start_index = _int_from_state(state.get("processed_rules")) if config.resume else 0
@@ -788,7 +828,9 @@ def _run_audit_shard(config: AuditConfig, shard: AuditShard) -> ShardResult:
             total_rules=len(shard.sources),
         )
 
-    runtime = AuditRuntime(target_indexes_by_db={shard.database: shard.target_index})
+    owns_runtime = runtime is None
+    if runtime is None:
+        runtime = AuditRuntime(target_indexes_by_db={shard.database: shard.target_index})
     iterator: Iterable[SourceRule]
     iterator = shard.sources[start_index:]
     progress = tqdm(
@@ -876,7 +918,8 @@ def _run_audit_shard(config: AuditConfig, shard: AuditShard) -> ShardResult:
         )
         raise
     finally:
-        runtime.close()
+        if owns_runtime:
+            runtime.close()
 
 
 def _state_dir(config: AuditConfig) -> Path:

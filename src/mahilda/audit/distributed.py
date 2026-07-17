@@ -64,27 +64,54 @@ def initialise_queue(
     jobs: list[dict[str, Any]],
     *,
     retry_failed: bool = False,
+    max_attempts: int = 3,
 ) -> None:
     queue_dir.mkdir(parents=True, exist_ok=True)
     for state in QUEUE_STATES:
         (queue_dir / state).mkdir(parents=True, exist_ok=True)
 
     manifest_path = queue_dir / "manifest.json"
-    if manifest_path.exists():
-        existing = read_json(manifest_path)
-        if existing.get("fingerprint") != manifest.get("fingerprint"):
-            raise SystemExit("Distributed audit queue does not match current inputs. Use --reset-state to restart.")
-    else:
-        write_json_atomic(manifest_path, manifest)
+    ready_path = queue_dir / "ready"
+    if ready_path.exists():
+        _validate_manifest(manifest_path, manifest)
+        if not retry_failed:
+            return
 
-    for job in jobs:
-        job_id = str(job["job_id"])
-        if retry_failed:
-            _retry_failed_job(queue_dir, job_id)
-        if _find_job_path(queue_dir, job_id) is not None:
-            continue
-        payload = {**job, "status": "pending", "attempt": int(job.get("attempt", 1))}
-        write_json_atomic(queue_dir / "pending" / job_filename(job_id), payload)
+    lock = queue_dir / ".init.lock"
+    if not try_acquire_lock(lock):
+        for _ in range(120):
+            if ready_path.exists():
+                _validate_manifest(manifest_path, manifest)
+                return
+            time.sleep(0.5)
+        raise SystemExit("Timed out waiting for another host to initialize the distributed audit queue.")
+
+    try:
+        if manifest_path.exists():
+            _validate_manifest(manifest_path, manifest)
+        else:
+            write_json_atomic(manifest_path, manifest)
+
+        for job in jobs:
+            job_id = str(job["job_id"])
+            if retry_failed:
+                _retry_failed_job(queue_dir, job_id, max_attempts=max_attempts)
+            if _find_job_path(queue_dir, job_id) is not None:
+                continue
+            payload = {**job, "status": "pending", "attempt": int(job.get("attempt", 1))}
+            write_json_atomic(queue_dir / "pending" / job_filename(job_id), payload)
+        write_json_atomic(ready_path, {"ready_at": utc_now()})
+    finally:
+        release_lock(lock)
+
+
+def _validate_manifest(manifest_path: Path, manifest: dict[str, Any]) -> None:
+    try:
+        existing = read_json(manifest_path)
+    except (FileNotFoundError, OSError, ValueError):
+        raise SystemExit("Distributed audit queue manifest is missing or invalid. Use --reset-state to restart.") from None
+    if existing.get("fingerprint") != manifest.get("fingerprint"):
+        raise SystemExit("Distributed audit queue does not match current inputs. Use --reset-state to restart.")
 
 
 def claim_job(queue_dir: Path, host: str) -> tuple[QueueLease, dict[str, Any]] | None:
@@ -277,12 +304,15 @@ def _find_job_path(queue_dir: Path, job_id: str) -> Path | None:
     return None
 
 
-def _retry_failed_job(queue_dir: Path, job_id: str) -> None:
+def _retry_failed_job(queue_dir: Path, job_id: str, *, max_attempts: int) -> None:
     failed_path = queue_dir / "failed" / job_filename(job_id)
     if not failed_path.exists():
         return
     payload = read_json(failed_path)
-    payload.update({"status": "pending", "error": None, "requeued_at": utc_now()})
+    attempt = int(payload.get("attempt", 1)) + 1
+    if attempt > max_attempts:
+        return
+    payload.update({"status": "pending", "attempt": attempt, "error": None, "requeued_at": utc_now()})
     target = queue_dir / "pending" / failed_path.name
     write_json_atomic(failed_path, payload)
     failed_path.replace(target)
