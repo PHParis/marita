@@ -489,24 +489,45 @@ def _execute_shards(config: AuditConfig, shards: list[AuditShard]) -> None:
     in_flight: dict[Future[ShardResult], AuditShard] = {}
     active_databases: set[str] = set()
     remaining = list(pending.values())
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        while remaining or in_flight:
-            while remaining and len(in_flight) < max_workers:
-                shard = next((candidate for candidate in remaining if candidate.database not in active_databases), None)
-                if shard is None:
-                    break
-                remaining.remove(shard)
-                future = executor.submit(_run_audit_shard, config, shard)
-                in_flight[future] = shard
-                active_databases.add(shard.database)
-            if not in_flight:
-                continue
-            done, _ = wait(in_flight.keys(), return_when=FIRST_COMPLETED)
-            for future in done:
-                shard = in_flight.pop(future)
-                active_databases.discard(shard.database)
-                future.result()
-                _refresh_run_summary(config, shards)
+    progress = tqdm(
+        total=sum(len(shard.sources) for shard in shards),
+        initial=sum(
+            _int_from_state(_shard_state(_shard_paths(config, shard)).get("processed_rules")) for shard in shards
+        ),
+        desc="Auditing",
+        disable=not config.show_progress,
+        unit="rule",
+    )
+    displayed_rules = progress.n if config.show_progress else 0
+    try:
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            while remaining or in_flight:
+                while remaining and len(in_flight) < max_workers:
+                    shard = next(
+                        (candidate for candidate in remaining if candidate.database not in active_databases), None
+                    )
+                    if shard is None:
+                        break
+                    remaining.remove(shard)
+                    future = executor.submit(_run_audit_shard, config, shard)
+                    in_flight[future] = shard
+                    active_databases.add(shard.database)
+                if not in_flight:
+                    continue
+                done, _ = wait(in_flight.keys(), timeout=0.2, return_when=FIRST_COMPLETED)
+                current_rules = sum(
+                    _int_from_state(_shard_state(_shard_paths(config, shard)).get("processed_rules"))
+                    for shard in shards
+                )
+                progress.update(current_rules - displayed_rules)
+                displayed_rules = current_rules
+                for future in done:
+                    shard = in_flight.pop(future)
+                    active_databases.discard(shard.database)
+                    future.result()
+                    _refresh_run_summary(config, shards)
+    finally:
+        progress.close()
 
 
 def _run_audit_shard(config: AuditConfig, shard: AuditShard) -> ShardResult:
@@ -529,7 +550,7 @@ def _run_audit_shard(config: AuditConfig, shard: AuditShard) -> ShardResult:
     progress = tqdm(
         iterator,
         desc=f"Auditing {shard.algorithm}/{shard.database}",
-        disable=not config.show_progress,
+        disable=not config.show_progress or config.workers > 1,
         unit="rule",
         total=len(shard.sources),
         initial=start_index,

@@ -493,6 +493,48 @@ def test_run_audit_writes_checkpoint_state_and_shards(tmp_path: Path) -> None:
     assert (output_dir / "shards" / "MATILDA" / "alpha" / "audit_rules.csv").exists()
 
 
+def test_parallel_audit_disables_worker_progress_bars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_dir = tmp_path / "data"
+    results_dir = tmp_path / "results"
+    output_dir = tmp_path / "audit"
+    database_dir.mkdir()
+    _write_tiny_database(database_dir, "tiny.db")
+    _write_results(results_dir, "MAHILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    _write_results(results_dir, "MATILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+
+    progress_calls: list[dict[str, object]] = []
+
+    class RecordingProgress:
+        def __init__(self, iterable: object = None, **kwargs: object) -> None:
+            self.iterable = iterable
+            progress_calls.append(kwargs)
+            self.n = int(kwargs.get("initial", 0))
+
+        def __iter__(self) -> object:
+            return iter(self.iterable or ())
+
+        def update(self, count: int) -> None:
+            self.n += count
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("mahilda.audit.runner.tqdm", RecordingProgress)
+    run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=True,
+            workers=2,
+        )
+    )
+
+    assert len(progress_calls) == 1
+    assert progress_calls[0]["desc"] == "Auditing"
+
+
 def test_run_audit_requires_resume_when_state_exists(tmp_path: Path) -> None:
     database_dir, results_dir, output_dir = _setup_evaluator_reuse_fixture(tmp_path)
     run_audit(

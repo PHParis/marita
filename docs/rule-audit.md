@@ -73,7 +73,7 @@ run did not record provenance metadata. Instance coverage is not available in
 cache mode because it requires fresh SQLite projection queries.
 
 `--strict` exits with code `2` if any comparable true competitor rule is not recovered by MAHILDA.
-Progress bars are enabled by default and show one bar per competitor algorithm. Use `--no-progress` for CI logs or redirected output.
+Progress bars are enabled by default. Serial runs show one bar per shard; parallel runs show one aggregate bar in the parent process so worker output does not overlap. Use `--no-progress` for CI logs or redirected output.
 
 The default audit target-class settings match the paper benchmark defaults: `walk_length=3`, `max_tables=3`, `max_variables=3`, `joinability=fk`, and relation-disjoint semantics enabled. Override these with `--walk-length`, `--max-tables`, `--max-variables`, `--joinability`, `--no-disjoint-semantics`, or load a YAML config with `--settings`.
 
