@@ -1,4 +1,6 @@
 import logging
+from collections import defaultdict
+from itertools import combinations
 
 from mahilda.database.alchemy_utility import AlchemyUtility
 # import networkx as nx
@@ -427,20 +429,35 @@ class ConstraintGraph:
             JoinableIndexedAttributes,
             set[JoinableIndexedAttributes],
         ] = {}  # Dictionary mapping a node to its connected nodes
+        self._incoming: dict[
+            JoinableIndexedAttributes,
+            set[JoinableIndexedAttributes],
+        ] = {}
 
     @classmethod
     def from_jia_list(
             cls, jia_list: list[JoinableIndexedAttributes]
     ) -> "ConstraintGraph":
         instance = cls()
-        for jia in jia_list:
+        nodes = sorted(set(jia_list))
+        for jia in nodes:
             instance.add_node(jia)
-            for i, jia in enumerate(jia_list):
-                for jia2 in jia_list[i + 1:]:
-                    if jia != jia2 and jia.is_connected(jia2):
-                        instance.add_node(jia2)
-                        instance.add_edge(jia, jia2)
-        # Add edges based on your logic
+
+        # JIAs are connected exactly when they share a table occurrence. The
+        # previous implementation repeated an all-pairs scan once per input
+        # item. Indexing the endpoints makes construction proportional to the
+        # actual occurrence groups while preserving canonical edge direction.
+        by_occurrence: dict[tuple[int, int], list[JoinableIndexedAttributes]] = defaultdict(list)
+        for jia in nodes:
+            first, second = jia.pair
+            first_occurrence = (first.i, first.j)
+            by_occurrence[first_occurrence].append(jia)
+            if (second.i, second.j) != first_occurrence:
+                by_occurrence[(second.i, second.j)].append(jia)
+
+        for occurrence_nodes in by_occurrence.values():
+            for source, target in combinations(occurrence_nodes, 2):
+                instance.add_edge(source, target)
         return instance
 
     def add_node(self, compatible_pair: JoinableIndexedAttributes):
@@ -450,6 +467,7 @@ class ConstraintGraph:
         :param compatible_pair: A JoinableIndexedAttributes instance representing a node
         """
         self.nodes.add(compatible_pair)
+        self._incoming.setdefault(compatible_pair, set())
 
     def add_edge(
             self,
@@ -471,6 +489,7 @@ class ConstraintGraph:
             if source not in self.edges:
                 self.edges[source] = set()
             self.edges[source].add(target)
+            self._incoming.setdefault(target, set()).add(source)
 
     def is_connected(
             self,
@@ -516,9 +535,13 @@ class ConstraintGraph:
         node: JoinableIndexedAttributes,
     ) -> list[JoinableIndexedAttributes]:
         """Return neighbors without depending on the canonical edge direction."""
-        neighbors = set(self.edges.get(node, set()))
-        neighbors.update(source for source, targets in self.edges.items() if node in targets)
-        return sorted(neighbors)
+        outgoing = self.edges.get(node, set())
+        incoming = self._incoming.get(node, set())
+        if not incoming:
+            return sorted(outgoing)
+        if not outgoing:
+            return sorted(incoming)
+        return sorted(outgoing | incoming)
 
     def compute_metrics(self):
         # Convert the ConstraintGraph to a networkx graph

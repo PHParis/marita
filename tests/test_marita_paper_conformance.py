@@ -3,7 +3,10 @@ from __future__ import annotations
 import sqlite3
 from typing import TYPE_CHECKING
 
+import mahilda.algorithms.mahilda_core.tgd_discovery as discovery
 from mahilda.algorithms.mahilda import MAHILDA
+from mahilda.algorithms.mahilda_core.constraint_graph import Attribute, ConstraintGraph, JoinableIndexedAttributes
+from mahilda.algorithms.mahilda_core.tgd_discovery import dfs, init, instantiate_tgd
 from mahilda.audit.evaluator import SQLiteRuleEvaluator
 from mahilda.audit.parsing import parse_formula
 from mahilda.database.alchemy_utility import AlchemyUtility
@@ -74,3 +77,90 @@ def test_marita_mines_and_independently_validates_repeated_relation_rule(
     assert evaluation.support == 1
     assert evaluation.predictions == 1
     assert evaluation.confidence == 1.0
+
+
+def _reference_graph(jia_list) -> ConstraintGraph:
+    """Build the pre-optimization pairwise graph for conformance comparison."""
+    graph = ConstraintGraph()
+    nodes = sorted(set(jia_list))
+    for node in nodes:
+        graph.add_node(node)
+    for index, source in enumerate(nodes):
+        for target in nodes[index + 1 :]:
+            if source.is_connected(target):
+                graph.add_edge(source, target)
+    return graph
+
+
+def _enumerated_rule_keys(graph, database, mapper) -> set[tuple]:
+    keys = set()
+    for candidate, (body, head), _metrics in dfs(
+        graph,
+        None,
+        discovery.path_pruning,
+        database,
+        mapper,
+        max_table=3,
+        max_vars=2,
+        support_threshold=1,
+    ):
+        formula = instantiate_tgd(candidate, (body, head), mapper)
+        parsed = parse_formula(formula)
+        assert parsed.head is not None
+        assert parsed.head_variables() <= parsed.body_variables()
+        keys.add(parsed.canonical_key())
+    return keys
+
+
+def test_optimized_graph_preserves_exhaustive_bounded_rule_set(tmp_path: Path) -> None:
+    """The indexed graph must enumerate exactly the old bounded hypothesis class."""
+    database_path = tmp_path / "exhaustive_contract.db"
+    _write_fk_database(database_path)
+    database = AlchemyUtility(
+        f"sqlite:///{database_path}",
+        create_index=False,
+        create_csv=False,
+        create_tsv=False,
+        get_data=False,
+    )
+    try:
+        (tmp_path / "init").mkdir()
+        discovery.APPLY_DISJOINT = True
+        discovery.APPLY_FULL_JOINABILITY = False
+        discovery.SUPPORT_THRESHOLD = 1
+        optimized, mapper, jia_list = init(
+            database,
+            max_nb_occurrence=2,
+            results_path=str(tmp_path / "init"),
+        )
+        reference = _reference_graph(jia_list)
+
+        attributes = Attribute.generate_attributes(database)
+        pairwise_jias = set()
+        for index, first in enumerate(attributes):
+            for second in attributes[index:]:
+                if not first.is_compatible(second, db_inspector=database):
+                    continue
+                for first_occurrence in range(2):
+                    for second_occurrence in range(2):
+                        pairwise_jias.add(
+                            JoinableIndexedAttributes(
+                                mapper.attribute_to_indexed(first, first_occurrence),
+                                mapper.attribute_to_indexed(second, second_occurrence),
+                            )
+                        )
+        assert set(jia_list) == pairwise_jias
+
+        assert optimized.nodes == reference.nodes
+        assert {(source, target) for source, targets in optimized.edges.items() for target in targets} == {
+            (source, target) for source, targets in reference.edges.items() for target in targets
+        }
+        assert all(optimized.all_neighbors(node) == reference.all_neighbors(node) for node in optimized.nodes)
+
+        optimized_rules = _enumerated_rule_keys(optimized, database, mapper)
+        reference_rules = _enumerated_rule_keys(reference, database, mapper)
+
+        assert optimized_rules == reference_rules
+        assert optimized_rules
+    finally:
+        database.close()

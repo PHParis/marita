@@ -49,6 +49,34 @@ HornRuleKey = tuple[
 ]
 
 
+def _foreign_key_attribute_pairs(
+    attributes: list[Attribute],
+    db_inspector: AlchemyUtility,
+) -> set[tuple[Attribute, Attribute]] | None:
+    """Return declared FK pairs when the inspector exposes FK metadata.
+
+    ``Attribute.is_compatible`` remains the compatibility authority for full
+    joinability and lightweight custom inspectors. The production SQLAlchemy
+    inspector already has all FK metadata, so rechecking every attribute pair
+    would repeat the same metadata lookup quadratically. ``None`` means that
+    metadata is unavailable; an empty set is a valid no-FK result.
+    """
+    query_utility = getattr(db_inspector, "query_utility", None)
+    get_foreign_keys = getattr(query_utility, "_get_foreign_keys", None)
+    if not callable(get_foreign_keys):
+        return None
+
+    attributes_by_name = {(attribute.table, attribute.name): attribute for attribute in attributes}
+    pairs: set[tuple[Attribute, Attribute]] = set()
+    for table, columns in get_foreign_keys().items():
+        for column, (referenced_table, referenced_column) in columns.items():
+            local = attributes_by_name.get((table, column))
+            referenced = attributes_by_name.get((referenced_table, referenced_column))
+            if local is not None and referenced is not None:
+                pairs.add((local, referenced))
+    return pairs
+
+
 def init(
     db_inspector: AlchemyUtility,
     max_nb_occurrence: int = 3,
@@ -79,17 +107,25 @@ def init(
         # Retrieve database parameters (if available)
         base_name = db_inspector.base_name
 
-        # Find compatible attributes
-        compatible_attributes: set[tuple[Attribute, Attribute]] = set()
-        for i, attr1 in enumerate(
-            tqdm(attributes, desc="Finding compatible attributes", leave=False)
-        ):
-            for attr2 in attributes[i:]:
-                if attr1.is_compatible(
-                    attr2,
-                    db_inspector=db_inspector,
-                ):
-                    compatible_attributes.add((attr1, attr2))
+        # Find compatible attributes. FK-only publication runs can use the
+        # inspector's already-materialized metadata directly. Keep the
+        # pairwise path for full joinability and custom inspectors where
+        # value-overlap semantics may be implemented.
+        compatible_attributes: set[tuple[Attribute, Attribute]]
+        fk_pairs = None if APPLY_FULL_JOINABILITY else _foreign_key_attribute_pairs(attributes, db_inspector)
+        if fk_pairs is not None:
+            compatible_attributes = fk_pairs
+        else:
+            compatible_attributes = set()
+            for i, attr1 in enumerate(
+                tqdm(attributes, desc="Finding compatible attributes", leave=False)
+            ):
+                for attr2 in attributes[i:]:
+                    if attr1.is_compatible(
+                        attr2,
+                        db_inspector=db_inspector,
+                    ):
+                        compatible_attributes.add((attr1, attr2))
 
         # Export compatible attributes as JSON
         compatible_dict_to_export = {}
@@ -158,17 +194,9 @@ def init(
                     jia_list.append(jia)
         jia_list.sort()
 
-        # Create a constraint graph
-        cg = ConstraintGraph()
-        for i, jia in enumerate(
-            tqdm(jia_list, desc="Creating constraint graph", leave=False)
-        ):
-            cg.add_node(jia)
-            for jia2 in jia_list[i + 1 :]:
-
-                if jia != jia2 and jia.is_connected(jia2):
-                    cg.add_node(jia2)
-                    cg.add_edge(jia, jia2)
+        # Create a constraint graph using the shared-occurrence index rather
+        # than an O(|JIA|^2) scan.
+        cg = ConstraintGraph.from_jia_list(jia_list)
         time_building_cg = time.time() - time_taken_init
 
         # Export constraint graph metrics
