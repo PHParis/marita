@@ -45,18 +45,17 @@ class SQLiteRuleEvaluator:
 
     def is_fk_joinable(self, rule: RelationalRule) -> bool:
         occurrences = _indexed_atoms(rule.all_atoms())
-        variable_refs: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        variable_refs: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
         for alias, atom in occurrences:
-            del alias
             for column, variable in atom.terms:
-                variable_refs[variable].append((atom.table, column))
+                variable_refs[variable].append((alias, atom.table, column))
 
         for refs in variable_refs.values():
             for left_index, left in enumerate(refs):
                 for right in refs[left_index + 1 :]:
-                    if left == right:
+                    if left[0] == right[0]:
                         continue
-                    if not self._attributes_fk_joinable(left, right):
+                    if not self._attributes_fk_joinable(left[1:], right[1:]):
                         return False
         return True
 
@@ -159,8 +158,6 @@ class SQLiteRuleEvaluator:
         return columns
 
     def _attributes_fk_joinable(self, left: tuple[str, str], right: tuple[str, str]) -> bool:
-        if left[0] == right[0]:
-            return True
         return (left, right) in self._foreign_keys or (right, left) in self._foreign_keys
 
     def _load_tables(self) -> dict[str, set[str]]:

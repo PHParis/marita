@@ -50,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     audit_parser.add_argument("--results-dir", default="results/paper_table2")
     audit_parser.add_argument("--database-dir", default="data/relational")
     audit_parser.add_argument("--output-dir", default=None)
+    audit_parser.add_argument("--status-dir", default=None)
     audit_parser.add_argument("--target", default="MAHILDA")
     audit_parser.add_argument("--competitors", default="AMIE3,MATILDA,SPIDER,POPPER")
     audit_parser.add_argument("--settings", default=None)
@@ -180,6 +181,8 @@ def main(argv: list[str] | None = None) -> int:
         ]
         if args.output_dir:
             audit_args.extend(["--output-dir", args.output_dir])
+        if args.status_dir:
+            audit_args.extend(["--status-dir", args.status_dir])
         if args.settings:
             audit_args.extend(["--settings", args.settings])
         if args.walk_length is not None:

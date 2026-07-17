@@ -14,6 +14,11 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--results-dir", default="results/paper_table2", help="Benchmark results root.")
     parser.add_argument("--database-dir", default="data/relational", help="SQLite database directory.")
     parser.add_argument("--output-dir", default=None, help="Audit output directory.")
+    parser.add_argument(
+        "--status-dir",
+        default=None,
+        help="Directory containing benchmark run-status JSON (default: <results-dir>/progress).",
+    )
     parser.add_argument("--target", default="MAHILDA", help="Target algorithm to compare against.")
     parser.add_argument(
         "--competitors",
@@ -62,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         results_dir=results_dir,
         database_dir=Path(args.database_dir),
         output_dir=output_dir,
+        status_dir=Path(args.status_dir) if args.status_dir else None,
         target=args.target.strip().upper(),
         competitors=competitors,
         confidence_threshold=args.confidence_threshold,

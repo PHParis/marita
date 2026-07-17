@@ -44,6 +44,21 @@ def test_sqlite_evaluator_recomputes_confidence(tmp_path: Path) -> None:
     assert approximate_eval.confidence == 0.5
 
 
+def test_sqlite_fk_scope_accepts_both_fk_orientations_but_not_same_table(tmp_path: Path) -> None:
+    db_path = _write_tiny_database(tmp_path)
+    evaluator = SQLiteRuleEvaluator(db_path)
+    try:
+        child_to_parent = parse_formula("∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)")
+        parent_to_child = parse_formula("∀ x0: parent_0(id=x0) ⇒ child_0(parent_id=x0)")
+        same_table = parse_formula("∀ x0: child_0(id=x0) ⇒ child_1(id=x0)")
+
+        assert evaluator.is_fk_joinable(child_to_parent) is True
+        assert evaluator.is_fk_joinable(parent_to_child) is True
+        assert evaluator.is_fk_joinable(same_table) is False
+    finally:
+        evaluator.close()
+
+
 def test_rule_matching_alpha_subsumption_and_instance_coverage(tmp_path: Path) -> None:
     db_path = _write_tiny_database(tmp_path)
     competitor = parse_formula("∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)")
@@ -102,7 +117,7 @@ def test_run_audit_classifies_and_reports(tmp_path: Path) -> None:
         "matched",
     ) in statuses
     assert any(record.classification == AuditClassification.APPROXIMATE for record in records)
-    assert any(record.classification == AuditClassification.VACUOUS for record in records)
+    assert any(record.scope_status == ScopeStatus.OUTSIDE_FK_JOINABILITY for record in records)
     assert any(record.reason == "existential_or_head_only_variable" for record in records)
     assert any(record.claim_relevant and record.coverage_alpha for record in records)
     assert (output_dir / "audit_summary.json").exists()
@@ -116,7 +131,7 @@ def test_run_audit_classifies_and_reports(tmp_path: Path) -> None:
     funnel = summary["funnel_by_algorithm"]["MATILDA"]
     assert funnel["total"] == 4
     assert funnel["parseable"] == 4
-    assert funnel["within_scope"] == 3
+    assert funnel["within_scope"] == 2
     assert funnel["non_vacuous"] == 2
     assert funnel["above_threshold"] == 1
     assert funnel["exactly_recovered"] == 1
@@ -162,6 +177,71 @@ def test_audit_skips_amie_rdf_by_default(tmp_path: Path) -> None:
     )
     assert len(included) == 1
     assert included[0].scope_status == ScopeStatus.UNSUPPORTED_REPRESENTATION
+
+
+def test_audit_excludes_competitor_rules_when_target_run_failed(tmp_path: Path) -> None:
+    database_dir = tmp_path / "data"
+    results_dir = tmp_path / "results"
+    output_dir = tmp_path / "audit"
+    database_dir.mkdir()
+    _write_tiny_database(database_dir, "tiny.db")
+    _write_results(results_dir, "MAHILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    _write_results(results_dir, "MATILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    progress_dir = results_dir / "progress"
+    progress_dir.mkdir()
+    (progress_dir / "MAHILDA_tiny.db.json").write_text(
+        json.dumps({"algorithm": "MAHILDA", "database": "tiny.db", "status": "timeout"}),
+        encoding="utf-8",
+    )
+
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=False,
+        )
+    )
+
+    assert records == []
+
+
+def test_audit_excludes_partial_target_result_from_summary_status(tmp_path: Path) -> None:
+    database_dir = tmp_path / "data"
+    results_dir = tmp_path / "results"
+    output_dir = tmp_path / "audit"
+    database_dir.mkdir()
+    _write_tiny_database(database_dir, "tiny.db")
+    _write_results(results_dir, "MAHILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    _write_results(results_dir, "MATILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    (results_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "runs": [
+                    {
+                        "algorithm": "MAHILDA",
+                        "database": "tiny.db",
+                        "status": "success",
+                        "rules_count": 2,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=False,
+        )
+    )
+
+    assert records == []
 
 
 def test_cli_audit_merges_settings_and_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -504,13 +504,12 @@ class ConstraintGraph:
 
     def neighbors(self, node):
         """
-        Get the neighbors of a node in the graph.
+        Get neighbors without exposing the graph's canonical edge direction.
 
         :param node: The node for which to get the neighbors.
         :return: A set of nodes that are neighbors of the given node.
         """
-        return sorted(self.edges.get(node, set()))
-        # return self.edges.get(node, set())
+        return self.all_neighbors(node)
 
     def all_neighbors(
         self,

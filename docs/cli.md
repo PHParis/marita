@@ -55,6 +55,7 @@ Important flags:
 - `--results-dir`: benchmark result root, default `results/paper_table2`
 - `--database-dir`: SQLite database root, default `data/relational`
 - `--output-dir`: audit report directory, default `<results-dir>/audit`
+- `--status-dir`: benchmark status directory, default `<results-dir>/progress`; aggregate `summary*.json` files are also accepted
 - `--coverage`: claim criterion, one of `alpha`, `subsumption`, or `instance`
 - `--settings`: optional YAML config used to load MAHILDA bounds
 - `--walk-length`, `--max-tables`, `--max-variables`, `--joinability`: explicit target-class bounds

@@ -100,6 +100,7 @@ def test_constraint_graph_core_behaviors() -> None:
     graph = ConstraintGraph.from_jia_list([j1, j2])
     assert len(graph.nodes) >= 2
     assert graph.neighbors(j1) == sorted(graph.neighbors(j1))
+    assert graph.neighbors(j2) == [j1]
 
     graph2 = ConstraintGraph()
     graph2.add_node(j1)

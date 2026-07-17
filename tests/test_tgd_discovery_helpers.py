@@ -1,3 +1,5 @@
+import pytest
+
 import mahilda.algorithms.mahilda_core.tgd_discovery as discovery
 from mahilda.algorithms.mahilda_core.constraint_graph import (
     AttributeMapper,
@@ -47,6 +49,30 @@ def test_split_candidate_rule_non_empty_has_valid_splits() -> None:
     splits = split_candidate_rule(cr)
     assert isinstance(splits, set)
     assert any(len(head) > 0 for _body, head in splits)
+
+
+@pytest.mark.parametrize(
+    ("body", "head"),
+    [
+        ({(0, 0)}, {(1, 0)}),
+        ({(1, 0)}, {(0, 0)}),
+    ],
+    ids=["dunur-sister-to-person", "basketball-players-to-teams"],
+)
+def test_split_candidate_rule_keeps_both_fk_edge_orientations(body, head) -> None:
+    candidate = [_jia(_ia(0, 0, 0), _ia(1, 0, 0))]
+
+    assert (frozenset(body), frozenset(head)) in split_candidate_rule(candidate)
+
+
+def test_split_candidate_rule_is_deterministic_for_repeated_occurrences() -> None:
+    first = _jia(_ia(0, 0, 0), _ia(1, 0, 0))
+    repeated = _jia(_ia(0, 1, 0), _ia(1, 0, 0))
+    candidate = [first, repeated]
+
+    splits = split_candidate_rule(candidate)
+
+    assert (frozenset({(0, 1), (1, 0)}), frozenset({(0, 0)})) not in splits
 
 
 def test_safe_split_requires_every_head_variable_in_body() -> None:
@@ -168,6 +194,32 @@ def test_dfs_continues_after_lower_score_rule_is_suppressed(monkeypatch) -> None
 
     assert seen_lengths == [1, 2]
     assert len(yielded) == 2
+
+
+def test_dfs_does_not_prune_deeper_orientation_after_short_candidate_fails(monkeypatch) -> None:
+    graph, first = _dfs_test_graph()
+
+    monkeypatch.setattr(discovery, "next_node_test", lambda *args, **kwargs: True)
+    monkeypatch.setattr(discovery, "path_pruning", lambda *args, **kwargs: True)
+    monkeypatch.setattr(discovery, "is_safe_split", lambda *args, **kwargs: True)
+
+    def fake_splits(candidate):
+        if len(candidate) == 1:
+            return {(frozenset({(0, 0)}), frozenset({(1, 0)}))}
+        return {(frozenset({(0, 0), (2, 0)}), frozenset({(1, 0)}))}
+
+    monkeypatch.setattr(discovery, "split_candidate_rule", fake_splits)
+
+    def fake_split_pruning(candidate, body, head, db_inspector, mapper):
+        del body, head, db_inspector, mapper
+        return (len(candidate) > 1, 1.0 if len(candidate) > 1 else 0.0, 1.0)
+
+    monkeypatch.setattr(discovery, "split_pruning", fake_split_pruning)
+
+    yielded = list(dfs(graph, first, discovery.path_pruning, None, None))
+
+    assert len(yielded) == 1
+    assert yielded[0][1] == (frozenset({(0, 0), (2, 0)}), frozenset({(1, 0)}))
 
 
 def test_dfs_reaches_connected_candidate_through_incoming_edge(monkeypatch) -> None:

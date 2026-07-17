@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from tqdm import tqdm
@@ -29,7 +30,6 @@ from mahilda.audit.parsing import load_source_rules, parse_formula, parse_source
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from pathlib import Path
 
 
 STATE_PENDING = "pending"
@@ -43,6 +43,8 @@ CACHE_DIRNAME = ".audit_cache"
 SHARDS_DIRNAME = "shards"
 STATE_VERSION = 1
 CACHE_VERSION = 1
+SUCCESS_RUN_STATUS = "success"
+STATUS_DIRNAME = "progress"
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,7 @@ class AuditConfig:
     results_dir: Path
     database_dir: Path
     output_dir: Path
+    status_dir: Path | None = None
     target: str = "MAHILDA"
     competitors: tuple[str, ...] = ("AMIE3", "MATILDA", "SPIDER", "POPPER")
     confidence_threshold: float = 1.0
@@ -80,6 +83,18 @@ class TargetRuleIndex:
 
 
 @dataclass(frozen=True)
+class BenchmarkRunStatus:
+    status: str
+    rules_count: int | None
+    partial: bool
+    source_path: Path
+
+    @property
+    def signature(self) -> str:
+        return _file_signature(self.source_path)
+
+
+@dataclass(frozen=True)
 class AuditShard:
     algorithm: str
     database: str
@@ -89,6 +104,8 @@ class AuditShard:
     source_signature: str
     database_signature: str
     target_signature: str
+    target_run_status: str
+    run_status_signature: str
 
     @property
     def key(self) -> str:
@@ -291,6 +308,7 @@ def _evaluation_manifest(config: AuditConfig, shards: list[AuditShard]) -> dict[
         "joinability": config.joinability,
         "results_dir": str(config.results_dir),
         "database_dir": str(config.database_dir),
+        "status_dir": str(config.status_dir or config.results_dir / STATUS_DIRNAME),
         "shards": [
             {
                 "key": shard.key,
@@ -299,6 +317,8 @@ def _evaluation_manifest(config: AuditConfig, shards: list[AuditShard]) -> dict[
                 "source_signature": shard.source_signature,
                 "database_signature": shard.database_signature,
                 "target_signature": shard.target_signature,
+                "target_run_status": shard.target_run_status,
+                "run_status_signature": shard.run_status_signature,
                 "total_rules": len(shard.sources),
             }
             for shard in shards
@@ -378,16 +398,56 @@ def _rematch_cached_record(config: AuditConfig, record: AuditRecord, target_inde
 
 
 def build_audit_plan(config: AuditConfig) -> list[AuditShard]:
-    target_indexes = _load_target_rule_indexes(config)
+    run_statuses, status_metadata_available = _load_benchmark_run_statuses(config)
+    target_sources = load_source_rules(config.results_dir, config.target)
+    target_sources_by_database: dict[str, list[SourceRule]] = defaultdict(list)
+    for source in target_sources:
+        target_sources_by_database[source.database].append(source)
+
+    eligible_target_databases: set[str] = set()
+    target_statuses: dict[str, BenchmarkRunStatus] = {}
+    for database, sources in target_sources_by_database.items():
+        status = run_statuses.get((config.target, database))
+        if _target_run_is_auditable(
+            status,
+            result_rule_count=len(sources),
+            status_metadata_available=status_metadata_available,
+        ):
+            eligible_target_databases.add(database)
+            if status is not None:
+                target_statuses[database] = status
+
+    # A successful run that exported zero rules has no source rows, so status
+    # metadata is also authoritative for databases absent from the target
+    # result glob.
+    if status_metadata_available:
+        for (algorithm, database), status in run_statuses.items():
+            if algorithm != config.target:
+                continue
+            if _target_run_is_auditable(
+                status,
+                result_rule_count=len(target_sources_by_database.get(database, [])),
+                status_metadata_available=True,
+            ):
+                eligible_target_databases.add(database)
+                target_statuses[database] = status
+
+    target_indexes = _build_target_rule_indexes(
+        target_sources_by_database,
+        eligible_databases=eligible_target_databases if status_metadata_available else None,
+    )
     shards: list[AuditShard] = []
     for algorithm in config.competitors:
         if algorithm == "AMIE3" and not config.include_amie_rdf:
             continue
         grouped: dict[str, list[SourceRule]] = defaultdict(list)
         for source in load_source_rules(config.results_dir, algorithm):
+            if status_metadata_available and source.database not in eligible_target_databases:
+                continue
             grouped[source.database].append(source)
         for database, sources in sorted(grouped.items()):
             database_path = config.database_dir / f"{database}.db"
+            target_status = target_statuses.get(database)
             shards.append(
                 AuditShard(
                     algorithm=algorithm,
@@ -398,6 +458,8 @@ def build_audit_plan(config: AuditConfig) -> list[AuditShard]:
                     source_signature=_file_signature(sources[0].source_path) if sources else "",
                     database_signature=_file_signature(database_path),
                     target_signature=_target_signature(config, database),
+                    target_run_status=target_status.status if target_status is not None else "untracked",
+                    run_status_signature=target_status.signature if target_status is not None else "untracked",
                 )
             )
     return shards
@@ -618,7 +680,7 @@ def _refresh_run_summary(config: AuditConfig, shards: list[AuditShard]) -> dict[
         },
         "shards": states,
     }
-    _run_summary_path(config).write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    _atomic_write_text(_run_summary_path(config), json.dumps(summary, indent=2))
     return summary
 
 
@@ -638,6 +700,7 @@ def _build_manifest(config: AuditConfig, shards: list[AuditShard]) -> dict[str, 
         "include_amie_rdf": config.include_amie_rdf,
         "results_dir": str(config.results_dir),
         "database_dir": str(config.database_dir),
+        "status_dir": str(config.status_dir or config.results_dir / STATUS_DIRNAME),
         "shards": [
             {
                 "key": shard.key,
@@ -645,6 +708,8 @@ def _build_manifest(config: AuditConfig, shards: list[AuditShard]) -> dict[str, 
                 "database": shard.database,
                 "source_signature": shard.source_signature,
                 "target_signature": shard.target_signature,
+                "target_run_status": shard.target_run_status,
+                "run_status_signature": shard.run_status_signature,
                 "total_rules": len(shard.sources),
             }
             for shard in shards
@@ -684,8 +749,17 @@ def _write_shard_state(
         "summary_path": str(paths.summary_path),
         "source_signature": shard.source_signature,
         "target_signature": shard.target_signature,
+        "target_run_status": shard.target_run_status,
+        "run_status_signature": shard.run_status_signature,
     }
-    paths.state_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _atomic_write_text(paths.state_path, json.dumps(payload, indent=2))
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Replace a checkpoint file without exposing a partially-written JSON file."""
+    temporary_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary_path.write_text(content, encoding="utf-8")
+    os.replace(temporary_path, path)
 
 
 def _shard_state(paths: ShardPaths) -> dict[str, Any]:
@@ -756,12 +830,19 @@ def _empty_target_rule_index() -> TargetRuleIndex:
     return TargetRuleIndex(rules=[], rules_by_canonical_key={}, rules_by_head_key={})
 
 
-def _load_target_rule_indexes(config: AuditConfig) -> dict[str, TargetRuleIndex]:
+def _build_target_rule_indexes(
+    sources_by_database: dict[str, list[SourceRule]],
+    *,
+    eligible_databases: set[str] | None,
+) -> dict[str, TargetRuleIndex]:
     by_database: dict[str, list[RelationalRule]] = defaultdict(list)
-    for source in load_source_rules(config.results_dir, config.target):
-        parsed = parse_source_rule(source)
-        if parsed.rule is not None:
-            by_database[source.database].append(parsed.rule)
+    for database, sources in sources_by_database.items():
+        if eligible_databases is not None and database not in eligible_databases:
+            continue
+        for source in sources:
+            parsed = parse_source_rule(source)
+            if parsed.rule is not None:
+                by_database[database].append(parsed.rule)
 
     indexes: dict[str, TargetRuleIndex] = {}
     for database, rules in by_database.items():
@@ -777,6 +858,129 @@ def _load_target_rule_indexes(config: AuditConfig) -> dict[str, TargetRuleIndex]
             rules_by_head_key=dict(rules_by_head_key),
         )
     return indexes
+
+
+def _load_benchmark_run_statuses(
+    config: AuditConfig,
+) -> tuple[dict[tuple[str, str], BenchmarkRunStatus], bool]:
+    """Load paper-benchmark status records when the results root has them.
+
+    The per-run progress files are the preferred source. Aggregate summaries
+    are read as a fallback because older distributed runs may have persisted a
+    summary without retaining the progress directory. If neither artifact is
+    present, the audit keeps its legacy result-glob behavior.
+    """
+    status_dir = config.status_dir or config.results_dir / STATUS_DIRNAME
+    candidates: list[tuple[tuple[float, int, str], Path, dict[str, Any]]] = []
+    if status_dir.exists():
+        for path in sorted(status_dir.glob("*.json")):
+            payload = _read_status_payload(path)
+            if payload is None or "runs" in payload:
+                continue
+            candidates.append((_status_sort_key(payload, path, priority=1), path, payload))
+
+    for path in sorted(config.results_dir.glob("summary*.json")):
+        payload = _read_status_payload(path)
+        if payload is None:
+            continue
+        runs = payload.get("runs")
+        if not isinstance(runs, list):
+            continue
+        for run in runs:
+            if isinstance(run, dict):
+                candidates.append((_status_sort_key(run, path, priority=0), path, run))
+
+    statuses: dict[tuple[str, str], BenchmarkRunStatus] = {}
+    for _, path, payload in sorted(candidates, key=lambda item: item[0]):
+        algorithm = str(payload.get("algorithm") or "").strip().upper()
+        database = _normalise_database_name(payload.get("database"))
+        if not algorithm or not database:
+            continue
+        statuses[(algorithm, database)] = BenchmarkRunStatus(
+            status=str(payload.get("status") or "missing").strip().lower(),
+            rules_count=_optional_status_int(payload.get("rules_count")),
+            partial=bool(payload.get("partial")) or str(payload.get("status") or "").lower() == "partial",
+            source_path=path,
+        )
+
+    metadata_available = status_dir.exists() or any(config.results_dir.glob("summary*.json"))
+    return statuses, metadata_available
+
+
+def _read_status_payload(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _status_sort_key(payload: dict[str, Any], path: Path, *, priority: int) -> tuple[float, int, str]:
+    for key in ("updated_at", "ended_at", "completed_at", "started_at", "created_at"):
+        value = payload.get(key)
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp(), priority, str(path)
+            except ValueError:
+                pass
+    try:
+        timestamp = path.stat().st_mtime
+    except OSError:
+        timestamp = 0.0
+    return timestamp, priority, str(path)
+
+
+def _normalise_database_name(value: object) -> str:
+    if value is None:
+        return ""
+    name = Path(str(value)).name
+    return name.removesuffix(".db")
+
+
+def _optional_status_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _target_run_is_auditable(
+    status: BenchmarkRunStatus | None,
+    *,
+    result_rule_count: int,
+    status_metadata_available: bool,
+) -> bool:
+    if not status_metadata_available:
+        return True
+    if status is None or status.status != SUCCESS_RUN_STATUS or status.partial:
+        return False
+    return status.rules_count is None or status.rules_count == result_rule_count
+
+
+def _load_target_rule_indexes(config: AuditConfig) -> dict[str, TargetRuleIndex]:
+    statuses, status_metadata_available = _load_benchmark_run_statuses(config)
+    sources_by_database: dict[str, list[SourceRule]] = defaultdict(list)
+    for source in load_source_rules(config.results_dir, config.target):
+        sources_by_database[source.database].append(source)
+    eligible_databases = {
+        database
+        for database, sources in sources_by_database.items()
+        if _target_run_is_auditable(
+            statuses.get((config.target, database)),
+            result_rule_count=len(sources),
+            status_metadata_available=status_metadata_available,
+        )
+    }
+    return _build_target_rule_indexes(
+        sources_by_database,
+        eligible_databases=eligible_databases if status_metadata_available else None,
+    )
 
 
 def _audit_rule(

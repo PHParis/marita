@@ -273,19 +273,15 @@ def dfs(
         return
 
     splits = split_candidate_rule(candidate_rule)
-    local_pruned_heads = set(pruned_heads)
     for body, head in splits:
-        if not body or not head : continue
-        if len(head) != 1: continue
-        if not is_safe_split(candidate_rule, body, head):
+        if not body or not head:
             continue
-        head_relation = next(iter(head))
-        if head_relation in pruned_heads:
+        if len(head) != 1:
+            continue
+        if not is_safe_split(candidate_rule, body, head):
             continue
         condition_check, support, confidence = split_pruning(candidate_rule, body, head, db_inspector, mapper)
 
-        if support < support_threshold:
-            local_pruned_heads.add(head_relation)
         if not condition_check:
             continue
 
@@ -321,7 +317,7 @@ def dfs(
                 seen_candidates=seen_candidates,
                 emitted_rule_keys=emitted_rule_keys,
                 support_threshold=support_threshold,
-                pruned_heads=set(local_pruned_heads),
+                pruned_heads=pruned_heads,
             )
             visited.remove(next_node)
             candidate_rule.pop()
@@ -573,6 +569,14 @@ def attr(
         #     cr_chains_table_occurrence.append(chain)
     return cr_chains_table_occurrence
 
+
+def _occurrence_attribute_signature(
+    table_occurrence: TableOccurrence,
+    candidate_rule: CandidateRule,
+) -> frozenset[tuple[int, int]]:
+    """Return an occurrence's attributes without its occurrence number."""
+    return frozenset((attribute.i, attribute.k) for attribute in attr(table_occurrence, candidate_rule))
+
 def split_candidate_rule(
     candidate_rule: CandidateRule,
 ) -> set[
@@ -584,30 +588,32 @@ def split_candidate_rule(
     :param candidate_rule: A list of tuples of JoinableIndexedAttributes (representing the candidate_rule)
     :return: A set of table occurrence pairs
     """
-    table_occurrences = extract_table_occurrences(candidate_rule)
     if candidate_rule is None or len(candidate_rule) == 0:
         return False
+    table_occurrences = extract_table_occurrences(candidate_rule)
     valid_splits = set()
-    for body in powerset(table_occurrences):
-        body = set(body)
+    for body_tuple in powerset(sorted(table_occurrences)):
+        body = set(body_tuple)
         head = table_occurrences - body
-        # Check the condition for all (i, j) in head
-        condition_met = True
         if len(head) == 0:
-            condition_met = False
-        for ij in body:
-            if any(
-                ij[0] == ijp[0]
-                and ijp[1] < ij[1]
-                and attr(ij, candidate_rule) == attr(ijp, candidate_rule)
-                for ijp in table_occurrences
-            ):
-                condition_met = False
-                break
-            else:
-                condition_met = True
-        if condition_met:
-            valid_splits.add((frozenset(body), frozenset(head)))
+            continue
+
+        # Repeated identical relation occurrences are interchangeable. Keep
+        # the lower-numbered occurrence in the body as the canonical form, but
+        # evaluate the complete condition in one expression. The previous
+        # loop reset ``condition_met`` after a valid occurrence, making the
+        # result depend on unordered set iteration and dropping valid Horn
+        # orientations intermittently.
+        if any(
+            ij[0] == previous[0]
+            and previous[1] < ij[1]
+            and _occurrence_attribute_signature(ij, candidate_rule)
+            == _occurrence_attribute_signature(previous, candidate_rule)
+            for ij in body
+            for previous in head
+        ):
+            continue
+        valid_splits.add((frozenset(body), frozenset(head)))
     return valid_splits
 
 

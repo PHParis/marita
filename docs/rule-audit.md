@@ -27,6 +27,13 @@ uv run mahilda audit --include-amie-rdf
 uv run mahilda audit --no-progress
 ```
 
+When the results root comes from `paper-benchmark`, the audit reads
+`<results-dir>/progress/*.json` and `summary*.json` run metadata. Competitor
+rules are audited only for databases whose MAHILDA run is recorded as a
+complete `success`; timeout, OOM, error, missing, and partial runs are omitted.
+Use `--status-dir` to point at a separate status directory. If no status
+metadata exists, legacy result-directory behavior is retained.
+
 To reuse a previous audit's stored per-rule evaluations and recompute only
 matching and reports, use the cache mode:
 
@@ -83,6 +90,7 @@ results/paper_table2/
   AMIE3/AMIE3_<DB>/AMIE3_<DB>_results.json
   SPIDER/SPIDER_<DB>/SPIDER_<DB>_results.json
   POPPER/POPPER_<DB>/POPPER_<DB>_results.json
+  progress/MAHILDA_<DB>.db.json
 
 data/relational/<DB>.db
 ```
