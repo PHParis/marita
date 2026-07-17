@@ -9,6 +9,7 @@ from mahilda.utils.rules import (
     FunctionalDependency,
     HornRule,
     InclusionDependency,
+    MARITARule,
     Predicate,
     TGDRule,
 )
@@ -25,6 +26,21 @@ def test_rule_io_round_trip_inclusion_dependency() -> None:
     payload = RuleIO.rule_to_dict(rule)
     restored = RuleIO.rule_from_dict(payload)
     assert restored == rule
+
+
+def test_marita_rule_serializes_raw_support_without_accuracy() -> None:
+    rule = MARITARule(
+        body=(Predicate("x", "body", "y"),),
+        head=(Predicate("x", "head", "z"),),
+        display="body(x,y) => head(x,z)",
+        support=3,
+        confidence=0.75,
+    )
+    payload = RuleIO.rule_to_dict(rule)
+    assert payload["type"] == "MARITARule"
+    assert payload["support"] == 3
+    assert "accuracy" not in payload
+    assert RuleIO.rule_from_dict(payload) == rule
 
 
 def test_rule_io_round_trip_functional_dependency() -> None:

@@ -20,7 +20,7 @@ algorithm:
     max_variables: 3
     timeout: 7200
     disjoint_semantics: true
-    split_mean_threshold: 0.0
+    support_threshold: 1
 
 benchmark:
   baseline: AMIE3

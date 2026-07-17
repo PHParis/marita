@@ -22,9 +22,9 @@ def _one_head_rule(display: str, support: float, confidence: float) -> TGDRule:
 
 
 def test_discover_rules_handles_empty_jia_and_restores_globals(monkeypatch) -> None:
-    algorithm = MAHILDA(database=object(), settings={"disjoint_semantics": True, "split_mean_threshold": 0.25})
+    algorithm = MAHILDA(database=object(), settings={"disjoint_semantics": True, "support_threshold": 1})
     old_disjoint = mahilda_module.mahilda_core.APPLY_DISJOINT
-    old_threshold = mahilda_module.mahilda_core.SPLIT_PRUNING_MEAN_THRESHOLD
+    old_threshold = mahilda_module.mahilda_core.SUPPORT_THRESHOLD
     old_full_join = mahilda_module.mahilda_core.APPLY_FULL_JOINABILITY
     old_full_join = mahilda_module.mahilda_core.APPLY_FULL_JOINABILITY
 
@@ -37,7 +37,7 @@ def test_discover_rules_handles_empty_jia_and_restores_globals(monkeypatch) -> N
     discovered = list(algorithm.discover_rules())
     assert discovered == []
     assert old_disjoint == mahilda_module.mahilda_core.APPLY_DISJOINT
-    assert old_threshold == mahilda_module.mahilda_core.SPLIT_PRUNING_MEAN_THRESHOLD
+    assert old_threshold == mahilda_module.mahilda_core.SUPPORT_THRESHOLD
     assert old_full_join == mahilda_module.mahilda_core.APPLY_FULL_JOINABILITY
 
 
@@ -54,8 +54,8 @@ def test_discover_rules_yields_only_single_head_and_skips_errors(monkeypatch) ->
 
     def fake_dfs(*args, **kwargs):
         del args, kwargs
-        yield [jia], ({(0, 0)}, {(1, 0)}), (0.7, 0.8)
-        yield [jia], ({(0, 0)}, {(1, 0)}), (0.4, 0.5)
+        yield [jia], ({(0, 0)}, {(1, 0)}), (1, 0.8)
+        yield [jia], ({(0, 0)}, {(1, 0)}), (1, 0.5)
 
     calls = {"n": 0}
 
@@ -80,7 +80,7 @@ def test_discover_rules_yields_only_single_head_and_skips_errors(monkeypatch) ->
 
     rules = list(algorithm.discover_rules())
     assert len(rules) == 1
-    assert rules[0].accuracy == 0.7
+    assert rules[0].support == 1
 
 
 def test_discover_rules_respects_should_stop_and_timeout(monkeypatch) -> None:

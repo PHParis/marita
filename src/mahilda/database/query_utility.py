@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from colorama import Fore, Style
-from sqlalchemy import MetaData, alias, and_, false, func, or_, select
+from sqlalchemy import MetaData, alias, and_, false, func, or_, select, true
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -100,6 +100,78 @@ class QueryUtility:
             self.logger_query_time.error(f"Error executing count query for flag '{flag}': {err}")
             return 0
         return int(result_sqlite) if result_sqlite is not None else 0
+
+    def get_rule_count(
+        self,
+        relation_occurrences: list[tuple[str, int]],
+        equality_constraints: list[tuple[str, int, str, str, int, str]],
+        projected_classes: list[list[tuple[str, int, str]]],
+        disjoint_semantics: bool = False,
+    ) -> int:
+        """Count distinct variable assignments for an explicit rule query.
+
+        Unlike the legacy join-condition API, this accepts occurrences which have
+        no local join (including a one-atom relation) and makes the projected
+        variable classes explicit.
+        """
+        aliases: dict[str, Any] = {}
+        for table_name, occurrence in relation_occurrences:
+            self._get_or_create_alias(aliases, table_name, occurrence)
+        if not aliases:
+            return 0
+
+        alias_values = list(aliases.values())
+        join_base = alias_values[0].selectable
+        for current in alias_values[1:]:
+            join_base = join_base.join(current, true())
+
+        predicates: list[Any] = []
+        for table1, occurrence1, column1, table2, occurrence2, column2 in equality_constraints:
+            left = aliases[f"{table1}_{occurrence1}"].columns[column1]
+            right = aliases[f"{table2}_{occurrence2}"].columns[column2]
+            predicates.append(left == right)
+        if disjoint_semantics:
+            by_table: dict[str, list[int]] = {}
+            for table_name, occurrence in relation_occurrences:
+                by_table.setdefault(table_name, []).append(occurrence)
+            for table_name, occurrences in by_table.items():
+                primary_key = self.metadata.tables[table_name].primary_key
+                keys = [column.name for column in primary_key.columns]
+                for index, occurrence1 in enumerate(occurrences):
+                    for occurrence2 in occurrences[index + 1 :]:
+                        if not keys:
+                            predicates.append(false())
+                            continue
+                        predicates.append(
+                            or_(
+                                *(
+                                    aliases[f"{table_name}_{occurrence1}"].columns[key]
+                                    != aliases[f"{table_name}_{occurrence2}"].columns[key]
+                                    for key in keys
+                                )
+                            )
+                        )
+
+        projection_columns: list[Any] = []
+        for variable_class in projected_classes:
+            if not variable_class:
+                continue
+            table_name, occurrence, column_name = variable_class[0]
+            projection_columns.append(aliases[f"{table_name}_{occurrence}"].columns[column_name])
+        if projection_columns:
+            query = select(*projection_columns).distinct().select_from(join_base)
+        else:
+            query = select(true()).select_from(join_base)
+        if predicates:
+            query = query.where(and_(*predicates))
+        count_query = select(func.count()).select_from(query.subquery())
+        try:
+            with self.engine.connect() as conn:
+                value = conn.execute(count_query).scalar()
+        except Exception as err:
+            self.logger_query_time.error("Error executing explicit rule count: %s", err)
+            return 0
+        return int(value or 0)
 
     def _construct_threshold_query(
         self,

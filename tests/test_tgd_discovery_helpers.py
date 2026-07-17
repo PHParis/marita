@@ -124,7 +124,6 @@ def test_dfs_emits_equal_score_rules_with_same_head(monkeypatch) -> None:
             discovery.path_pruning,
             None,
             None,
-            horn_rule_pruning_dict={},
         )
     )
 
@@ -164,12 +163,11 @@ def test_dfs_continues_after_lower_score_rule_is_suppressed(monkeypatch) -> None
             discovery.path_pruning,
             None,
             None,
-            horn_rule_pruning_dict={},
         )
     )
 
     assert seen_lengths == [1, 2]
-    assert len(yielded) == 1
+    assert len(yielded) == 2
 
 
 def test_dfs_reaches_connected_candidate_through_incoming_edge(monkeypatch) -> None:

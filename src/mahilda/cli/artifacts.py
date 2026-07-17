@@ -101,7 +101,7 @@ def write_markdown_report(
 
     for index, rule in enumerate(top_rules[:5], start=1):
         rule_desc = _format_rule_description(rule).replace("\n", " ").replace("|", "\\|")
-        accuracy = getattr(rule, "accuracy", "N/A")
+        accuracy = getattr(rule, "support", getattr(rule, "accuracy", "N/A"))
         confidence = getattr(rule, "confidence", "N/A")
 
         support_display = _format_optional_score(accuracy)

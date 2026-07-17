@@ -10,7 +10,6 @@ from itertools import chain as iter_chain
 from itertools import combinations
 from itertools import permutations, product
 from pathlib import Path
-from statistics import mean
 
 from tqdm import tqdm
 
@@ -39,7 +38,7 @@ logging.basicConfig(
 
 APPLY_DISJOINT = True  # Set to True if you want to apply disjoint semantics
 APPLY_FULL_JOINABILITY = False  # if True, is_compatible also accepts value-overlap edges
-SPLIT_PRUNING_MEAN_THRESHOLD = 0
+SUPPORT_THRESHOLD = 1
 TableOccurrence = tuple[int, int]
 CandidateRule = list[JoinableIndexedAttributes]
 CandidateRuleKey = tuple[tuple[IndexedAttribute, ...], ...]
@@ -206,9 +205,10 @@ def dfs(
     candidate_rule: CandidateRule = None,
         max_table: int = 3,
         max_vars: int = 4,
-        horn_rule_pruning_dict: dict[TableOccurrence, tuple[float, float]] | None = None,
         seen_candidates: set[CandidateRuleKey] | None = None,
         emitted_rule_keys: set[HornRuleKey] | None = None,
+        support_threshold: int = 1,
+        pruned_heads: set[TableOccurrence] | None = None,
 ) -> Iterator[
     tuple[
         CandidateRule,
@@ -231,12 +231,12 @@ def dfs(
         visited: set[JoinableIndexedAttributes] = set()
     if candidate_rule is None:
         candidate_rule = []
-    if horn_rule_pruning_dict is None:
-        horn_rule_pruning_dict = {}
     if seen_candidates is None:
         seen_candidates = set()
     if emitted_rule_keys is None:
         emitted_rule_keys = set()
+    if pruned_heads is None:
+        pruned_heads = set()
     if start_node is None:
         for next_node in tqdm(sorted(graph.nodes), desc="Initial Nodes"):
             """
@@ -255,9 +255,10 @@ def dfs(
                     candidate_rule=copy.deepcopy(candidate_rule),
                     max_table=max_table,
                     max_vars=max_vars,
-                    horn_rule_pruning_dict=horn_rule_pruning_dict,
                     seen_candidates=seen_candidates,
                     emitted_rule_keys=emitted_rule_keys,
+                    support_threshold=support_threshold,
+                    pruned_heads=set(),
                 )
         return
     visited.add(start_node)
@@ -272,16 +273,19 @@ def dfs(
         return
 
     splits = split_candidate_rule(candidate_rule)
+    local_pruned_heads = set(pruned_heads)
     for body, head in splits:
         if not body or not head : continue
         if len(head) != 1: continue
         if not is_safe_split(candidate_rule, body, head):
             continue
         head_relation = next(iter(head))
-        condition_check, support, confidence = split_pruning(
-            candidate_rule, body, head, db_inspector, mapper
-        )
+        if head_relation in pruned_heads:
+            continue
+        condition_check, support, confidence = split_pruning(candidate_rule, body, head, db_inspector, mapper)
 
+        if support < support_threshold:
+            local_pruned_heads.add(head_relation)
         if not condition_check:
             continue
 
@@ -289,20 +293,9 @@ def dfs(
         if rule_key in emitted_rule_keys:
             continue
 
-        new_metrics= (support,confidence)
-        should_yield = False
-        if head_relation not in horn_rule_pruning_dict:
-            horn_rule_pruning_dict[head_relation] = new_metrics
-            should_yield = True
-            #print(f"New rule: {head_relation} with support {support} and confidence {confidence}")
-        else:
-            # prune on support
-            if horn_rule_pruning_dict[head_relation][0] <= support:
-                horn_rule_pruning_dict[head_relation] = new_metrics
-                should_yield = True
-        if should_yield:
-            emitted_rule_keys.add(rule_key)
-            yield candidate_rule,(body, head), new_metrics
+
+        emitted_rule_keys.add(rule_key)
+        yield candidate_rule, (body, head), (support, confidence)
 
     # for next_node in tqdm(graph.neighbors(start_node), desc=f"Expanding {start_node}", leave=False):
     # neighbours = graph.neighbors(start_node)
@@ -325,9 +318,10 @@ def dfs(
                 candidate_rule=candidate_rule,
                 max_table=max_table,
                 max_vars=max_vars,
-                horn_rule_pruning_dict=horn_rule_pruning_dict,
                 seen_candidates=seen_candidates,
                 emitted_rule_keys=emitted_rule_keys,
+                support_threshold=support_threshold,
+                pruned_heads=set(local_pruned_heads),
             )
             visited.remove(next_node)
             candidate_rule.pop()
@@ -423,6 +417,7 @@ def split_pruning(
         head: set[TableOccurrence],
         db_inspector: AlchemyUtility,
         mapper: AttributeMapper,
+        support_threshold: int | None = None,
 ) -> bool:
     """
     This function checks if a given candidate rule should be pruned based on its support and confidence.
@@ -443,19 +438,95 @@ def split_pruning(
     # pruning non-horn rules
     if len(head) != 1:
         return False, 0, 0
-    total_tuple_test = prediction(candidate_rule, mapper, db_inspector, body, head, threshold=0)
-    if total_tuple_test is False:
-        return False, 0, 0  # prune if the prediction is 0
+    if db_inspector is None or mapper is None:
+        total_tuples = prediction(candidate_rule, mapper, db_inspector, body, head, threshold=0)
+        if not total_tuples:
+            return False, 0, 0
+        support = calculate_support(candidate_rule, body, head, db_inspector, mapper, total_tuples)
+        confidence = calculate_confidence(candidate_rule, body, head, db_inspector, mapper, total_tuples)
+    else:
+        support, confidence = calculate_rule_metrics(candidate_rule, body, head, db_inspector, mapper)
+    threshold = SUPPORT_THRESHOLD if support_threshold is None else support_threshold
+    return support >= threshold, support, confidence
 
-    total_tuples = prediction(candidate_rule, mapper, db_inspector, body, head)
 
-    support = calculate_support(candidate_rule, body, head, db_inspector, mapper, total_tuples)
-    confidence = calculate_confidence(candidate_rule, body, head, db_inspector, mapper, total_tuples)
+def calculate_rule_metrics(
+    candidate_rule: CandidateRule,
+    body: set[TableOccurrence],
+    head: set[TableOccurrence],
+    db_inspector: AlchemyUtility,
+    mapper: AttributeMapper,
+) -> tuple[int, float]:
+    """Return raw projected-head support and diagnostic confidence."""
+    chains = CandidateRuleChains(candidate_rule).cr_chains
+    occurrences = sorted(extract_table_occurrences(candidate_rule))
+    relation_occurrences = [
+        (mapper.index_to_table_name[table], occurrence) for table, occurrence in occurrences
+    ]
+    equality_constraints = []
+    for variable_class in chains:
+        mapped = [
+            (
+                mapper.index_to_table_name[attribute.i],
+                attribute.j,
+                mapper.indexed_attribute_to_attribute(attribute).name,
+            )
+            for attribute in variable_class
+        ]
+        first = mapped[0]
+        equality_constraints.extend((*first, *other) for other in mapped[1:])
 
-    if confidence == 0 and support == 0:
-        return False, 0, 0
+    body_occurrences = {
+        (mapper.index_to_table_name[table], occurrence) for table, occurrence in body
+    }
+    body_equality_constraints = [
+        condition
+        for condition in equality_constraints
+        if (condition[0], condition[1]) in body_occurrences
+        and (condition[3], condition[4]) in body_occurrences
+    ]
 
-    return mean([support, confidence]) > SPLIT_PRUNING_MEAN_THRESHOLD, support, confidence
+    def projected(select_occurrences: set[TableOccurrence]) -> list[list[tuple[str, int, str]]]:
+        return [
+            [
+                (
+                    mapper.index_to_table_name[attribute.i],
+                    attribute.j,
+                    mapper.indexed_attribute_to_attribute(attribute).name,
+                )
+                for attribute in variable_class
+                if (attribute.i, attribute.j) in select_occurrences
+            ]
+            for variable_class in chains
+            if any((attribute.i, attribute.j) in select_occurrences for attribute in variable_class)
+        ]
+
+    support = db_inspector.get_rule_count(
+        relation_occurrences,
+        equality_constraints,
+        projected(head),
+        disjoint_semantics=APPLY_DISJOINT,
+    )
+    body_relation_occurrences = [
+        occurrence for occurrence in relation_occurrences if occurrence in body_occurrences
+    ]
+    denominator = db_inspector.get_rule_count(
+        body_relation_occurrences,
+        body_equality_constraints,
+        projected(body),
+        disjoint_semantics=APPLY_DISJOINT,
+    )
+    numerator = db_inspector.get_rule_count(
+        relation_occurrences,
+        equality_constraints,
+        projected(body),
+        disjoint_semantics=APPLY_DISJOINT,
+    )
+    # The current equality classes encode body/head joins, so numerator is the
+    # same explicit query with the head constraints applied. Keep the separate
+    # count visible in this API to prevent confidence from becoming a filter.
+    confidence = numerator / denominator if denominator else 0.0
+    return support, confidence
 
 
 def powerset(iterable):

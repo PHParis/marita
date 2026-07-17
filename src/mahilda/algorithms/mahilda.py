@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, Generator, Iterable, Optional, Tuple, ca
 import mahilda.algorithms.mahilda_core.tgd_discovery as mahilda_core
 from mahilda.algorithms.base_algorithm import BaseAlgorithm
 from mahilda.algorithms.mahilda_core.tgd_discovery import dfs, init, instantiate_tgd, path_pruning
-from mahilda.utils.rules import Predicate, TGDRule
+from mahilda.utils.rules import MARITARule, Predicate, TGDRule
 from mahilda.utils.tgd_factory import TGDRuleFactory
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class MAHILDA(BaseAlgorithm):
         "max_nb_occurrence_per_table_and_column": {},
         "disjoint_semantics": False,
         "joinability": "fk",
-        "split_mean_threshold": 0.0,
+        "support_threshold": 1,
         "timeout": None,
         "results_dir": None,
     }
@@ -120,6 +120,9 @@ class MAHILDA(BaseAlgorithm):
 
             normalised_key = MAHILDA.KEY_NORMALISATION.get(raw_key, raw_key)
 
+            if raw_key == "split_mean_threshold":
+                raise ValueError("split_mean_threshold was removed; use integer support_threshold (>= 1)") from None
+
             if raw_key == "recursivity":
                 try:
                     rec_value = int(value)
@@ -183,13 +186,32 @@ class MAHILDA(BaseAlgorithm):
             return None
 
     @staticmethod
+    def _coerce_support_threshold(value: Any, fallback: int = 1) -> int:
+        try:
+            if isinstance(value, bool):
+                raise ValueError
+            candidate = int(value)
+            if isinstance(value, float) and not value.is_integer():
+                raise ValueError
+            if candidate < 1:
+                raise ValueError("support_threshold must be at least 1")
+            return candidate
+        except (TypeError, ValueError):
+            if isinstance(value, str) and "split_mean_threshold" in value:
+                raise ValueError("split_mean_threshold was removed; use integer support_threshold (>= 1)") from None
+            if value is not None:
+                raise ValueError(f"support_threshold must be an integer >= 1, got {value!r}") from None
+            return fallback
+
+    @staticmethod
     def _coerce_float(value: Any, fallback: float) -> float:
+        """Retained for callers of the historical settings helper."""
         try:
             return float(value)
         except (TypeError, ValueError):
             return fallback
 
-    def discover_rules(self, **kwargs: Any) -> Generator[TGDRule, None, None]:  # type: ignore[override]
+    def discover_rules(self, **kwargs: Any) -> Generator[MARITARule, None, None]:  # type: ignore[override]
         runtime_kwargs = dict(kwargs)
         should_stop = cast(Optional[Callable[[], bool]], runtime_kwargs.pop("should_stop", None))
         timeout_override = runtime_kwargs.pop("timeout", None)
@@ -219,10 +241,9 @@ class MAHILDA(BaseAlgorithm):
 
         disjoint_semantics = bool(runtime_settings.get("disjoint_semantics", False))
         joinability = MAHILDA._coerce_joinability(runtime_settings.get("joinability", "fk"))
-        split_mean_threshold = self._coerce_float(
-            runtime_settings.get("split_mean_threshold"),
-            self.DEFAULT_SETTINGS["split_mean_threshold"],
-        )
+        if "split_mean_threshold" in runtime_settings:
+            raise ValueError("split_mean_threshold was removed; use integer support_threshold (>= 1)")
+        support_threshold = self._coerce_support_threshold(runtime_settings.get("support_threshold"))
 
         results_path = runtime_settings.get("results_dir")
         temp_results_dir: Optional[str] = None
@@ -233,10 +254,10 @@ class MAHILDA(BaseAlgorithm):
         results_path_str = str(results_path)
 
         previous_disjoint = mahilda_core.APPLY_DISJOINT
-        previous_threshold = mahilda_core.SPLIT_PRUNING_MEAN_THRESHOLD
+        previous_threshold = mahilda_core.SUPPORT_THRESHOLD
         previous_full_join = mahilda_core.APPLY_FULL_JOINABILITY
         mahilda_core.APPLY_DISJOINT = disjoint_semantics
-        mahilda_core.SPLIT_PRUNING_MEAN_THRESHOLD = split_mean_threshold
+        mahilda_core.SUPPORT_THRESHOLD = support_threshold
         mahilda_core.APPLY_FULL_JOINABILITY = joinability == "full"
 
         start_time = time.time()
@@ -268,6 +289,7 @@ class MAHILDA(BaseAlgorithm):
                 mapper,
                 max_table=max_tables,
                 max_vars=max_vars,
+                support_threshold=support_threshold,
             ):  # type: ignore[arg-type]
                 if should_stop and should_stop():
                     logger.debug("Early stop requested during DFS traversal.")
@@ -287,27 +309,33 @@ class MAHILDA(BaseAlgorithm):
                         (split_body, split_head),
                         mapper,
                     )
-                    rule = TGDRuleFactory.str_to_tgd(
+                    parsed = TGDRuleFactory.str_to_tgd(
                         tgd_str,
                         float(cast(float, support)),
                         float(cast(float, confidence)),
                     )
-                    if len(rule.head) != 1:
+                    if len(parsed.head) != 1:
                         continue
-                    yield rule
+                    yield MARITARule(
+                        body=parsed.body,
+                        head=parsed.head,
+                        display=parsed.display,
+                        support=int(support),
+                        confidence=float(confidence),
+                    )
                 except Exception as exc:
                     logger.debug("Failed to instantiate rule: %s", exc, exc_info=True)
                     continue
 
         finally:
             mahilda_core.APPLY_DISJOINT = previous_disjoint
-            mahilda_core.SPLIT_PRUNING_MEAN_THRESHOLD = previous_threshold
+            mahilda_core.SUPPORT_THRESHOLD = previous_threshold
             mahilda_core.APPLY_FULL_JOINABILITY = previous_full_join
             if temp_results_dir and os.path.isdir(temp_results_dir):
                 shutil.rmtree(temp_results_dir, ignore_errors=True)
 
     @staticmethod
-    def get_horn_rule_statistics(rules: Iterable[TGDRule]) -> Dict[str, Any]:
+    def get_horn_rule_statistics(rules: Iterable[Any]) -> Dict[str, Any]:
         rules_list = [rule for rule in rules if len(rule.head) == 1]
         total = len(rules_list)
         if total == 0:
@@ -316,7 +344,7 @@ class MAHILDA(BaseAlgorithm):
                 "average_support": 0.0,
                 "average_confidence": 0.0,
             }
-        avg_support = sum(rule.accuracy for rule in rules_list) / total
+        avg_support = sum(getattr(rule, "support", getattr(rule, "accuracy", 0)) for rule in rules_list) / total
         avg_confidence = sum(rule.confidence for rule in rules_list) / total
         return {
             "horn_rules": total,

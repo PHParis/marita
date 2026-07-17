@@ -89,6 +89,21 @@ def test_construct_select_query_count_over_requires_aliases() -> None:
         util._construct_select_query(join_base="x", distinct=False, count_over=[[("a", 0, "id")]], aliases=None)
 
 
+def test_explicit_rule_count_supports_isolated_atoms_and_projections() -> None:
+    engine, metadata, _a, _b = _build_db()
+    util = _utility(engine, metadata)
+    assert util.get_rule_count([("b", 0)], [], [[("b", 0, "id")]]) == 2
+    assert (
+        util.get_rule_count(
+            [("a", 0), ("a", 1)],
+            [("a", 0, "val", "a", 1, "val")],
+            [[("a", 0, "val"), ("a", 1, "val")]],
+            disjoint_semantics=True,
+        )
+        == 0
+    )
+
+
 def test_check_threshold_and_query_failures() -> None:
     engine, metadata, _a, _b = _build_db()
     util = _utility(engine, metadata)

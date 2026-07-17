@@ -52,7 +52,7 @@ def test_marita_mines_and_independently_validates_repeated_relation_rule(
             "max_variables": 2,
             "disjoint_semantics": True,
             "joinability": "fk",
-            "split_mean_threshold": 0.0,
+            "support_threshold": 1,
             "results_dir": tmp_path / "results",
         },
     )

@@ -19,7 +19,7 @@ algorithm:
     max_tables: 2  # Minimal number of tables
     max_variables: 3  # Minimal number of variables
     disjoint_semantics: false
-    split_mean_threshold: 0.0
+    support_threshold: 1
     timeout: 10  # 10 seconds timeout for very fast test
 
 mlflow:

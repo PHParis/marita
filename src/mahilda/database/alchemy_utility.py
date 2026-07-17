@@ -172,6 +172,20 @@ class AlchemyUtility:
     ) -> int:
         return self.query_utility.get_join_row_count(join_conditions, disjoint_semantics, distinct, count_over, flag)
 
+    def get_rule_count(
+        self,
+        relation_occurrences: list[tuple[str, int]],
+        equality_constraints: list[tuple[str, int, str, str, int, str]],
+        projected_classes: list[list[tuple[str, int, str]]],
+        disjoint_semantics: bool = False,
+    ) -> int:
+        return self.query_utility.get_rule_count(
+            relation_occurrences,
+            equality_constraints,
+            projected_classes,
+            disjoint_semantics,
+        )
+
     def get_attribute_values(self, table_name: str, attribute_name: str) -> list[Any]:
         try:
             rows = self._select_query(table_name, [attribute_name])

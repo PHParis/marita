@@ -158,7 +158,25 @@ class TGDRule:
         return self_length < other_length
 
 
-Rule = Union[InclusionDependency, FunctionalDependency, DenialConstraint, HornRule, TGDRule]
+@dataclass(frozen=True)
+class MARITARule:
+    """A MARITA rule; support is raw projected-head support."""
+
+    body: Tuple[Predicate, ...]
+    head: Tuple[Predicate, ...]
+    display: str
+    support: int
+    confidence: float
+    correct: Optional[bool] = None
+    compatible: Optional[bool] = None
+
+    @property
+    def accuracy(self) -> int:
+        """Compatibility alias for old in-memory consumers."""
+        return self.support
+
+
+Rule = Union[InclusionDependency, FunctionalDependency, DenialConstraint, HornRule, TGDRule, MARITARule]
 
 
 class PredicateUtils:

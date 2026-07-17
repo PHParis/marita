@@ -47,12 +47,12 @@ def _top_report_rules(rules: list[Any]) -> list[Any]:
     scored_rules: list[tuple[float, Any]] = []
     unscored_rules: list[Any] = []
     for rule in rules:
-        accuracy = getattr(rule, "accuracy", None)
-        if accuracy is None:
+        score = getattr(rule, "support", getattr(rule, "accuracy", None))
+        if score is None:
             unscored_rules.append(rule)
             continue
         try:
-            scored_rules.append((float(accuracy), rule))
+            scored_rules.append((float(score), rule))
         except (TypeError, ValueError):
             unscored_rules.append(rule)
 
@@ -152,9 +152,7 @@ class DatabaseProcessor:
                     rules.append(rule)
 
                     if verbose:
-                        accuracy_color = (
-                            Fore.GREEN if rule.accuracy >= 0.8 else Fore.YELLOW if rule.accuracy >= 0.5 else Fore.RED
-                        )
+                        score = getattr(rule, "support", getattr(rule, "accuracy", 0))
                         conf_color = (
                             Fore.GREEN
                             if rule.confidence >= 0.8
@@ -168,7 +166,7 @@ class DatabaseProcessor:
                             f"{Fore.WHITE}{rule.display}{Style.RESET_ALL}"
                         )
                         self.logger.info(
-                            f"  {Style.DIM}Accuracy:{Style.RESET_ALL} {accuracy_color}{rule.accuracy:.3f}{Style.RESET_ALL}  "
+                            f"  {Style.DIM}Support:{Style.RESET_ALL} {Fore.GREEN}{score}{Style.RESET_ALL}  "
                             f"{Style.DIM}Confidence:{Style.RESET_ALL} {conf_color}{rule.confidence:.3f}{Style.RESET_ALL}"
                         )
                     elif not quiet and rule_count % 10 == 0:

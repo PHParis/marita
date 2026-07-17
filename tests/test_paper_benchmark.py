@@ -444,6 +444,8 @@ def test_email_config_uses_environment(monkeypatch) -> None:
 
 
 def test_paper_benchmark_dry_run_sends_email(monkeypatch, tmp_path: Path) -> None:
+    for variable in ("MAHILDA_SMTP_HOST", "MAHILDA_SMTP_PORT", "MAHILDA_SMTP_STARTTLS", "MAHILDA_SMTP_USER"):
+        monkeypatch.delenv(variable, raising=False)
     db_dir = tmp_path / "dbs"
     db_dir.mkdir()
     (db_dir / "Demo.db").touch()

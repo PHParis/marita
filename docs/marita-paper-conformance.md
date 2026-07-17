@@ -40,15 +40,8 @@ and is not the paper's support. `calculate_confidence()` divides by a head-only
 count and is not the confidence definition currently hidden inside `\ignore{}`
 either.
 
-The runtime also exposes `split_mean_threshold`, applied to the mean of these
-two ratios, rather than the paper's raw support threshold `kappa`. Publication
-claims about support thresholds or reported support values must not be made
-until one of these resolutions is implemented and tested:
-
-1. Make the paper authoritative: export raw projected-head support, add an
-   explicit raw support threshold, and separately define any confidence metric.
-2. Make the implementation authoritative: revise the paper's definitions and
-   claims to describe both normalized ratios and the mean threshold exactly.
+MARITA now exports raw projected-head support as an integer and applies the
+mandatory `support_threshold >= 1`; confidence is retained only as a diagnostic.
 
 ### Completeness versus best-per-head output pruning
 
@@ -57,11 +50,8 @@ returned. The implementation suppresses a rule when a previously seen rule
 with the same indexed head occurrence has higher support. Those rules need not
 be syntactically equivalent, so both statements cannot be true simultaneously.
 
-The code now preserves tied rules and never uses this policy to stop search,
-which fixes the observed SPIDER miss and protects reachability. A publication
-claim of complete emitted output still requires either removing/optionalizing
-best-per-head suppression or weakening the claim to completeness before output
-selection.
+The global best-per-head suppression has been removed from discovery. Optional
+best-per-head ranking is available as explicit post-processing and retains ties.
 
 ## Scope assumptions
 

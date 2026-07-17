@@ -7,6 +7,7 @@ from mahilda.utils.rules import (
     FunctionalDependency,
     HornRule,
     InclusionDependency,
+    MARITARule,
     PredicateUtils,
     Rule,
     TGDRule,
@@ -48,6 +49,17 @@ class RuleIO:
                 "correct": rule.correct,
                 "compatible": rule.compatible,
             }
+        elif isinstance(rule, MARITARule):
+            return {
+                "type": "MARITARule",
+                "body": [str(pred) for pred in rule.body],
+                "head": [str(pred) for pred in rule.head],
+                "display": rule.display,
+                "support": rule.support,
+                "confidence": rule.confidence,
+                "correct": rule.correct,
+                "compatible": rule.compatible,
+            }
         else:
             raise ValueError("Unknown rule type")
 
@@ -84,20 +96,25 @@ class RuleIO:
                     correct=d.get("correct"),
                     compatible=d.get("compatible"),
                 )
-            elif rule_type == "TGDRule":
+            elif rule_type in {"TGDRule", "MARITARule"}:
                 if "body" not in d or "head" not in d:
                     raise ValueError("Missing 'body' or 'head' in TGDRule.")
                 body = tuple(PredicateUtils.str_to_predicate(pred) for pred in d["body"])
                 head = tuple(PredicateUtils.str_to_predicate(pred) for pred in d["head"])
-                return TGDRule(
+                rule_class = MARITARule if rule_type == "MARITARule" else TGDRule
+                values = dict(
                     body=body,
                     head=head,
                     display=d.get("display"),
-                    accuracy=d.get("accuracy", 0.0),
                     confidence=d.get("confidence", 0.0),
                     correct=d.get("correct"),
                     compatible=d.get("compatible"),
                 )
+                if rule_class is MARITARule:
+                    values["support"] = int(d.get("support", 0))
+                else:
+                    values["accuracy"] = d.get("accuracy", 0.0)
+                return rule_class(**values)
             else:
                 raise ValueError(f"Unknown rule type: {rule_type}")
         except Exception as e:

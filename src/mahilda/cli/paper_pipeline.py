@@ -431,7 +431,7 @@ def _mahilda_config(
         "max_tables": 3,
         "max_variables": 3,
         "disjoint_semantics": True,
-        "split_mean_threshold": 0.0,
+        "support_threshold": 1,
         "timeout": timeout,
     }
     merged_parameters.update(parameters)

@@ -19,7 +19,7 @@ algorithm:
     max_tables: 3
     max_variables: 3
     disjoint_semantics: true
-    split_mean_threshold: 0.0
+    support_threshold: 1
     timeout: 7200
 
 batch:
