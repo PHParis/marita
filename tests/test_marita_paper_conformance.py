@@ -79,6 +79,29 @@ def test_marita_mines_and_independently_validates_repeated_relation_rule(
     assert evaluation.confidence == 1.0
 
 
+def test_discovery_initialization_is_read_only(tmp_path: Path) -> None:
+    database_path = tmp_path / "read_only_contract.db"
+    _write_fk_database(database_path)
+    database = AlchemyUtility(
+        f"sqlite:///{database_path}",
+        create_index=False,
+        create_csv=False,
+        create_tsv=False,
+        get_data=False,
+    )
+    try:
+
+        def fail_if_called(*_args, **_kwargs):
+            raise AssertionError("discovery must not create compatibility indexes")
+
+        database.create_composed_indexes = fail_if_called
+        results = tmp_path / "init"
+        results.mkdir()
+        init(database, max_nb_occurrence=2, results_path=str(results))
+    finally:
+        database.close()
+
+
 def _reference_graph(jia_list) -> ConstraintGraph:
     """Build the pre-optimization pairwise graph for conformance comparison."""
     graph = ConstraintGraph()

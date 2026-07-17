@@ -82,6 +82,37 @@ def test_construct_join_and_count_query() -> None:
     assert count == 2
 
 
+def test_query_result_cache_keys_include_semantic_arguments() -> None:
+    engine, metadata, _a, _b = _build_db()
+    util = _utility(engine, metadata)
+    conditions = [("a", 0, "b_id", "b", 0, "id")]
+
+    assert util.get_join_row_count(conditions, disjoint_semantics=False) == 2
+    assert util.get_join_row_count(conditions, disjoint_semantics=False) == 2
+    assert util.get_join_row_count(conditions, disjoint_semantics=True) == 2
+    assert util.get_join_row_count(conditions, distinct=True) == 2
+    assert util.query_cache_hits >= 1
+
+    assert util.get_rule_count([("b", 0)], [], [[("b", 0, "id")]]) == 2
+    assert util.get_rule_count([("b", 0)], [], [[("b", 0, "val")]]) == 2
+
+
+def test_column_value_set_cache_preserves_string_filtering_and_clears() -> None:
+    engine, metadata, a, _b = _build_db()
+    with engine.begin() as conn:
+        conn.execute(a.insert(), {"id": 12, "val": None, "b_id": 1})
+    util = _utility(engine, metadata)
+
+    assert util.get_column_value_set("a", "val") == frozenset({"x", "z"})
+    assert util.get_column_value_set("a", "val") == frozenset({"x", "z"})
+    assert util.column_value_cache_hits == 1
+    assert util._column_value_cache_size == 2
+
+    util.clear_caches()
+    assert not util._query_result_cache
+    assert not util._column_value_set_cache
+
+
 def test_construct_select_query_count_over_requires_aliases() -> None:
     engine, metadata, _a, _b = _build_db()
     util = _utility(engine, metadata)

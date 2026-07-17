@@ -194,6 +194,10 @@ class AlchemyUtility:
             self.logger_query_time.error(f"Error getting values for {table_name}.{attribute_name}: {err}")
             return []
 
+    def get_attribute_value_set(self, table_name: str, attribute_name: str) -> frozenset[str]:
+        """Return full-joinability values with the legacy string/filter semantics."""
+        return self.query_utility.get_column_value_set(table_name, attribute_name)
+
     def get_table_names(self) -> list[str]:
         return self.query_utility._get_table_names()
 
@@ -267,6 +271,7 @@ class AlchemyUtility:
         return len(table.columns) if table is not None else 0
 
     def close(self) -> None:
+        self.query_utility.clear_caches()
         self.db_manager.close()
 
     def __enter__(self) -> AlchemyUtility:

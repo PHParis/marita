@@ -14,6 +14,8 @@ class CandidateRuleChains:
     A candidate rule is a list of JoinableIndexedAttributes.
     """
 
+    __slots__ = ("cr", "cr_chains")
+
     def __init__(self, candidate_rule: CandidateRule = None):
         """
         Initialize the CandidateRuleChains object.

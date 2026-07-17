@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from colorama import Fore, Style
@@ -28,18 +29,84 @@ class ColorFormatter(logging.Formatter):
 class QueryUtility:
     """Handle threshold and join-count SQL query construction/execution."""
 
+    DEFAULT_QUERY_CACHE_LIMIT = 1024
+    DEFAULT_COLUMN_VALUE_CACHE_LIMIT = 250_000
+    DEFAULT_COLUMN_VALUE_CACHE_ENTRY_LIMIT = 4096
+
     def __init__(
         self,
         engine: Engine,
         metadata: MetaData,
         logger_query_time: logging.Logger,
         logger_query_results: logging.Logger,
+        query_cache_limit: int = DEFAULT_QUERY_CACHE_LIMIT,
+        column_value_cache_limit: int = DEFAULT_COLUMN_VALUE_CACHE_LIMIT,
     ) -> None:
         self.engine = engine
         self.metadata = metadata
         self.logger_query_time = logger_query_time
         self.logger_query_results = logger_query_results
+        self.query_cache_limit = max(0, query_cache_limit)
+        self.column_value_cache_limit = max(0, column_value_cache_limit)
+        self.column_value_cache_entry_limit = self.DEFAULT_COLUMN_VALUE_CACHE_ENTRY_LIMIT
+        self._query_result_cache: OrderedDict[tuple[Any, ...], int] = OrderedDict()
+        self._column_value_set_cache: OrderedDict[tuple[str, str], frozenset[str]] = OrderedDict()
+        self._column_value_cache_size = 0
+        self.query_cache_hits = 0
+        self.query_cache_misses = 0
+        self.column_value_cache_hits = 0
+        self.column_value_cache_misses = 0
+        self._table_names_cache: tuple[str, ...] | None = None
+        self._column_names_cache: dict[str, tuple[str, ...]] = {}
+        self._column_name_sets_cache: dict[str, frozenset[str]] = {}
+        self._primary_key_cache: dict[str, tuple[str, ...]] = {}
+        self._foreign_keys_cache: dict[str, dict[str, tuple[str, str]]] | None = None
         self._setup_logging_handlers()
+
+    @staticmethod
+    def _freeze(value: Any) -> Any:
+        """Convert query arguments into a stable, hashable cache key."""
+        if isinstance(value, dict):
+            return tuple(sorted((QueryUtility._freeze(key), QueryUtility._freeze(item)) for key, item in value.items()))
+        if isinstance(value, (list, tuple)):
+            return tuple(QueryUtility._freeze(item) for item in value)
+        if isinstance(value, (set, frozenset)):
+            return tuple(sorted((QueryUtility._freeze(item) for item in value), key=repr))
+        return value
+
+    def _cached_query_result(self, key: tuple[Any, ...]) -> int | None:
+        result = self._query_result_cache.get(key)
+        if result is None:
+            self.query_cache_misses += 1
+            return None
+        self._query_result_cache.move_to_end(key)
+        self.query_cache_hits += 1
+        return result
+
+    def _store_query_result(self, key: tuple[Any, ...], result: int) -> None:
+        if self.query_cache_limit <= 0:
+            return
+        self._query_result_cache[key] = result
+        self._query_result_cache.move_to_end(key)
+        while len(self._query_result_cache) > self.query_cache_limit:
+            self._query_result_cache.popitem(last=False)
+
+    def clear_caches(self) -> None:
+        """Clear all lifecycle-scoped metadata, value, and query caches."""
+        self._query_result_cache.clear()
+        self._column_value_set_cache.clear()
+        self._column_value_cache_size = 0
+        self._table_names_cache = None
+        self._column_names_cache.clear()
+        self._column_name_sets_cache.clear()
+        self._primary_key_cache.clear()
+        self._foreign_keys_cache = None
+        self.query_cache_hits = 0
+        self.query_cache_misses = 0
+        self.column_value_cache_hits = 0
+        self.column_value_cache_misses = 0
+
+    close = clear_caches
 
     def _setup_logging_handlers(self) -> None:
         formatter = ColorFormatter("%(asctime)s - %(levelname)s - %(message)s")
@@ -64,6 +131,18 @@ class QueryUtility:
         threshold: int = 1,
         flag: str = "threshold",
     ) -> int:
+        key = (
+            "threshold",
+            self._freeze(join_conditions),
+            bool(disjoint_semantics),
+            bool(distinct),
+            self._freeze(count_over),
+            threshold,
+            flag,
+        )
+        cached = self._cached_query_result(key)
+        if cached is not None:
+            return cached
         query, _, _ = self._construct_threshold_query(
             join_conditions,
             disjoint_semantics,
@@ -79,7 +158,9 @@ class QueryUtility:
                 result = conn.execute(query).scalar()
         except Exception as err:
             raise ValueError(f"Error executing threshold query for flag '{flag}'") from err
-        return int(bool(result))
+        value = int(bool(result))
+        self._store_query_result(key, value)
+        return value
 
     def get_join_row_count(
         self,
@@ -89,6 +170,17 @@ class QueryUtility:
         count_over: list[list[tuple[str, int, str]]] | None = None,
         flag: str = "",
     ) -> int:
+        key = (
+            "join_count",
+            self._freeze(join_conditions),
+            bool(disjoint_semantics),
+            bool(distinct),
+            self._freeze(count_over),
+            flag,
+        )
+        cached = self._cached_query_result(key)
+        if cached is not None:
+            return cached
         query, _, _ = self._construct_count_query(join_conditions, disjoint_semantics, distinct, count_over)
         if query is None:
             return 0
@@ -99,7 +191,9 @@ class QueryUtility:
         except Exception as err:
             self.logger_query_time.error(f"Error executing count query for flag '{flag}': {err}")
             return 0
-        return int(result_sqlite) if result_sqlite is not None else 0
+        value = int(result_sqlite) if result_sqlite is not None else 0
+        self._store_query_result(key, value)
+        return value
 
     def get_rule_count(
         self,
@@ -114,6 +208,17 @@ class QueryUtility:
         no local join (including a one-atom relation) and makes the projected
         variable classes explicit.
         """
+        key = (
+            "rule_count",
+            self._freeze(relation_occurrences),
+            self._freeze(equality_constraints),
+            self._freeze(projected_classes),
+            bool(disjoint_semantics),
+        )
+        cached = self._cached_query_result(key)
+        if cached is not None:
+            return cached
+
         aliases: dict[str, Any] = {}
         for table_name, occurrence in relation_occurrences:
             self._get_or_create_alias(aliases, table_name, occurrence)
@@ -135,8 +240,7 @@ class QueryUtility:
             for table_name, occurrence in relation_occurrences:
                 by_table.setdefault(table_name, []).append(occurrence)
             for table_name, occurrences in by_table.items():
-                primary_key = self.metadata.tables[table_name].primary_key
-                keys = [column.name for column in primary_key.columns]
+                keys = self._get_primary_key_names(table_name)
                 for index, occurrence1 in enumerate(occurrences):
                     for occurrence2 in occurrences[index + 1 :]:
                         if not keys:
@@ -171,7 +275,9 @@ class QueryUtility:
         except Exception as err:
             self.logger_query_time.error("Error executing explicit rule count: %s", err)
             return 0
-        return int(value or 0)
+        result = int(value or 0)
+        self._store_query_result(key, result)
+        return result
 
     def _construct_threshold_query(
         self,
@@ -272,10 +378,9 @@ class QueryUtility:
                 alias2 = self._get_or_create_alias(aliases, table_name2, occurrence2)
 
                 partial_join_conditions = []
+                columns_alias1 = self._get_column_name_set(table_name1)
+                columns_alias2 = self._get_column_name_set(table_name2)
                 for _tn1, _o1, attr1, _tn2, _o2, attr2 in group:
-                    columns_alias1 = [str(el).split(".")[1] for el in alias1.columns._all_columns]
-                    columns_alias2 = [str(el).split(".")[1] for el in alias2.columns._all_columns]
-
                     if attr1 in columns_alias1 and attr2 in columns_alias2:
                         partial_join_conditions.append(alias1.columns[attr1] == alias2.columns[attr2])
                     elif attr2 in columns_alias1 and attr1 in columns_alias2:
@@ -295,8 +400,8 @@ class QueryUtility:
 
                 alias1 = self._get_or_create_alias(aliases, table_name1, occurrence1)
                 partial_join_conditions = []
+                columns_alias1 = self._get_column_name_set(table_name1)
                 for _tn1, _o1, attr1, _tn2, _o2, attr2 in group:
-                    columns_alias1 = [str(el).split(".")[1] for el in alias1.columns._all_columns]
                     if attr1 in columns_alias1 and attr2 in columns_alias1:
                         partial_join_conditions.append(alias1.columns[attr1] == alias1.columns[attr2])
 
@@ -371,8 +476,7 @@ class QueryUtility:
             if len(occurrences) <= 1:
                 continue
 
-            table_pk = self.metadata.tables[table_name].primary_key
-            pks = [col.name for col in table_pk.columns] if table_pk else []
+            pks = self._get_primary_key_names(table_name)
             if not pks:
                 primary_key_conditions.append(false())
                 continue
@@ -427,10 +531,29 @@ class QueryUtility:
         return query
 
     def _get_table_names(self) -> list[str]:
-        return sorted(self.metadata.tables.keys())
+        if self._table_names_cache is None:
+            self._table_names_cache = tuple(sorted(self.metadata.tables.keys()))
+        return list(self._table_names_cache)
 
     def _get_attribute_names(self, table_name: str) -> list[str]:
-        return [col.name for col in self.metadata.tables[table_name].columns]
+        names = self._column_names_cache.get(table_name)
+        if names is None:
+            names = tuple(col.name for col in self.metadata.tables[table_name].columns)
+            self._column_names_cache[table_name] = names
+            self._column_name_sets_cache[table_name] = frozenset(names)
+        return list(names)
+
+    def _get_column_name_set(self, table_name: str) -> frozenset[str]:
+        if table_name not in self._column_name_sets_cache:
+            self._get_attribute_names(table_name)
+        return self._column_name_sets_cache[table_name]
+
+    def _get_primary_key_names(self, table_name: str) -> tuple[str, ...]:
+        keys = self._primary_key_cache.get(table_name)
+        if keys is None:
+            keys = tuple(column.name for column in self.metadata.tables[table_name].primary_key.columns)
+            self._primary_key_cache[table_name] = keys
+        return keys
 
     def _get_attribute_domain(self, table_name: str, attribute_name: str) -> str | None:
         table = self.metadata.tables.get(table_name)
@@ -449,6 +572,8 @@ class QueryUtility:
         return False
 
     def _get_foreign_keys(self) -> dict[str, dict[str, tuple[str, str]]]:
+        if self._foreign_keys_cache is not None:
+            return self._foreign_keys_cache
         foreign_keys_info: dict[str, dict[str, tuple[str, str]]] = {}
         for table_name, table in self.metadata.tables.items():
             for fk in table.foreign_keys:
@@ -471,4 +596,39 @@ class QueryUtility:
                     continue
 
                 foreign_keys_info.setdefault(table_name, {})[local_column] = (ref_table, reference_column)
+        self._foreign_keys_cache = foreign_keys_info
         return foreign_keys_info
+
+    def get_column_value_set(self, table_name: str, attribute_name: str) -> frozenset[str]:
+        """Return the filtered string value set used by full joinability."""
+        key = (table_name, attribute_name)
+        cached = self._column_value_set_cache.get(key)
+        if cached is not None:
+            self._column_value_set_cache.move_to_end(key)
+            self.column_value_cache_hits += 1
+            return cached
+
+        self.column_value_cache_misses += 1
+        table = self.metadata.tables.get(table_name)
+        if table is None or attribute_name not in table.columns:
+            return frozenset()
+        column = table.columns[attribute_name]
+        try:
+            with self.engine.connect() as conn:
+                values = [row[0] for row in conn.execute(select(column)).fetchall()]
+        except Exception as err:
+            self.logger_query_time.error("Error getting values for %s.%s: %s", table_name, attribute_name, err)
+            return frozenset()
+
+        value_set = frozenset(map(str, filter(None, values)))
+        if len(value_set) <= self.column_value_cache_limit:
+            while (
+                self._column_value_cache_size + len(value_set) > self.column_value_cache_limit
+                or len(self._column_value_set_cache) >= self.column_value_cache_entry_limit
+            ) and self._column_value_set_cache:
+                _, removed = self._column_value_set_cache.popitem(last=False)
+                self._column_value_cache_size -= len(removed)
+            if self.column_value_cache_limit > 0:
+                self._column_value_set_cache[key] = value_set
+                self._column_value_cache_size += len(value_set)
+        return value_set

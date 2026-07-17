@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 class Attribute:
+    __slots__ = ("table", "name", "domain", "is_key")
+
     def __init__(
             self,
             table: str,
@@ -178,30 +180,33 @@ class Attribute:
                                                        table2: str,
                                                        col2: str, threshold: int) -> bool:
         # Fetch data directly from the database using db_inspector
-        df1_values = db_inspector.get_attribute_values(table1, col1)
-        df2_values = db_inspector.get_attribute_values(table2, col2)
-
-        # Convert lists to sets (drop None and convert to string)
-        set1 = set(filter(None, map(str, df1_values)))
-        set2 = set(filter(None, map(str, df2_values)))
+        value_set_getter = getattr(db_inspector, "get_attribute_value_set", None)
+        if callable(value_set_getter):
+            set1 = value_set_getter(table1, col1)
+            set2 = value_set_getter(table2, col2)
+        else:
+            set1 = set(filter(None, map(str, db_inspector.get_attribute_values(table1, col1))))
+            set2 = set(filter(None, map(str, db_inspector.get_attribute_values(table2, col2))))
         # max_len = max(len(set1), len(set2))
 
         # Find common elements and union of the sets
         common_values = set1.intersection(set2)
         union_values = set1.union(set2)
-        if union_values == 0: return False # union_values = 1  # Avoid division by zero
+        if not union_values:
+            return False
         # Check if the ratio of common elements to the union is above the threshold
         return len(common_values) / len(union_values) > threshold
 
     def has_common_elements_above_threshold(self, db_inspector: AlchemyUtility, table1: str, col1: str, table2: str,
                                             col2: str, threshold: int) -> bool:
         # Fetch data directly from the database using db_inspector
-        df1_values = db_inspector.get_attribute_values(table1, col1)
-        df2_values = db_inspector.get_attribute_values(table2, col2)
-
-        # Convert lists to sets (drop None and convert to string)
-        set1 = set(filter(None, map(str, df1_values)))
-        set2 = set(filter(None, map(str, df2_values)))
+        value_set_getter = getattr(db_inspector, "get_attribute_value_set", None)
+        if callable(value_set_getter):
+            set1 = value_set_getter(table1, col1)
+            set2 = value_set_getter(table2, col2)
+        else:
+            set1 = set(filter(None, map(str, db_inspector.get_attribute_values(table1, col1))))
+            set2 = set(filter(None, map(str, db_inspector.get_attribute_values(table2, col2))))
 
         # Find common elements
         common_values = set1.intersection(set2)
@@ -254,6 +259,8 @@ class Attribute:
 
 
 class IndexedAttribute:
+    __slots__ = ("i", "j", "k")
+
     def __init__(self, i: int, j: int, k: int):
         """
         Initialize an IndexedAttribute with table index i, table occurrence j, and attribute index k.
@@ -315,6 +322,13 @@ class IndexedAttribute:
 
 
 class AttributeMapper:
+    __slots__ = (
+        "table_name_to_index",
+        "attribute_name_to_index",
+        "index_to_table_name",
+        "index_to_attribute_name",
+    )
+
     def __init__(
             self,
             table_name_to_index: dict[str, int],
@@ -361,6 +375,8 @@ class AttributeMapper:
 
 
 class JoinableIndexedAttributes:
+    __slots__ = ("pair",)
+
     def __init__(
             self,
             attr1: IndexedAttribute,
@@ -417,6 +433,16 @@ class JoinableIndexedAttributes:
         return iter(self.pair)
 
 
+def indexed_attribute_sort_key(attribute: IndexedAttribute) -> tuple[int, int, int]:
+    return attribute.i, attribute.j, attribute.k
+
+
+def jia_sort_key(
+    pair: JoinableIndexedAttributes,
+) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    return tuple(indexed_attribute_sort_key(attribute) for attribute in pair.pair)
+
+
 class ConstraintGraph:
     def __init__(self):
         """
@@ -433,13 +459,16 @@ class ConstraintGraph:
             JoinableIndexedAttributes,
             set[JoinableIndexedAttributes],
         ] = {}
+        self._neighbors_cache: dict[
+            JoinableIndexedAttributes, list[JoinableIndexedAttributes]
+        ] = {}
 
     @classmethod
     def from_jia_list(
             cls, jia_list: list[JoinableIndexedAttributes]
     ) -> "ConstraintGraph":
         instance = cls()
-        nodes = sorted(set(jia_list))
+        nodes = sorted(set(jia_list), key=jia_sort_key)
         for jia in nodes:
             instance.add_node(jia)
 
@@ -490,6 +519,7 @@ class ConstraintGraph:
                 self.edges[source] = set()
             self.edges[source].add(target)
             self._incoming.setdefault(target, set()).add(source)
+            self._neighbors_cache.clear()
 
     def is_connected(
             self,
@@ -535,13 +565,19 @@ class ConstraintGraph:
         node: JoinableIndexedAttributes,
     ) -> list[JoinableIndexedAttributes]:
         """Return neighbors without depending on the canonical edge direction."""
+        cached = self._neighbors_cache.get(node)
+        if cached is not None:
+            return cached
         outgoing = self.edges.get(node, set())
         incoming = self._incoming.get(node, set())
         if not incoming:
-            return sorted(outgoing)
-        if not outgoing:
-            return sorted(incoming)
-        return sorted(outgoing | incoming)
+            neighbors = sorted(outgoing, key=jia_sort_key)
+        elif not outgoing:
+            neighbors = sorted(incoming, key=jia_sort_key)
+        else:
+            neighbors = sorted(outgoing | incoming, key=jia_sort_key)
+        self._neighbors_cache[node] = neighbors
+        return neighbors
 
     def compute_metrics(self):
         # Convert the ConstraintGraph to a networkx graph

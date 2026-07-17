@@ -84,9 +84,9 @@ def _enumerate(
     *,
     max_table: int,
     max_vars: int,
-) -> tuple[float, set[tuple]]:
+) -> tuple[float, tuple[tuple[object, float, float], ...]]:
     started = time.perf_counter()
-    rule_keys = set()
+    fingerprints = []
     for candidate, (body, head), _metrics in dfs(
         graph,
         None,
@@ -97,8 +97,9 @@ def _enumerate(
         max_vars=max_vars,
         support_threshold=1,
     ):
-        rule_keys.add(parse_formula(instantiate_tgd(candidate, (body, head), mapper)).canonical_key())
-    return time.perf_counter() - started, rule_keys
+        parsed = parse_formula(instantiate_tgd(candidate, (body, head), mapper))
+        fingerprints.append((parsed.canonical_key(), float(_metrics[0]), float(_metrics[1])))
+    return time.perf_counter() - started, tuple(fingerprints)
 
 
 def _timed_graph(factory, jia_list):
@@ -171,7 +172,9 @@ def benchmark(
                         "indexed_neighbors_seconds": indexed_seconds,
                         "legacy_rules": len(legacy_rules),
                         "indexed_rules": len(indexed_rules),
-                        "same_canonical_rules": legacy_rules == indexed_rules,
+                        "same_canonical_rules": tuple(item[0] for item in legacy_rules)
+                        == tuple(item[0] for item in indexed_rules),
+                        "same_ordered_rule_fingerprints": legacy_rules == indexed_rules,
                     }
                 )
 

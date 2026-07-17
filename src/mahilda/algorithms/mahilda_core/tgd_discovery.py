@@ -1,15 +1,16 @@
-import copy
 import json
 import logging
 import os
 import random
 import re
 import time
+from collections import OrderedDict
 from collections.abc import Callable, Iterator
 from itertools import chain as iter_chain
 from itertools import combinations
 from itertools import permutations, product
 from pathlib import Path
+from typing import Any
 
 from tqdm import tqdm
 
@@ -20,6 +21,7 @@ from mahilda.algorithms.mahilda_core.constraint_graph import (
     ConstraintGraph,
     IndexedAttribute,
     JoinableIndexedAttributes,
+    jia_sort_key,
 )
 from mahilda.database.alchemy_utility import AlchemyUtility
 from mahilda.utils.rules import Predicate, TGDRule
@@ -47,6 +49,121 @@ HornRuleKey = tuple[
     tuple[int, int],
     tuple[tuple[tuple[int, int, int], ...], ...],
 ]
+
+
+class CandidateAnalysis:
+    """Immutable, reusable analysis of one candidate rule."""
+
+    __slots__ = ("chains", "occurrences", "attribute_signatures", "_projection_cache")
+
+    def __init__(self, candidate_rule: CandidateRule) -> None:
+        chains = CandidateRuleChains(candidate_rule).cr_chains
+        self.chains = tuple(tuple(chain) for chain in chains)
+        self.occurrences = frozenset(
+            (attribute.i, attribute.j)
+            for chain in self.chains
+            for attribute in chain
+        )
+        signatures: dict[TableOccurrence, frozenset[tuple[int, int]]] = {}
+        for occurrence in self.occurrences:
+            signatures[occurrence] = frozenset(
+                (attribute.i, attribute.k)
+                for chain in self.chains
+                for attribute in chain
+                if (attribute.i, attribute.j) == occurrence
+            )
+        self.attribute_signatures = signatures
+        self._projection_cache: dict[tuple[Any, ...], tuple[tuple[tuple[str, int, str], ...], ...]] = {}
+
+    def get_x_chains(
+        self,
+        body: set[TableOccurrence],
+        head: set[TableOccurrence],
+        mapper: AttributeMapper,
+        select_body: bool = False,
+        select_head: bool = False,
+    ) -> list[list[tuple[str, int, str]]]:
+        key = (
+            frozenset(body),
+            frozenset(head),
+            id(mapper),
+            bool(select_body),
+            bool(select_head),
+        )
+        cached = self._projection_cache.get(key)
+        if cached is None:
+            projected: list[tuple[tuple[str, int, str], ...]] = []
+            for chain in self.chains:
+                has_body = any((attribute.i, attribute.j) in body for attribute in chain)
+                has_head = any((attribute.i, attribute.j) in head for attribute in chain)
+                if not has_body or not has_head:
+                    continue
+                projected_chain = tuple(
+                    (
+                        mapper.indexed_attribute_to_attribute(attribute).table,
+                        attribute.j,
+                        mapper.indexed_attribute_to_attribute(attribute).name,
+                    )
+                    for attribute in chain
+                    if (not select_body or (attribute.i, attribute.j) in body)
+                    and (not select_head or (attribute.i, attribute.j) in head)
+                )
+                projected.append(projected_chain)
+            cached = tuple(projected)
+            self._projection_cache[key] = cached
+        return [list(chain) for chain in cached]
+
+
+class CandidateAnalysisCache:
+    """Bounded cache scoped to one DFS/discovery run."""
+
+    __slots__ = ("limit", "_analyses", "hits", "misses")
+
+    def __init__(self, limit: int = 2048) -> None:
+        self.limit = max(0, limit)
+        self._analyses: OrderedDict[tuple[Any, ...], CandidateAnalysis] = OrderedDict()
+        self.hits = 0
+        self.misses = 0
+
+    @staticmethod
+    def key(candidate_rule: CandidateRule) -> tuple[Any, ...]:
+        return tuple(sorted((
+            (left.i, left.j, left.k),
+            (right.i, right.j, right.k),
+        ) for left, right in (pair.pair for pair in candidate_rule)))
+
+    def get(self, candidate_rule: CandidateRule) -> CandidateAnalysis:
+        key = self.key(candidate_rule)
+        analysis = self._analyses.get(key)
+        if analysis is not None:
+            self._analyses.move_to_end(key)
+            self.hits += 1
+            return analysis
+        self.misses += 1
+        analysis = CandidateAnalysis(candidate_rule)
+        if self.limit > 0:
+            self._analyses[key] = analysis
+            self._analyses.move_to_end(key)
+            while len(self._analyses) > self.limit:
+                self._analyses.popitem(last=False)
+        return analysis
+
+    def clear(self) -> None:
+        self._analyses.clear()
+        self.hits = 0
+        self.misses = 0
+
+
+_ACTIVE_ANALYSIS_CACHE: CandidateAnalysisCache | None = None
+
+
+def _candidate_analysis(
+    candidate_rule: CandidateRule,
+    cache: CandidateAnalysisCache | CandidateAnalysis | None = None,
+) -> CandidateAnalysis:
+    if isinstance(cache, CandidateAnalysis):
+        return cache
+    return (cache or CandidateAnalysisCache()).get(candidate_rule)
 
 
 def _foreign_key_attribute_pairs(
@@ -141,16 +258,8 @@ def init(
 
         time_compute_compatible = time.time() - time_taken_init
 
-        # Create indexes for compatible attributes
-        try:
-            db_inspector.create_composed_indexes(
-                [
-                    (attr1.table, attr1.name, attr2.table, attr2.name)
-                    for attr1, attr2 in compatible_attributes
-                ]
-            )
-        except Exception as e:
-            logging.error(f"Error creating composed indexes: {e}")
+        # Discovery is strictly read-only. Compatibility indexes, when desired,
+        # belong to an explicit database-preparation workflow, not this run.
         time_to_compute_indexed = time.time() - time_taken_init
 
         # Attribute index mapping
@@ -237,6 +346,7 @@ def dfs(
         emitted_rule_keys: set[HornRuleKey] | None = None,
         support_threshold: int = 1,
         pruned_heads: set[TableOccurrence] | None = None,
+        _analysis_cache: CandidateAnalysisCache | None = None,
 ) -> Iterator[
     tuple[
         CandidateRule,
@@ -265,33 +375,50 @@ def dfs(
         emitted_rule_keys = set()
     if pruned_heads is None:
         pruned_heads = set()
+    if _analysis_cache is None:
+        _analysis_cache = CandidateAnalysisCache()
     if start_node is None:
-        for next_node in tqdm(sorted(graph.nodes), desc="Initial Nodes"):
-            """
-            note: mandatory because some jia are built with not the right order in table occurrences
-            they are needed to have all the runs, but at init we prune them.
-            """
+        global _ACTIVE_ANALYSIS_CACHE
+        previous_cache = _ACTIVE_ANALYSIS_CACHE
+        _ACTIVE_ANALYSIS_CACHE = _analysis_cache
+        try:
+            for next_node in tqdm(sorted(graph.nodes, key=jia_sort_key), desc="Initial Nodes"):
+                """
+                note: mandatory because some jia are built with not the right order in table occurrences
+                they are needed to have all the runs, but at init we prune them.
+                """
 
-            if next_node_test(candidate_rule, next_node, visited, max_table, max_vars):
-                yield from dfs(
-                    graph,
+                if next_node_test(
+                    candidate_rule,
                     next_node,
-                    pruning_prediction,
-                    db_inspector,
-                    mapper,
-                    visited=set(),
-                    candidate_rule=copy.deepcopy(candidate_rule),
-                    max_table=max_table,
-                    max_vars=max_vars,
-                    seen_candidates=seen_candidates,
-                    emitted_rule_keys=emitted_rule_keys,
-                    support_threshold=support_threshold,
-                    pruned_heads=set(),
-                )
+                    visited,
+                    max_table,
+                    max_vars,
+                    _analysis_cache=_analysis_cache,
+                ):
+                    yield from dfs(
+                        graph,
+                        next_node,
+                        pruning_prediction,
+                        db_inspector,
+                        mapper,
+                        visited=set(),
+                        candidate_rule=candidate_rule.copy(),
+                        max_table=max_table,
+                        max_vars=max_vars,
+                        seen_candidates=seen_candidates,
+                        emitted_rule_keys=emitted_rule_keys,
+                        support_threshold=support_threshold,
+                        pruned_heads=set(),
+                        _analysis_cache=_analysis_cache,
+                    )
+        finally:
+            _ACTIVE_ANALYSIS_CACHE = previous_cache
         return
     visited.add(start_node)
     candidate_rule.append(start_node)
-    candidate_key = candidate_rule_key(candidate_rule)
+    analysis = _analysis_cache.get(candidate_rule)
+    candidate_key = tuple(sorted(tuple(chain) for chain in analysis.chains))
     if candidate_key in seen_candidates:
         return
     seen_candidates.add(candidate_key)
@@ -300,20 +427,22 @@ def dfs(
     if not pruning_prediction(candidate_rule, mapper, db_inspector):
         return
 
-    splits = split_candidate_rule(candidate_rule)
-    for body, head in splits:
-        if not body or not head:
+    for body, head in _iter_dfs_horn_splits(candidate_rule, analysis):
+        if not _dfs_is_safe_split(candidate_rule, body, head, analysis):
             continue
-        if len(head) != 1:
-            continue
-        if not is_safe_split(candidate_rule, body, head):
-            continue
-        condition_check, support, confidence = split_pruning(candidate_rule, body, head, db_inspector, mapper)
+        condition_check, support, confidence = _dfs_split_pruning(
+            candidate_rule,
+            body,
+            head,
+            db_inspector,
+            mapper,
+            analysis,
+        )
 
         if not condition_check:
             continue
 
-        rule_key = horn_rule_key(candidate_rule, body, head)
+        rule_key = horn_rule_key(candidate_rule, body, head, _analysis=analysis)
         if rule_key in emitted_rule_keys:
             continue
 
@@ -321,17 +450,18 @@ def dfs(
         emitted_rule_keys.add(rule_key)
         yield candidate_rule, (body, head), (support, confidence)
 
-    # for next_node in tqdm(graph.neighbors(start_node), desc=f"Expanding {start_node}", leave=False):
-    # neighbours = graph.neighbors(start_node)
-    # splits = split_candidate_rule(candidate_rule)
-    # split = splits.pop()
-    #debug = instantiate_tgd(candidate_rule, split, mapper)
     big_neighbours: set[JoinableIndexedAttributes] = set()
     for node in candidate_rule:
         big_neighbours.update(e for e in graph.all_neighbors(node) if e not in visited)
-    # big_neighbours = [e for e in graph.neighbors(node) for node in candidate_rule
-    for next_node in sorted(big_neighbours): # graph.neighbors(start_node):
-        if next_node_test(candidate_rule, next_node, visited, max_table, max_vars):
+    for next_node in sorted(big_neighbours, key=jia_sort_key):
+        if next_node_test(
+            candidate_rule,
+            next_node,
+            visited,
+            max_table,
+            max_vars,
+            _analysis_cache=_analysis_cache,
+        ):
             yield from dfs(
                 graph,
                 next_node,
@@ -346,6 +476,7 @@ def dfs(
                 emitted_rule_keys=emitted_rule_keys,
                 support_threshold=support_threshold,
                 pruned_heads=pruned_heads,
+                _analysis_cache=_analysis_cache,
             )
             visited.remove(next_node)
             candidate_rule.pop()
@@ -358,6 +489,7 @@ def prediction(
     body: set[TableOccurrence] = None,
     head: set[TableOccurrence] = None,
     threshold: int = None,
+    _analysis: CandidateAnalysis | None = None,
 ) -> int:
     """
     Calculate the set of tuples that satisfy the tuple-generating dependency (TGD) R,
@@ -370,7 +502,7 @@ def prediction(
     """
     join_conditions: list[tuple[str, int, str, str, int, str]] = []
     if body is not None and head is not None:
-        x_chains = CandidateRuleChains(path).get_x_chains(body, head, mapper)
+        x_chains = _candidate_analysis(path, _analysis).get_x_chains(body, head, mapper)
     else:
         x_chains = None
     if path is None:
@@ -442,6 +574,7 @@ def split_pruning(
         db_inspector: AlchemyUtility,
         mapper: AttributeMapper,
         support_threshold: int | None = None,
+        _analysis: CandidateAnalysis | None = None,
 ) -> bool:
     """
     This function checks if a given candidate rule should be pruned based on its support and confidence.
@@ -463,13 +596,19 @@ def split_pruning(
     if len(head) != 1:
         return False, 0, 0
     if db_inspector is None or mapper is None:
-        total_tuples = prediction(candidate_rule, mapper, db_inspector, body, head, threshold=0)
+        total_tuples = prediction(candidate_rule, mapper, db_inspector, body, head, threshold=0, _analysis=_analysis)
         if not total_tuples:
             return False, 0, 0
-        support = calculate_support(candidate_rule, body, head, db_inspector, mapper, total_tuples)
-        confidence = calculate_confidence(candidate_rule, body, head, db_inspector, mapper, total_tuples)
+        support = calculate_support(
+            candidate_rule, body, head, db_inspector, mapper, total_tuples, _analysis=_analysis
+        )
+        confidence = calculate_confidence(
+            candidate_rule, body, head, db_inspector, mapper, total_tuples, _analysis=_analysis
+        )
     else:
-        support, confidence = calculate_rule_metrics(candidate_rule, body, head, db_inspector, mapper)
+        support, confidence = calculate_rule_metrics(
+            candidate_rule, body, head, db_inspector, mapper, _analysis=_analysis
+        )
     threshold = SUPPORT_THRESHOLD if support_threshold is None else support_threshold
     return support >= threshold, support, confidence
 
@@ -480,10 +619,12 @@ def calculate_rule_metrics(
     head: set[TableOccurrence],
     db_inspector: AlchemyUtility,
     mapper: AttributeMapper,
+    _analysis: CandidateAnalysis | None = None,
 ) -> tuple[int, float]:
     """Return raw projected-head support and diagnostic confidence."""
-    chains = CandidateRuleChains(candidate_rule).cr_chains
-    occurrences = sorted(extract_table_occurrences(candidate_rule))
+    analysis = _candidate_analysis(candidate_rule, _analysis)
+    chains = analysis.chains
+    occurrences = sorted(analysis.occurrences)
     relation_occurrences = [
         (mapper.index_to_table_name[table], occurrence) for table, occurrence in occurrences
     ]
@@ -577,6 +718,7 @@ def extract_table_occurrences(
 def attr(
     table_occurrence: TableOccurrence,
     candidate_rule: CandidateRule,
+    _analysis: CandidateAnalysis | None = None,
 ) -> JoinableIndexedAttributes:
     """
     Extracts the attributes of a table occurrence from a candidate_rule.
@@ -584,7 +726,9 @@ def attr(
     :param candidate_rule: List of JoinableIndexedAttributes representing the candidate rule.
     :return: The list of attributes of the table occurrence.
     """
-    cr_chains = CandidateRuleChains(candidate_rule).cr_chains
+    if _analysis is None:
+        _analysis = _ACTIVE_ANALYSIS_CACHE
+    cr_chains = _candidate_analysis(candidate_rule, _analysis).chains
     cr_chains_table_occurrence = []
     for chain in cr_chains:
         for attribute in chain:
@@ -601,9 +745,11 @@ def attr(
 def _occurrence_attribute_signature(
     table_occurrence: TableOccurrence,
     candidate_rule: CandidateRule,
+    _analysis: CandidateAnalysis | None = None,
 ) -> frozenset[tuple[int, int]]:
     """Return an occurrence's attributes without its occurrence number."""
-    return frozenset((attribute.i, attribute.k) for attribute in attr(table_occurrence, candidate_rule))
+    analysis = _candidate_analysis(candidate_rule, _analysis)
+    return analysis.attribute_signatures.get(table_occurrence, frozenset())
 
 def split_candidate_rule(
     candidate_rule: CandidateRule,
@@ -618,7 +764,8 @@ def split_candidate_rule(
     """
     if candidate_rule is None or len(candidate_rule) == 0:
         return False
-    table_occurrences = extract_table_occurrences(candidate_rule)
+    analysis = _candidate_analysis(candidate_rule)
+    table_occurrences = analysis.occurrences
     valid_splits = set()
     for body_tuple in powerset(sorted(table_occurrences)):
         body = set(body_tuple)
@@ -635,8 +782,8 @@ def split_candidate_rule(
         if any(
             ij[0] == previous[0]
             and previous[1] < ij[1]
-            and _occurrence_attribute_signature(ij, candidate_rule)
-            == _occurrence_attribute_signature(previous, candidate_rule)
+            and _occurrence_attribute_signature(ij, candidate_rule, analysis)
+            == _occurrence_attribute_signature(previous, candidate_rule, analysis)
             for ij in body
             for previous in head
         ):
@@ -649,9 +796,10 @@ def is_safe_split(
     candidate_rule: CandidateRule,
     body: set[TableOccurrence],
     head: set[TableOccurrence],
+    _analysis: CandidateAnalysis | None = None,
 ) -> bool:
     """Return whether every head variable also occurs in the body."""
-    for chain in CandidateRuleChains(candidate_rule).cr_chains:
+    for chain in _candidate_analysis(candidate_rule, _analysis).chains:
         occurs_in_head = any((attribute.i, attribute.j) in head for attribute in chain)
         occurs_in_body = any((attribute.i, attribute.j) in body for attribute in chain)
         if occurs_in_head and not occurs_in_body:
@@ -659,10 +807,91 @@ def is_safe_split(
     return True
 
 
+_PUBLIC_SPLIT_CANDIDATE_RULE = split_candidate_rule
+_PUBLIC_IS_SAFE_SPLIT = is_safe_split
+_PUBLIC_SPLIT_PRUNING = split_pruning
+
+
+def _split_sort_key(
+    split: tuple[set[TableOccurrence], set[TableOccurrence]],
+) -> tuple[tuple[TableOccurrence, ...], tuple[TableOccurrence, ...]]:
+    body, head = split
+    return tuple(sorted(body)), tuple(sorted(head))
+
+
+def _iter_dfs_horn_splits(
+    candidate_rule: CandidateRule,
+    analysis: CandidateAnalysis,
+) -> Iterator[tuple[frozenset[TableOccurrence], frozenset[TableOccurrence]]]:
+    """Stream only Horn splits during DFS; the public helper keeps set semantics."""
+    if split_candidate_rule is not _PUBLIC_SPLIT_CANDIDATE_RULE:
+        splits = split_candidate_rule(candidate_rule)
+        if splits is False:
+            return
+        for body, head in sorted(splits, key=_split_sort_key):
+            if body and len(head) == 1:
+                yield frozenset(body), frozenset(head)
+        return
+
+    occurrences = sorted(analysis.occurrences)
+    for head_occurrence in occurrences:
+        body = frozenset(occurrence for occurrence in occurrences if occurrence != head_occurrence)
+        if not body:
+            continue
+        if any(
+            table == previous_table
+            and previous_occurrence < occurrence
+            and analysis.attribute_signatures[(table, occurrence)]
+            == analysis.attribute_signatures[(previous_table, previous_occurrence)]
+            for table, occurrence in body
+            for previous_table, previous_occurrence in (head_occurrence,)
+        ):
+            continue
+        yield body, frozenset({head_occurrence})
+
+
+def _dfs_is_safe_split(
+    candidate_rule: CandidateRule,
+    body: set[TableOccurrence],
+    head: set[TableOccurrence],
+    analysis: CandidateAnalysis,
+) -> bool:
+    if is_safe_split is not _PUBLIC_IS_SAFE_SPLIT:
+        return is_safe_split(candidate_rule, body, head)
+    return all(
+        not (
+            any((attribute.i, attribute.j) in head for attribute in chain)
+            and not any((attribute.i, attribute.j) in body for attribute in chain)
+        )
+        for chain in analysis.chains
+    )
+
+
+def _dfs_split_pruning(
+    candidate_rule: CandidateRule,
+    body: set[TableOccurrence],
+    head: set[TableOccurrence],
+    db_inspector: AlchemyUtility,
+    mapper: AttributeMapper,
+    analysis: CandidateAnalysis,
+) -> tuple[bool, float, float]:
+    if split_pruning is not _PUBLIC_SPLIT_PRUNING:
+        return split_pruning(candidate_rule, body, head, db_inspector, mapper)
+    return split_pruning(
+        candidate_rule,
+        body,
+        head,
+        db_inspector,
+        mapper,
+        _analysis=analysis,
+    )
+
+
 def instantiate_tgd(
     candidate_rule: CandidateRule,
     split: tuple[set[TableOccurrence], set[TableOccurrence]],
     mapper: AttributeMapper,
+    _analysis: CandidateAnalysis | None = None,
 ) -> str:
     """
     This function instantiates a tuple-generating dependency (TGD) from a candidate rule and a split.
@@ -678,7 +907,9 @@ def instantiate_tgd(
     :return: A string representing the instantiated TGD.
     """
     # Step 1: Determine the equivalence classes from the candidate rule
-    cr_chains = CandidateRuleChains(candidate_rule).cr_chains
+    if _analysis is None:
+        _analysis = _ACTIVE_ANALYSIS_CACHE
+    cr_chains = _candidate_analysis(candidate_rule, _analysis).chains
     # Step 2: Assign variables to each equivalence class
     variable_assignment = assign_variables(cr_chains, split)
     # Step 3: Construct the predicates
@@ -860,6 +1091,7 @@ def calculate_support(
     db_inspector: AlchemyUtility,
     mapper: AttributeMapper,
     total_tuples: int = None,
+    _analysis: CandidateAnalysis | None = None,
 ) -> float:
     """
     Calculate the support of a candidate rule.
@@ -869,9 +1101,10 @@ def calculate_support(
     :param mapper: An instance of AttributeMapper for mapping indexed attributes to actual database attributes.
     :return: The support value as a float.
     """
-    cr_chains = CandidateRuleChains(candidate_rule).cr_chains
+    analysis = _candidate_analysis(candidate_rule, _analysis)
+    cr_chains = analysis.chains
 
-    x_chains = CandidateRuleChains(candidate_rule).get_x_chains(
+    x_chains = analysis.get_x_chains(
         body, head, mapper, select_body=True
     )
 
@@ -940,6 +1173,7 @@ def calculate_confidence(
     db_inspector: AlchemyUtility,
     mapper: AttributeMapper,
     total_tuples: int = None,
+    _analysis: CandidateAnalysis | None = None,
 
 ) -> float:
     """
@@ -952,10 +1186,11 @@ def calculate_confidence(
     :return: The confidence value as a float.
     """
     # total_tuples = prediction(candidate_rule, mapper, db_inspector, body, head)
-    x_chains = CandidateRuleChains(candidate_rule).get_x_chains(
+    analysis = _candidate_analysis(candidate_rule, _analysis)
+    x_chains = analysis.get_x_chains(
         body, head, mapper, select_head=True
     )
-    cr_chains = CandidateRuleChains(candidate_rule).cr_chains
+    cr_chains = analysis.chains
 
     #confidence_conditions: list[tuple[str, int, str, str, int, str]] = []
     # add constraints in head
@@ -1017,6 +1252,7 @@ def next_node_test(
     visited: set[JoinableIndexedAttributes],
     max_table: int = 10,
     max_vars: int = 10,
+    _analysis_cache: CandidateAnalysisCache | None = None,
 ) -> bool:
     """
     This function checks if the next node can be added to the candidate rule.
@@ -1034,13 +1270,13 @@ def next_node_test(
     """
     if next_node in visited:
         return False
-    if not check_table_occurrences(candidate_rule, next_node):
+    if not check_table_occurrences(candidate_rule, next_node, _analysis_cache=_analysis_cache):
         return False
     if not check_minimal_candidate_rule(candidate_rule, next_node):
         return False
-    if not check_max_table(candidate_rule, next_node, max_table):
+    if not check_max_table(candidate_rule, next_node, max_table, _analysis_cache=_analysis_cache):
         return False
-    if not check_max_vars(candidate_rule, next_node, max_vars):
+    if not check_max_vars(candidate_rule, next_node, max_vars, _analysis_cache=_analysis_cache):
         return False
     return True
 def is_start_node(
@@ -1052,7 +1288,9 @@ def is_start_node(
     return len(candidate_rule) == 1
 
 def check_table_occurrences(
-    candidate_rule: set[TableOccurrence], next_node: JoinableIndexedAttributes
+    candidate_rule: set[TableOccurrence],
+    next_node: JoinableIndexedAttributes,
+    _analysis_cache: CandidateAnalysisCache | None = None,
 ) -> bool:
     """
     Check if the table occurrences are consecutive.
@@ -1060,9 +1298,9 @@ def check_table_occurrences(
     :param next_node: next node to add to the candidate rule
     :return: True if the table occurrences are consecutive, False otherwise.
     """
-    test_candidate_rule = copy.deepcopy(candidate_rule)
+    test_candidate_rule = candidate_rule.copy()
     test_candidate_rule.append(next_node)
-    table_occurrences = extract_table_occurrences(test_candidate_rule)
+    table_occurrences = _candidate_analysis(test_candidate_rule, _analysis_cache).occurrences
     test_candidate_rule.pop()
     table_occurrences = sorted(list(table_occurrences))
     tables_occurrences_dict = {}
@@ -1096,7 +1334,7 @@ def check_minimal_candidate_rule(
              If the candidate rule is minimal, the function returns True.
              If the candidate rule is not minimal, the function returns False.
     """
-    test_candidate_rule = copy.deepcopy(candidate_rule)
+    test_candidate_rule = candidate_rule.copy()
     test_candidate_rule.append(next_node)
     parent: dict[IndexedAttribute, IndexedAttribute] = {}
 
@@ -1117,7 +1355,7 @@ def check_minimal_candidate_rule(
 
 def candidate_rule_key(candidate_rule: CandidateRule) -> CandidateRuleKey:
     """Canonical signature of the equality relation induced by a proto-rule."""
-    chains = CandidateRuleChains(candidate_rule).cr_chains
+    chains = _candidate_analysis(candidate_rule).chains
     return tuple(sorted(tuple(chain) for chain in chains))
 
 
@@ -1125,6 +1363,7 @@ def horn_rule_key(
     candidate_rule: CandidateRule,
     body: set[TableOccurrence],
     head: set[TableOccurrence],
+    _analysis: CandidateAnalysis | None = None,
 ) -> HornRuleKey:
     """Canonicalize a Horn rule modulo repeated-occurrence renumbering."""
     if len(head) != 1:
@@ -1152,7 +1391,7 @@ def horn_rule_key(
         table_mappings.append(mappings)
 
     signatures: list[HornRuleKey] = []
-    chains = CandidateRuleChains(candidate_rule).cr_chains
+    chains = _candidate_analysis(candidate_rule, _analysis).chains
     for selected_mappings in product(*table_mappings):
         occurrence_mapping = dict(zip(table_order, selected_mappings, strict=True))
 
@@ -1185,24 +1424,22 @@ def check_max_table(
     candidate_rule: set[TableOccurrence],
     next_node: JoinableIndexedAttributes,
     max_table: int,
+    _analysis_cache: CandidateAnalysisCache | None = None,
 ):
-    test_candidate_rule = copy.deepcopy(candidate_rule)
+    test_candidate_rule = candidate_rule.copy()
     test_candidate_rule.append(next_node)
-    tables = set()
-    for jia in test_candidate_rule:
-        for attr in jia:
-            tables.add(f"{attr.i}_{attr.j}")
-    return len(tables) <= max_table
+    return len(_candidate_analysis(test_candidate_rule, _analysis_cache).occurrences) <= max_table
 
 
 def check_max_vars(
     candidate_rule: set[TableOccurrence],
     next_node: JoinableIndexedAttributes,
     max_vars: int,
+    _analysis_cache: CandidateAnalysisCache | None = None,
 ):
-    test_candidate_rule = copy.deepcopy(candidate_rule)
+    test_candidate_rule = candidate_rule.copy()
     test_candidate_rule.append(next_node)
-    return len(CandidateRuleChains(test_candidate_rule).cr_chains) <= max_vars
+    return len(_candidate_analysis(test_candidate_rule, _analysis_cache).chains) <= max_vars
 
 def build_minimal_chain(chain: set[JoinableIndexedAttributes]):
     """
