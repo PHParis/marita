@@ -656,7 +656,7 @@ def _distributed_worker_loop(
             try:
                 for shard in database_shards:
                     _assert_lease_owned(lease)
-                    _run_audit_shard(config, shard, runtime=runtime)
+                    _run_audit_shard(config, shard, runtime=runtime, lease=lease)
                 _assert_lease_owned(lease)
             finally:
                 runtime.close()
@@ -809,6 +809,7 @@ def _run_audit_shard(
     shard: AuditShard,
     *,
     runtime: AuditRuntime | None = None,
+    lease: QueueLease | None = None,
 ) -> ShardResult:
     paths = _shard_paths(config, shard)
     state = _shard_state(paths)
@@ -850,8 +851,12 @@ def _run_audit_shard(
         if start_index == 0:
             _initialize_rules_csv(paths.csv_path)
         for source in progress:
+            if lease is not None:
+                _assert_lease_owned(lease)
             parsed = parse_source_rule(source)
             record = _audit_rule(config, runtime, parsed, shard.target_index)
+            if lease is not None:
+                _assert_lease_owned(lease)
             _append_record(paths.csv_path, record)
             processed_rules += 1
             _write_shard_state(

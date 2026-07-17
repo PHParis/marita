@@ -331,6 +331,25 @@ def test_cli_audit_reads_distributed_settings_and_auto_host(tmp_path: Path, monk
     assert captured["config"].max_attempts == 4
 
 
+def test_status_only_run_does_not_create_audit_state(tmp_path: Path) -> None:
+    database_dir, results_dir, output_dir = _setup_subsumption_fixture(tmp_path)
+
+    run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            status_only=True,
+            hosts=("h0",),
+            host="h0",
+            show_progress=False,
+        )
+    )
+
+    assert not (output_dir / ".audit_state").exists()
+
+
 def test_alpha_coverage_skips_instance_matching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     database_dir, results_dir, output_dir = _setup_subsumption_fixture(tmp_path)
 
