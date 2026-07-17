@@ -8,7 +8,7 @@ import shutil
 import socket
 from collections import Counter, defaultdict
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -25,7 +25,7 @@ from mahilda.audit.models import (
     ScopeStatus,
     SourceRule,
 )
-from mahilda.audit.parsing import load_source_rules, parse_source_rule
+from mahilda.audit.parsing import load_source_rules, parse_formula, parse_source_rule
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -39,8 +39,10 @@ STATE_FAILED = "failed"
 STATE_INTERRUPTED = "interrupted"
 
 STATE_DIRNAME = ".audit_state"
+CACHE_DIRNAME = ".audit_cache"
 SHARDS_DIRNAME = "shards"
 STATE_VERSION = 1
+CACHE_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,8 @@ class AuditConfig:
     resume: bool = False
     reset_state: bool = False
     status_only: bool = False
+    reuse_cache: bool = False
+    trust_legacy_cache: bool = False
 
 
 @dataclass(frozen=True)
@@ -83,6 +87,7 @@ class AuditShard:
     sources: tuple[SourceRule, ...]
     target_index: TargetRuleIndex
     source_signature: str
+    database_signature: str
     target_signature: str
 
     @property
@@ -135,6 +140,8 @@ class ShardResult:
 
 def run_audit(config: AuditConfig) -> list[AuditRecord]:
     config.output_dir.mkdir(parents=True, exist_ok=True)
+    if config.reuse_cache:
+        return _run_cached_audit(config)
     shards = build_audit_plan(config)
     state_dir = _state_dir(config)
     existing_state = state_dir.exists()
@@ -159,10 +166,215 @@ def run_audit(config: AuditConfig) -> list[AuditRecord]:
 
     records = _collect_records(config, shards)
     _write_outputs(config, records)
+    _write_evaluation_cache(config, shards, records)
     _refresh_run_summary(config, shards)
     if config.strict and any(record.match_status == MatchStatus.UNMATCHED for record in records):
         raise SystemExit(2)
     return records
+
+
+def _run_cached_audit(config: AuditConfig) -> list[AuditRecord]:
+    """Rematch cached evaluations without re-parsing competitors or querying SQLite."""
+    if config.coverage == "instance":
+        raise ValueError("--reuse-cache does not support instance coverage; it requires fresh SQLite projections.")
+    shards = build_audit_plan(config)
+    records, missing_shards = _load_reusable_records(config, shards)
+    if missing_shards:
+        records.extend(_evaluate_missing_shards(config, missing_shards))
+    target_indexes = {shard.database: shard.target_index for shard in shards}
+    rematched: list[AuditRecord] = []
+    for record in records:
+        target_index = target_indexes.get(record.database, _empty_target_rule_index())
+        rematched.append(_rematch_cached_record(config, record, target_index))
+
+    _write_outputs(config, rematched)
+    _write_evaluation_cache(config, shards, rematched)
+    if config.strict and any(record.match_status == MatchStatus.UNMATCHED for record in rematched):
+        raise SystemExit(2)
+    return rematched
+
+
+def _evaluate_missing_shards(config: AuditConfig, shards: list[AuditShard]) -> list[AuditRecord]:
+    """Evaluate only shards absent from the reusable cache."""
+    records: list[AuditRecord] = []
+    for shard in shards:
+        records.extend(_evaluate_shard_records(config, shard))
+    return records
+
+
+def _evaluate_shard_records(config: AuditConfig, shard: AuditShard) -> list[AuditRecord]:
+    runtime = AuditRuntime(target_indexes_by_db={shard.database: shard.target_index})
+    try:
+        progress = tqdm(
+            shard.sources,
+            desc=f"Auditing {shard.algorithm}/{shard.database}",
+            disable=not config.show_progress,
+            unit="rule",
+        )
+        return [_audit_rule(config, runtime, parse_source_rule(source), shard.target_index) for source in progress]
+    finally:
+        runtime.close()
+
+
+def _load_reusable_records(config: AuditConfig, shards: list[AuditShard]) -> tuple[list[AuditRecord], list[AuditShard]]:
+    cache_dir = config.output_dir / CACHE_DIRNAME
+    cache_manifest = cache_dir / "manifest.json"
+    if cache_manifest.exists():
+        manifest = json.loads(cache_manifest.read_text(encoding="utf-8"))
+        _validate_cache_manifest(config, shards, manifest)
+        records: list[AuditRecord] = []
+        missing: list[AuditShard] = []
+        for shard in shards:
+            path = cache_dir / SHARDS_DIRNAME / shard.algorithm / shard.database / "audit_rules.csv"
+            if not path.exists():
+                missing.append(shard)
+                continue
+            cached = _load_records_from_csv(path)
+            if not _cache_records_match_shard(cached, shard):
+                missing.append(shard)
+                continue
+            records.extend(cached)
+        return records, missing
+
+    legacy_path = config.output_dir / "audit_rules.csv"
+    if not config.trust_legacy_cache:
+        raise SystemExit(
+            f"No reusable audit cache found at {cache_dir}. Use --trust-legacy-cache to import {legacy_path}."
+        )
+    if not legacy_path.exists():
+        raise SystemExit(f"Legacy audit cache not found: {legacy_path}")
+
+    legacy_records = _load_records_from_csv(legacy_path)
+    records_by_shard: dict[tuple[str, str], list[AuditRecord]] = defaultdict(list)
+    for record in legacy_records:
+        records_by_shard[(record.algorithm, record.database)].append(record)
+    reusable: list[AuditRecord] = []
+    missing = []
+    for shard in shards:
+        cached = records_by_shard.get((shard.algorithm, shard.database), [])
+        if _cache_records_match_shard(cached, shard):
+            reusable.extend(cached)
+        else:
+            missing.append(shard)
+    return reusable, missing
+
+
+def _cache_records_match_shard(records: list[AuditRecord], shard: AuditShard) -> bool:
+    if len(records) != len(shard.sources):
+        return False
+    by_index = {record.rule_index: record for record in records}
+    return all(
+        source.index in by_index
+        and by_index[source.index].algorithm == shard.algorithm
+        and by_index[source.index].database == shard.database
+        and by_index[source.index].display == source.display
+        for source in shard.sources
+    )
+
+
+def _validate_cache_manifest(config: AuditConfig, shards: list[AuditShard], manifest: dict[str, Any]) -> None:
+    if manifest.get("version") != CACHE_VERSION:
+        raise SystemExit("Audit cache version is incompatible; rerun without --reuse-cache.")
+    expected = _evaluation_manifest(config, shards)
+    if manifest.get("fingerprint") != expected["fingerprint"]:
+        raise SystemExit("Audit cache does not match current evaluation inputs; rerun without --reuse-cache.")
+
+
+def _evaluation_manifest(config: AuditConfig, shards: list[AuditShard]) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "version": CACHE_VERSION,
+        "target": config.target,
+        "walk_length": config.walk_length,
+        "max_tables": config.max_tables,
+        "max_variables": config.max_variables,
+        "disjoint_semantics": config.disjoint_semantics,
+        "joinability": config.joinability,
+        "results_dir": str(config.results_dir),
+        "database_dir": str(config.database_dir),
+        "shards": [
+            {
+                "key": shard.key,
+                "algorithm": shard.algorithm,
+                "database": shard.database,
+                "source_signature": shard.source_signature,
+                "database_signature": shard.database_signature,
+                "target_signature": shard.target_signature,
+                "total_rules": len(shard.sources),
+            }
+            for shard in shards
+        ],
+    }
+    payload["fingerprint"] = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+    return payload
+
+
+def _rematch_cached_record(config: AuditConfig, record: AuditRecord, target_index: TargetRuleIndex) -> AuditRecord:
+    if record.classification in {
+        AuditClassification.PARSE_FAILED,
+        AuditClassification.OUT_OF_SCOPE,
+        AuditClassification.VACUOUS,
+    }:
+        return replace(record, match_status=MatchStatus.NOT_APPLICABLE, matched_rule="")
+    if record.canonical_rule == "" or record.scope_status != ScopeStatus.IN_TARGET_CLASS:
+        return replace(record, match_status=MatchStatus.NOT_APPLICABLE, matched_rule="")
+
+    classification = record.classification
+    if record.confidence is not None:
+        classification = (
+            AuditClassification.COMPARABLE_TRUE
+            if record.confidence >= config.confidence_threshold
+            else AuditClassification.APPROXIMATE
+        )
+    if classification != AuditClassification.COMPARABLE_TRUE:
+        return replace(
+            record,
+            classification=classification,
+            match_status=MatchStatus.NOT_APPLICABLE,
+            coverage_alpha=False,
+            coverage_subsumption=False,
+            coverage_instance=False,
+            claim_relevant=False,
+            diagnosis=classification.value,
+            reason="confidence_below_threshold",
+            matched_rule="",
+        )
+
+    try:
+        rule = parse_formula(record.canonical_rule)
+    except ValueError:
+        return replace(
+            record,
+            classification=AuditClassification.PARSE_FAILED,
+            match_status=MatchStatus.NOT_APPLICABLE,
+            claim_relevant=False,
+            diagnosis=ScopeStatus.NOT_PARSED.value,
+            reason="cached_canonical_rule_unparseable",
+            matched_rule="",
+        )
+    match_status, matched_rule = _match_rule(
+        evaluator=None,
+        rule=rule,
+        coverage=config.coverage,
+        target_index=target_index,
+        projected_head_rows_cache={},
+    )
+    return replace(
+        record,
+        classification=classification,
+        match_status=match_status,
+        coverage_alpha=match_status == MatchStatus.RECALLED_ALPHA,
+        coverage_subsumption=match_status in {MatchStatus.RECALLED_ALPHA, MatchStatus.RECALLED_SUBSUMED},
+        coverage_instance=match_status
+        in {
+            MatchStatus.RECALLED_ALPHA,
+            MatchStatus.RECALLED_SUBSUMED,
+            MatchStatus.COVERED_ON_INSTANCE,
+        },
+        diagnosis=_diagnosis_for_match(match_status),
+        claim_relevant=True,
+        reason="matched" if match_status != MatchStatus.UNMATCHED else "unmatched",
+        matched_rule=matched_rule,
+    )
 
 
 def build_audit_plan(config: AuditConfig) -> list[AuditShard]:
@@ -184,6 +396,7 @@ def build_audit_plan(config: AuditConfig) -> list[AuditShard]:
                     sources=tuple(sources),
                     target_index=target_indexes.get(database, _empty_target_rule_index()),
                     source_signature=_file_signature(sources[0].source_path) if sources else "",
+                    database_signature=_file_signature(database_path),
                     target_signature=_target_signature(config, database),
                 )
             )
@@ -720,7 +933,7 @@ def _has_head_atom_in_body(rule: RelationalRule) -> bool:
 
 def _match_rule(
     *,
-    evaluator: SQLiteRuleEvaluator,
+    evaluator: SQLiteRuleEvaluator | None,
     rule: RelationalRule,
     coverage: str,
     target_index: TargetRuleIndex,
@@ -740,6 +953,8 @@ def _match_rule(
     if coverage != "instance":
         return MatchStatus.UNMATCHED, ""
 
+    if evaluator is None:
+        raise ValueError("Instance coverage requires a live SQLite evaluator.")
     if covered_on_instance(
         evaluator,
         rule,
@@ -832,6 +1047,7 @@ def _write_outputs_in_dir(
     claims_path: Path,
 ) -> None:
     _write_rules_csv(output_dir / "audit_rules.csv", records)
+    _write_funnel_csv(output_dir / "audit_funnel.csv", records)
     _write_summary_json(summary_path, records, config)
     _write_unmatched_markdown(unmatched_path, records, config.max_examples)
     _write_diagnosis_markdown(
@@ -843,6 +1059,20 @@ def _write_outputs_in_dir(
     _write_claims_markdown(claims_path, records, config)
 
 
+def _write_evaluation_cache(config: AuditConfig, shards: list[AuditShard], records: list[AuditRecord]) -> None:
+    cache_dir = config.output_dir / CACHE_DIRNAME
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    records_by_shard: dict[tuple[str, str], list[AuditRecord]] = defaultdict(list)
+    for record in records:
+        records_by_shard[(record.algorithm, record.database)].append(record)
+    for shard in shards:
+        path = cache_dir / SHARDS_DIRNAME / shard.algorithm / shard.database / "audit_rules.csv"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _write_rules_csv(path, records_by_shard.get((shard.algorithm, shard.database), []))
+    manifest = _evaluation_manifest(config, shards)
+    (cache_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
 def _write_rules_csv(path: Path, records: list[AuditRecord]) -> None:
     fieldnames = list(AuditRecord.__dataclass_fields__.keys())
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -850,6 +1080,30 @@ def _write_rules_csv(path: Path, records: list[AuditRecord]) -> None:
         writer.writeheader()
         for record in records:
             writer.writerow({field: getattr(record, field) for field in fieldnames})
+
+
+def _write_funnel_csv(path: Path, records: list[AuditRecord]) -> None:
+    fieldnames = [
+        "algorithm",
+        "total",
+        "parseable",
+        "within_scope",
+        "non_vacuous",
+        "above_threshold",
+        "exactly_recovered",
+        "covered_by_more_general_rule",
+        "unmatched_above_threshold",
+        "parse_failed",
+        "out_of_scope",
+        "vacuous",
+        "below_threshold",
+    ]
+    funnels = _funnel_by_algorithm(records)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for algorithm, funnel in funnels.items():
+            writer.writerow({"algorithm": algorithm, **funnel})
 
 
 def _write_summary_json(path: Path, records: list[AuditRecord], config: AuditConfig) -> None:
@@ -868,6 +1122,7 @@ def _write_summary_json(path: Path, records: list[AuditRecord], config: AuditCon
     payload = {
         "coverage_mode": config.coverage,
         "totals": _totals(records),
+        "funnel_by_algorithm": _funnel_by_algorithm(records),
         "by_scope_status": dict(sorted(by_scope_status.items())),
         "by_diagnosis": dict(sorted(by_diagnosis.items())),
         "by_algorithm": {algorithm: dict(counter) for algorithm, counter in sorted(by_algorithm.items())},
@@ -910,6 +1165,45 @@ def _totals(records: list[AuditRecord]) -> dict[str, int | float]:
         "alpha_or_subsumed_recall": alpha_or_subsumed / comparable if comparable else 0.0,
         "alpha_subsumed_or_instance_recall": alpha_subsumed_or_instance / comparable if comparable else 0.0,
     }
+
+
+def _funnel_by_algorithm(records: list[AuditRecord]) -> dict[str, dict[str, int]]:
+    grouped: dict[str, list[AuditRecord]] = defaultdict(list)
+    for record in records:
+        grouped[record.algorithm].append(record)
+
+    result: dict[str, dict[str, int]] = {}
+    for algorithm, rules in sorted(grouped.items()):
+        parseable = [record for record in rules if record.canonical_rule != ""]
+        within_scope = [
+            record
+            for record in parseable
+            if record.scope_status == ScopeStatus.IN_TARGET_CLASS
+            or record.classification == AuditClassification.VACUOUS
+        ]
+        non_vacuous = [record for record in within_scope if record.classification != AuditClassification.VACUOUS]
+        above_threshold = [
+            record for record in non_vacuous if record.classification == AuditClassification.COMPARABLE_TRUE
+        ]
+        exact = [record for record in above_threshold if record.match_status == MatchStatus.RECALLED_ALPHA]
+        general = [record for record in above_threshold if record.match_status == MatchStatus.RECALLED_SUBSUMED]
+        result[algorithm] = {
+            "total": len(rules),
+            "parseable": len(parseable),
+            "within_scope": len(within_scope),
+            "non_vacuous": len(non_vacuous),
+            "above_threshold": len(above_threshold),
+            "exactly_recovered": len(exact),
+            "covered_by_more_general_rule": len(general),
+            "unmatched_above_threshold": sum(
+                record.match_status == MatchStatus.UNMATCHED for record in above_threshold
+            ),
+            "parse_failed": sum(record.classification == AuditClassification.PARSE_FAILED for record in rules),
+            "out_of_scope": sum(record.classification == AuditClassification.OUT_OF_SCOPE for record in rules),
+            "vacuous": sum(record.classification == AuditClassification.VACUOUS for record in rules),
+            "below_threshold": sum(record.classification == AuditClassification.APPROXIMATE for record in rules),
+        }
+    return result
 
 
 def _write_unmatched_markdown(path: Path, records: list[AuditRecord], max_examples: int) -> None:
@@ -1025,6 +1319,28 @@ def _write_claims_markdown(path: Path, records: list[AuditRecord], config: Audit
         "## Supported Claim Shape",
         "",
     ]
+    funnel_lines = [
+        "## Per-System Funnel",
+        "",
+        "| System | Total | Parseable | In scope | Non-vacuous | Above threshold | Exact | More general | Unmatched |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for algorithm, funnel in _funnel_by_algorithm(records).items():
+        funnel_lines.append(
+            "| {algorithm} | {total} | {parseable} | {within_scope} | {non_vacuous} | "
+            "{above_threshold} | {exactly_recovered} | {covered_by_more_general_rule} | "
+            "{unmatched_above_threshold} |".format(algorithm=algorithm, **funnel)
+        )
+    funnel_lines.extend(
+        [
+            "",
+            "Excluded counts (parse_failed, out_of_scope, vacuous, below_threshold) are in "
+            "audit_summary.json under funnel_by_algorithm.",
+            "",
+        ]
+    )
+    lines[lines.index("## Supported Claim Shape") - 1 : lines.index("## Supported Claim Shape") - 1] = funnel_lines
+
     if comparable == 0:
         lines.append("- No comparable true competitor rules were found, so no empirical coverage claim is supported.")
     elif selected_uncovered == 0:

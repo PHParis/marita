@@ -113,6 +113,14 @@ def test_run_audit_classifies_and_reports(tmp_path: Path) -> None:
     summary = json.loads((output_dir / "audit_summary.json").read_text(encoding="utf-8"))
     assert summary["coverage_mode"] == "alpha"
     assert "in_target_class" in summary["by_scope_status"]
+    funnel = summary["funnel_by_algorithm"]["MATILDA"]
+    assert funnel["total"] == 4
+    assert funnel["parseable"] == 4
+    assert funnel["within_scope"] == 3
+    assert funnel["non_vacuous"] == 2
+    assert funnel["above_threshold"] == 1
+    assert funnel["exactly_recovered"] == 1
+    assert funnel["covered_by_more_general_rule"] == 0
 
     with (output_dir / "audit_rules.csv").open(encoding="utf-8", newline="") as handle:
         row = next(csv.DictReader(handle))
@@ -241,6 +249,79 @@ def test_subsumption_coverage_skips_instance_matching(tmp_path: Path, monkeypatc
         )
     )
 
+    assert [record.match_status for record in records] == [MatchStatus.RECALLED_SUBSUMED]
+
+
+def test_reuse_cache_rematches_without_sqlite_evaluation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_dir, results_dir, output_dir = _setup_subsumption_fixture(tmp_path)
+    run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            coverage="alpha",
+            show_progress=False,
+        )
+    )
+
+    def fail_if_evaluated(*args: object, **kwargs: object) -> object:
+        raise AssertionError("cached rematching must not query SQLite")
+
+    monkeypatch.setattr(SQLiteRuleEvaluator, "evaluate", fail_if_evaluated)
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            coverage="subsumption",
+            show_progress=False,
+            reuse_cache=True,
+        )
+    )
+
+    assert [record.match_status for record in records] == [MatchStatus.RECALLED_SUBSUMED]
+
+
+def test_reuse_legacy_cache_requires_explicit_opt_in(tmp_path: Path) -> None:
+    database_dir, results_dir, output_dir = _setup_subsumption_fixture(tmp_path)
+    run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=False,
+        )
+    )
+    (output_dir / ".audit_cache").rename(output_dir / ".audit_cache_saved")
+
+    with pytest.raises(SystemExit, match="No reusable audit cache found"):
+        run_audit(
+            AuditConfig(
+                results_dir=results_dir,
+                database_dir=database_dir,
+                output_dir=output_dir,
+                competitors=("MATILDA",),
+                coverage="subsumption",
+                show_progress=False,
+                reuse_cache=True,
+            )
+        )
+
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            coverage="subsumption",
+            show_progress=False,
+            reuse_cache=True,
+            trust_legacy_cache=True,
+        )
+    )
     assert [record.match_status for record in records] == [MatchStatus.RECALLED_SUBSUMED]
 
 

@@ -27,6 +27,44 @@ uv run mahilda audit --include-amie-rdf
 uv run mahilda audit --no-progress
 ```
 
+To reuse a previous audit's stored per-rule evaluations and recompute only
+matching and reports, use the cache mode:
+
+```sh
+uv run mahilda audit \
+  --results-dir results/paper_table2 \
+  --database-dir data/relational \
+  --output-dir results/paper_table2/audit \
+  --competitors MATILDA,SPIDER \
+  --coverage subsumption \
+  --reuse-cache \
+  --no-progress
+```
+
+For a pre-cache audit that has only the legacy root CSV, add
+`--trust-legacy-cache` once. Shards already present in that CSV are reused;
+missing competitor shards are evaluated normally:
+
+```sh
+uv run mahilda audit \
+  --results-dir results/paper_table2 \
+  --database-dir data/relational \
+  --output-dir results/paper_table2/audit \
+  --competitors MATILDA,SPIDER \
+  --coverage subsumption \
+  --reuse-cache \
+  --trust-legacy-cache \
+  --no-progress
+```
+
+The first normal audit run writes a validated cache under
+`<output-dir>/.audit_cache/`. Cache reuse does not execute SQLite evaluation.
+It validates source, database, target-result, and scope signatures before
+reusing a shard. The existing pre-cache `audit_rules.csv` can be imported
+once with `--trust-legacy-cache`; that opt-in is required because the legacy
+run did not record provenance metadata. Instance coverage is not available in
+cache mode because it requires fresh SQLite projection queries.
+
 `--strict` exits with code `2` if any comparable true competitor rule is not recovered by MAHILDA.
 Progress bars are enabled by default and show one bar per competitor algorithm. Use `--no-progress` for CI logs or redirected output.
 
@@ -94,6 +132,14 @@ audit_claims.md
 ```
 
 `audit_summary.json` contains totals by algorithm and database.
+
+`audit_funnel.csv` and `audit_summary.json:funnel_by_algorithm` contain the
+per-system funnel: total, parseable, within scope, non-vacuous, above the
+confidence threshold, exactly recovered, covered by a more general rule, and
+unmatched. Exclusions are also explicit as parse-failed, out-of-scope,
+vacuous, and below-threshold counts. Exact alpha-equivalent recovery and
+logical subsumption are separate counts; they are not combined into one
+recovered value.
 
 `audit_rules.csv` contains one row per audited competitor rule: source, classification, reason, recomputed support/confidence, canonical rule, match status, matched MAHILDA rule, and original display string.
 

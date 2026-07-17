@@ -69,6 +69,8 @@ def main(argv: list[str] | None = None) -> int:
     audit_parser.add_argument("--resume", action="store_true")
     audit_parser.add_argument("--reset-state", action="store_true")
     audit_parser.add_argument("--status", action="store_true")
+    audit_parser.add_argument("--reuse-cache", action="store_true")
+    audit_parser.add_argument("--trust-legacy-cache", action="store_true")
 
     import_rdf_parser = subparsers.add_parser("import-rdf", help="Import RDF/Turtle into benchmark artifacts")
     import_rdf_parser.add_argument("--input", required=True)
@@ -206,6 +208,10 @@ def main(argv: list[str] | None = None) -> int:
             audit_args.append("--no-diagnose-unmatched")
         if args.include_amie_rdf:
             audit_args.append("--include-amie-rdf")
+        if args.reuse_cache:
+            audit_args.append("--reuse-cache")
+        if args.trust_legacy_cache:
+            audit_args.append("--trust-legacy-cache")
         return audit.main(audit_args)
 
     if args.command == "import-rdf":

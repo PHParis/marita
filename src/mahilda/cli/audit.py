@@ -37,6 +37,16 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--resume", action="store_true", help="Resume a checkpointed audit run.")
     parser.add_argument("--reset-state", action="store_true", help="Discard checkpoint state and recompute.")
     parser.add_argument("--status", action="store_true", help="Show audit checkpoint status and exit.")
+    parser.add_argument(
+        "--reuse-cache",
+        action="store_true",
+        help="Reuse stored rule evaluations and recompute only matching and reports.",
+    )
+    parser.add_argument(
+        "--trust-legacy-cache",
+        action="store_true",
+        help="Import an existing audit_rules.csv when no evaluation cache manifest exists.",
+    )
     return parser.parse_args(argv)
 
 
@@ -78,6 +88,8 @@ def main(argv: list[str] | None = None) -> int:
         resume=args.resume,
         reset_state=args.reset_state,
         status_only=args.status,
+        reuse_cache=args.reuse_cache,
+        trust_legacy_cache=args.trust_legacy_cache,
     )
     if args.resume and args.reset_state:
         raise SystemExit("--resume and --reset-state are mutually exclusive.")
