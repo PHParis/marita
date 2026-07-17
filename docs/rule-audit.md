@@ -27,6 +27,40 @@ uv run mahilda audit --include-amie-rdf
 uv run mahilda audit --no-progress
 ```
 
+For a shared multi-server run, start the same command on every server. `--host auto`
+uses the server's short hostname, and `--workers` controls local worker processes per
+server. Each queue job owns one database, so competitor shards for one database are
+processed sequentially while different databases run concurrently:
+
+```sh
+uv run mahilda audit \
+  --results-dir results/paper_table2 \
+  --database-dir data/relational \
+  --output-dir results/paper_table2/audit \
+  --hosts tipi00,tipi01,tipi02,tipi04 \
+  --host auto \
+  --workers 2
+```
+
+The output directory must be shared by all servers and support atomic file rename and
+directory creation. All servers must use the same source revision, Python environment,
+database files, results, and audit arguments. Monitor the global queue from any server:
+
+```sh
+uv run mahilda audit \
+  --results-dir results/paper_table2 \
+  --database-dir data/relational \
+  --output-dir results/paper_table2/audit \
+  --hosts tipi00,tipi01,tipi02,tipi04 \
+  --status
+```
+
+Workers write leases and heartbeats under `<output-dir>/.audit_state/queue/`. A stale
+lease is requeued until `--max-attempts` is reached. Use `--resume` after an interrupted
+or failed run; completed database shards are skipped. `--reset-state` refuses to remove
+state while a distributed job is active. The final aggregate reports are written once,
+under a shared finalization lock, after every database job completes.
+
 When the results root comes from `paper-benchmark`, the audit reads
 `<results-dir>/progress/*.json` and `summary*.json` run metadata. Competitor
 rules are audited only for databases whose MAHILDA run is recorded as a

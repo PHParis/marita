@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import socket
 from pathlib import Path
 
 import yaml
@@ -38,7 +39,12 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-examples", type=int, default=25)
     parser.add_argument("--strict", action="store_true", help="Exit 2 if comparable true rules are unmatched.")
     parser.add_argument("--no-progress", action="store_true", help="Disable audit progress bars.")
-    parser.add_argument("--workers", type=int, default=1, help="Run audits concurrently across databases.")
+    parser.add_argument("--workers", type=int, default=None, help="Run audits concurrently across databases.")
+    parser.add_argument("--hosts", default=None, help="Comma-separated hosts participating in the shared audit queue.")
+    parser.add_argument("--host", default=None, help="Host identity, or 'auto' for the local short hostname.")
+    parser.add_argument("--heartbeat-seconds", type=int, default=None)
+    parser.add_argument("--stale-after-seconds", type=int, default=None)
+    parser.add_argument("--max-attempts", type=int, default=None)
     parser.add_argument("--resume", action="store_true", help="Resume a checkpointed audit run.")
     parser.add_argument("--reset-state", action="store_true", help="Discard checkpoint state and recompute.")
     parser.add_argument("--status", action="store_true", help="Show audit checkpoint status and exit.")
@@ -61,6 +67,20 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output_dir) if args.output_dir else results_dir / "audit"
     competitors = tuple(part.strip().upper() for part in args.competitors.split(",") if part.strip())
     settings = _load_audit_settings(Path(args.settings)) if args.settings else {}
+    hosts = _resolve_hosts(args.hosts, settings)
+    host = _resolve_host(args.host, hosts, status=args.status)
+    workers = args.workers if args.workers is not None else _int_setting(settings, "workers_per_host", 1)
+    heartbeat_seconds = (
+        args.heartbeat_seconds
+        if args.heartbeat_seconds is not None
+        else _int_setting(settings, "heartbeat_seconds", 30)
+    )
+    stale_after_seconds = (
+        args.stale_after_seconds
+        if args.stale_after_seconds is not None
+        else _int_setting(settings, "stale_after_seconds", 7200)
+    )
+    max_attempts = args.max_attempts if args.max_attempts is not None else _int_setting(settings, "max_attempts", 3)
     default_config = AuditConfig(results_dir=results_dir, database_dir=Path(args.database_dir), output_dir=output_dir)
     disjoint_setting = bool(settings.get("disjoint_semantics", default_config.disjoint_semantics))
     config = AuditConfig(
@@ -90,7 +110,12 @@ def main(argv: list[str] | None = None) -> int:
         coverage=args.coverage,
         diagnose_unmatched=not args.no_diagnose_unmatched,
         include_amie_rdf=args.include_amie_rdf,
-        workers=args.workers,
+        workers=workers,
+        hosts=tuple(hosts),
+        host=host,
+        heartbeat_seconds=heartbeat_seconds,
+        stale_after_seconds=stale_after_seconds,
+        max_attempts=max_attempts,
         resume=args.resume,
         reset_state=args.reset_state,
         status_only=args.status,
@@ -105,6 +130,7 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(totals, dict):
             raise SystemExit("Invalid audit status payload.")
         totals_dict = {key: int(value) for key, value in totals.items() if key != "shards"}
+        stale = totals_dict.get("stale", 0)
         print(
             "audit status:"
             f" completed={totals_dict['completed']}"
@@ -112,8 +138,19 @@ def main(argv: list[str] | None = None) -> int:
             f" pending={totals_dict['pending']}"
             f" failed={totals_dict['failed']}"
             f" interrupted={totals_dict['interrupted']}"
+            f" stale={stale}"
             f" processed_rules={totals_dict['processed_rules']}/{totals_dict['total_rules']}"
         )
+        jobs = summary.get("shards", [])
+        if not isinstance(jobs, list):
+            jobs = []
+        for job in jobs:
+            if not isinstance(job, dict) or job.get("queue_state") != "running":
+                continue
+            print(
+                f"  {job.get('claimed_by', 'unknown')}  {job.get('database', job.get('job_id'))}"
+                f"  {job.get('processed_rules', 0)}/{job.get('total_rules', 0)} rules"
+            )
         return 0
     run_audit(config)
     return 0
@@ -123,15 +160,25 @@ def _load_audit_settings(settings_path: Path) -> dict[str, object]:
     payload = yaml.safe_load(settings_path.read_text(encoding="utf-8")) or {}
     if not isinstance(payload, dict):
         return {}
+    settings: dict[str, object] = {}
+    audit = payload.get("audit")
+    if isinstance(audit, dict):
+        settings.update(audit)
+    hosts = payload.get("hosts")
+    if "hosts" not in settings and isinstance(hosts, list):
+        settings["hosts"] = hosts
+    workers = payload.get("workers")
+    if "workers_per_host" not in settings and isinstance(workers, int):
+        settings["workers_per_host"] = workers
     algorithm = payload.get("algorithm")
     if isinstance(algorithm, dict):
         parameters = algorithm.get("parameters")
         if isinstance(parameters, dict):
-            return dict(parameters)
+            settings.update(parameters)
     parameters = payload.get("parameters")
     if isinstance(parameters, dict):
-        return dict(parameters)
-    return {}
+        settings.update(parameters)
+    return settings
 
 
 def _int_setting(settings: dict[str, object], key: str, default: int) -> int:
@@ -141,6 +188,33 @@ def _int_setting(settings: dict[str, object], key: str, default: int) -> int:
     if isinstance(value, str):
         return int(value)
     return default
+
+
+def _resolve_hosts(value: str | None, settings: dict[str, object]) -> list[str]:
+    if value:
+        hosts = [host.strip() for host in value.split(",") if host.strip()]
+    else:
+        raw = settings.get("hosts", [])
+        hosts = [str(host) for host in raw] if isinstance(raw, list) else []
+    if len(hosts) != len(set(hosts)):
+        raise SystemExit("Audit hosts must not contain duplicates.")
+    return hosts
+
+
+def _resolve_host(value: str | None, hosts: list[str], *, status: bool = False) -> str | None:
+    if value is None:
+        if status:
+            return None
+        if hosts:
+            value = "auto"
+        else:
+            return None
+    host = socket.gethostname().split(".")[0] if value == "auto" else value
+    if not hosts:
+        raise SystemExit("--host requires a non-empty --hosts list or settings hosts list.")
+    if host not in hosts:
+        raise SystemExit(f"Host {host!r} is not in audit settings hosts: {', '.join(hosts)}")
+    return host
 
 
 if __name__ == "__main__":

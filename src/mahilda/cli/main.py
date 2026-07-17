@@ -66,7 +66,12 @@ def main(argv: list[str] | None = None) -> int:
     audit_parser.add_argument("--max-examples", type=int, default=25)
     audit_parser.add_argument("--strict", action="store_true")
     audit_parser.add_argument("--no-progress", action="store_true")
-    audit_parser.add_argument("--workers", type=int, default=1)
+    audit_parser.add_argument("--workers", type=int, default=None)
+    audit_parser.add_argument("--hosts", default=None)
+    audit_parser.add_argument("--host", default=None)
+    audit_parser.add_argument("--heartbeat-seconds", type=int, default=None)
+    audit_parser.add_argument("--stale-after-seconds", type=int, default=None)
+    audit_parser.add_argument("--max-attempts", type=int, default=None)
     audit_parser.add_argument("--resume", action="store_true")
     audit_parser.add_argument("--reset-state", action="store_true")
     audit_parser.add_argument("--status", action="store_true")
@@ -197,8 +202,18 @@ def main(argv: list[str] | None = None) -> int:
             audit_args.append("--strict")
         if args.no_progress:
             audit_args.append("--no-progress")
-        if args.workers != 1:
+        if args.workers is not None:
             audit_args.extend(["--workers", str(args.workers)])
+        if args.hosts:
+            audit_args.extend(["--hosts", args.hosts])
+        if args.host:
+            audit_args.extend(["--host", args.host])
+        if args.heartbeat_seconds is not None:
+            audit_args.extend(["--heartbeat-seconds", str(args.heartbeat_seconds)])
+        if args.stale_after_seconds is not None:
+            audit_args.extend(["--stale-after-seconds", str(args.stale_after_seconds)])
+        if args.max_attempts is not None:
+            audit_args.extend(["--max-attempts", str(args.max_attempts)])
         if args.resume:
             audit_args.append("--resume")
         if args.reset_state:

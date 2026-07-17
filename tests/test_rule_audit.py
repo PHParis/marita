@@ -493,6 +493,46 @@ def test_run_audit_writes_checkpoint_state_and_shards(tmp_path: Path) -> None:
     assert (output_dir / "shards" / "MATILDA" / "alpha" / "audit_rules.csv").exists()
 
 
+def test_distributed_audit_processes_each_database_as_one_job(tmp_path: Path) -> None:
+    database_dir = tmp_path / "data"
+    results_dir = tmp_path / "results"
+    output_dir = tmp_path / "audit"
+    database_dir.mkdir()
+    for database in ("alpha", "beta"):
+        _write_tiny_database(database_dir, f"{database}.db")
+        _write_results(
+            results_dir,
+            "MAHILDA",
+            database,
+            ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"],
+        )
+        _write_results(
+            results_dir,
+            "MATILDA",
+            database,
+            ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"],
+        )
+
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=False,
+            workers=2,
+            hosts=("h0", "h1"),
+            host="h0",
+        )
+    )
+
+    assert len(records) == 2
+    queue_dir = output_dir / ".audit_state" / "queue"
+    assert len(list((queue_dir / "done").glob("*.json"))) == 2
+    assert (output_dir / ".audit_state" / "finalized.json").exists()
+    assert not (output_dir / ".audit_state" / "finalize.lock").exists()
+
+
 def test_parallel_audit_disables_worker_progress_bars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     database_dir = tmp_path / "data"
     results_dir = tmp_path / "results"

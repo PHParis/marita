@@ -6,8 +6,10 @@ import json
 import os
 import shutil
 import socket
+import time
 from collections import Counter, defaultdict
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +17,19 @@ from typing import TYPE_CHECKING, Any
 
 from tqdm import tqdm
 
+from mahilda.audit.distributed import (
+    LeaseHeartbeat,
+    claim_job,
+    finish_job,
+    initialise_queue,
+    queue_has_failures,
+    queue_is_complete,
+    read_queue_jobs,
+    recover_stale_jobs,
+    release_lock,
+    try_acquire_lock,
+    update_lease,
+)
 from mahilda.audit.evaluator import AuditEvaluationError, SQLiteRuleEvaluator
 from mahilda.audit.matching import covered_on_instance, subsumes
 from mahilda.audit.models import (
@@ -73,6 +88,15 @@ class AuditConfig:
     status_only: bool = False
     reuse_cache: bool = False
     trust_legacy_cache: bool = False
+    hosts: tuple[str, ...] = ()
+    host: str | None = None
+    heartbeat_seconds: int = 30
+    stale_after_seconds: int = 7200
+    max_attempts: int = 3
+
+    @property
+    def distributed(self) -> bool:
+        return bool(self.hosts or self.host)
 
 
 @dataclass(frozen=True)
@@ -164,26 +188,46 @@ def run_audit(config: AuditConfig) -> list[AuditRecord]:
     existing_state = state_dir.exists()
 
     if config.reset_state and existing_state:
+        if config.distributed and _distributed_jobs_running(config):
+            raise SystemExit("Cannot reset active distributed audit state while jobs are running.")
         shutil.rmtree(state_dir)
-    elif existing_state and not (config.resume or config.status_only):
+    elif existing_state and not (config.resume or config.status_only or config.distributed):
         raise SystemExit("Existing audit state found. Use --resume, --status, or --reset-state.")
 
     manifest = _build_manifest(config, shards)
     _initialize_state(config, shards, manifest)
+    if config.distributed:
+        _initialize_distributed_queue(config, shards, manifest)
 
     if config.status_only:
         _refresh_run_summary(config, shards)
         return []
 
     try:
-        _execute_shards(config, shards)
+        if config.distributed:
+            _execute_distributed(config, shards)
+        else:
+            _execute_shards(config, shards)
     except KeyboardInterrupt as exc:
         _refresh_run_summary(config, shards)
         raise SystemExit(130) from exc
 
+    if config.distributed and not _distributed_run_complete(config):
+        _refresh_run_summary(config, shards)
+        raise SystemExit("Distributed audit is incomplete; inspect --status and retry with --resume.")
+
     records = _collect_records(config, shards)
-    _write_outputs(config, records)
-    _write_evaluation_cache(config, shards, records)
+    owns_finalization_lock = not config.distributed or _finalize_distributed(config)
+    if owns_finalization_lock:
+        try:
+            _write_outputs(config, records)
+            _write_evaluation_cache(config, shards, records)
+            if config.distributed:
+                _mark_distributed_finalized(config)
+        except Exception:
+            if config.distributed:
+                _release_finalization_lock(config)
+            raise
     _refresh_run_summary(config, shards)
     if config.strict and any(record.match_status == MatchStatus.UNMATCHED for record in records):
         raise SystemExit(2)
@@ -467,6 +511,11 @@ def build_audit_plan(config: AuditConfig) -> list[AuditShard]:
 
 def get_audit_status(config: AuditConfig) -> dict[str, object]:
     shards = build_audit_plan(config)
+    if config.distributed:
+        state_dir = _state_dir(config)
+        if not (state_dir / "queue" / "manifest.json").exists():
+            return _planned_distributed_status(config, shards)
+        return _distributed_status(config, shards)
     _initialize_state(config, shards, _build_manifest(config, shards))
     return _refresh_run_summary(config, shards)
 
@@ -528,6 +577,201 @@ def _execute_shards(config: AuditConfig, shards: list[AuditShard]) -> None:
                     _refresh_run_summary(config, shards)
     finally:
         progress.close()
+
+
+def _initialize_distributed_queue(
+    config: AuditConfig,
+    shards: list[AuditShard],
+    manifest: dict[str, object],
+) -> None:
+    jobs = [
+        {
+            "job_id": database,
+            "database": database,
+            "shards": [shard.key for shard in shards if shard.database == database],
+            "total_rules": sum(len(shard.sources) for shard in shards if shard.database == database),
+        }
+        for database in sorted({shard.database for shard in shards})
+    ]
+    queue_manifest = {
+        "version": 1,
+        "audit_fingerprint": manifest["fingerprint"],
+        "jobs": jobs,
+        "stale_after_seconds": config.stale_after_seconds,
+        "fingerprint": hashlib.sha256(
+            json.dumps(
+                {"audit_fingerprint": manifest["fingerprint"], "jobs": jobs}, sort_keys=True
+            ).encode("utf-8")
+        ).hexdigest(),
+    }
+    initialise_queue(
+        _queue_dir(config),
+        queue_manifest,
+        jobs,
+        retry_failed=config.resume,
+    )
+
+
+def _execute_distributed(config: AuditConfig, shards: list[AuditShard]) -> None:
+    queue_dir = _queue_dir(config)
+    host = config.host or "local"
+    by_database: dict[str, list[AuditShard]] = defaultdict(list)
+    for shard in shards:
+        by_database[shard.database].append(shard)
+    workers = max(1, config.workers)
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        futures = [
+            executor.submit(_distributed_worker_loop, config, by_database, queue_dir, host)
+            for _ in range(workers)
+        ]
+        for future in futures:
+            future.result()
+
+
+def _distributed_worker_loop(
+    config: AuditConfig,
+    shards_by_database: dict[str, list[AuditShard]],
+    queue_dir: Path,
+    host: str,
+) -> None:
+    while True:
+        recover_stale_jobs(queue_dir, config.stale_after_seconds, max_attempts=config.max_attempts)
+        claimed = claim_job(queue_dir, host)
+        if claimed is None:
+            jobs = read_queue_jobs(queue_dir, stale_after_seconds=config.stale_after_seconds)
+            if any(job.get("queue_state") in {"pending", "running"} for job in jobs):
+                time.sleep(1)
+                continue
+            return
+        lease, payload = claimed
+        heartbeat = LeaseHeartbeat(lease, config.heartbeat_seconds)
+        heartbeat.start()
+        database = str(payload["database"])
+        try:
+            for shard in shards_by_database.get(database, []):
+                _run_audit_shard(config, shard)
+                update_lease(
+                    lease,
+                    {
+                        "processed_shards": sum(
+                            _shard_state(_shard_paths(config, candidate)).get("status") == STATE_COMPLETED
+                            for candidate in shards_by_database.get(database, [])
+                        ),
+                        "processed_rules": sum(
+                            _int_from_state(_shard_state(_shard_paths(config, candidate)).get("processed_rules"))
+                            for candidate in shards_by_database.get(database, [])
+                        ),
+                    },
+                )
+            finish_job(
+                lease,
+                status="done",
+                result={
+                    "database": database,
+                    "shards": [shard.key for shard in shards_by_database.get(database, [])],
+                },
+            )
+        except KeyboardInterrupt:
+            finish_job(lease, status="failed", result={"error": "interrupted", "status": "interrupted"})
+            raise
+        except Exception as exc:
+            finish_job(lease, status="failed", result={"error": str(exc), "status": "error"})
+        finally:
+            heartbeat.stop()
+
+
+def _distributed_run_complete(config: AuditConfig) -> bool:
+    queue_dir = _queue_dir(config)
+    if queue_has_failures(queue_dir):
+        return False
+    return queue_is_complete(queue_dir)
+
+
+def _finalize_distributed(config: AuditConfig) -> bool:
+    marker = _state_dir(config) / "finalized.json"
+    if marker.exists():
+        return False
+    lock = _state_dir(config) / "finalize.lock"
+    if not try_acquire_lock(lock):
+        for _ in range(max(1, config.heartbeat_seconds * 2)):
+            if marker.exists():
+                return False
+            time.sleep(0.5)
+        return False
+    return True
+
+
+def _mark_distributed_finalized(config: AuditConfig) -> None:
+    marker = _state_dir(config) / "finalized.json"
+    try:
+        marker.write_text(json.dumps({"completed_at": _utc_now()}, indent=2), encoding="utf-8")
+    finally:
+        _release_finalization_lock(config)
+
+
+def _release_finalization_lock(config: AuditConfig) -> None:
+    lock = _state_dir(config) / "finalize.lock"
+    with suppress(FileNotFoundError):
+        release_lock(lock)
+
+
+def _distributed_jobs_running(config: AuditConfig) -> bool:
+    return bool(list((_queue_dir(config) / "running").glob("*.json")))
+
+
+def _queue_dir(config: AuditConfig) -> Path:
+    return _state_dir(config) / "queue"
+
+
+def _distributed_status(config: AuditConfig, shards: list[AuditShard]) -> dict[str, object]:
+    jobs = read_queue_jobs(_queue_dir(config), stale_after_seconds=config.stale_after_seconds)
+    total_rules = sum(len(shard.sources) for shard in shards)
+    processed_rules = sum(int(job.get("processed_rules", 0) or 0) for job in jobs)
+    totals = {
+        "shards": len(shards),
+        "pending": sum(job.get("queue_state") == "pending" for job in jobs),
+        "running": sum(job.get("queue_state") == "running" and not job.get("stale") for job in jobs),
+        "completed": sum(job.get("queue_state") == "done" for job in jobs),
+        "failed": sum(job.get("queue_state") == "failed" for job in jobs),
+        "interrupted": 0,
+        "stale": sum(bool(job.get("stale")) for job in jobs),
+        "processed_rules": processed_rules,
+        "total_rules": total_rules,
+    }
+    return {
+        "updated_at": _utc_now(),
+        "totals": totals,
+        "shards": jobs,
+        "finalized": (_state_dir(config) / "finalized.json").exists(),
+    }
+
+
+def _planned_distributed_status(config: AuditConfig, shards: list[AuditShard]) -> dict[str, object]:
+    databases = sorted({shard.database for shard in shards})
+    return {
+        "updated_at": _utc_now(),
+        "totals": {
+            "shards": len(shards),
+            "pending": len(databases),
+            "running": 0,
+            "completed": 0,
+            "failed": 0,
+            "interrupted": 0,
+            "stale": 0,
+            "processed_rules": 0,
+            "total_rules": sum(len(shard.sources) for shard in shards),
+        },
+        "shards": [
+            {
+                "job_id": database,
+                "database": database,
+                "status": "pending",
+                "queue_state": "pending",
+            }
+            for database in databases
+        ],
+        "finalized": False,
+    }
 
 
 def _run_audit_shard(config: AuditConfig, shard: AuditShard) -> ShardResult:
