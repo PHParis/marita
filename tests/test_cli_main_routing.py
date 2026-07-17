@@ -144,23 +144,26 @@ def test_main_routes_audit_distributed_flags(monkeypatch) -> None:
         return 0
 
     monkeypatch.setattr("mahilda.cli.audit.main", fake_audit_main)
-    assert main(
-        [
-            "audit",
-            "--hosts",
-            "h0,h1",
-            "--host",
-            "auto",
-            "--workers",
-            "2",
-            "--heartbeat-seconds",
-            "9",
-            "--stale-after-seconds",
-            "99",
-            "--max-attempts",
-            "4",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "audit",
+                "--hosts",
+                "h0,h1",
+                "--host",
+                "auto",
+                "--workers",
+                "2",
+                "--heartbeat-seconds",
+                "9",
+                "--stale-after-seconds",
+                "99",
+                "--max-attempts",
+                "4",
+            ]
+        )
+        == 0
+    )
     assert "--hosts" in captured["argv"]
     assert "--host" in captured["argv"]
     assert "--heartbeat-seconds" in captured["argv"]

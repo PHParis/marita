@@ -310,16 +310,19 @@ def test_cli_audit_reads_distributed_settings_and_auto_host(tmp_path: Path, monk
     monkeypatch.setattr("mahilda.cli.audit.run_audit", fake_run_audit)
     monkeypatch.setattr("mahilda.cli.audit.socket.gethostname", lambda: "local.example")
 
-    assert audit_main(
-        [
-            "--settings",
-            str(settings_path),
-            "--host",
-            "auto",
-            "--output-dir",
-            str(tmp_path / "audit"),
-        ]
-    ) == 0
+    assert (
+        audit_main(
+            [
+                "--settings",
+                str(settings_path),
+                "--host",
+                "auto",
+                "--output-dir",
+                str(tmp_path / "audit"),
+            ]
+        )
+        == 0
+    )
     assert captured["config"].host == "local"
     assert captured["config"].hosts == ("local",)
     assert captured["config"].workers == 3

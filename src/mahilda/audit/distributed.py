@@ -109,7 +109,9 @@ def _validate_manifest(manifest_path: Path, manifest: dict[str, Any]) -> None:
     try:
         existing = read_json(manifest_path)
     except (FileNotFoundError, OSError, ValueError):
-        raise SystemExit("Distributed audit queue manifest is missing or invalid. Use --reset-state to restart.") from None
+        raise SystemExit(
+            "Distributed audit queue manifest is missing or invalid. Use --reset-state to restart."
+        ) from None
     if existing.get("fingerprint") != manifest.get("fingerprint"):
         raise SystemExit("Distributed audit queue does not match current inputs. Use --reset-state to restart.")
 

@@ -15,6 +15,7 @@ from mahilda.audit.distributed import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+
 def _queue(tmp_path: Path) -> Path:
     queue_dir = tmp_path / "queue"
     initialise_queue(

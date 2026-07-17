@@ -189,6 +189,8 @@ def run_audit(config: AuditConfig) -> list[AuditRecord]:
     if config.reuse_cache:
         return _run_cached_audit(config)
     shards = build_audit_plan(config)
+    if config.status_only:
+        return []
     state_dir = _state_dir(config)
     existing_state = state_dir.exists()
 
@@ -203,10 +205,6 @@ def run_audit(config: AuditConfig) -> list[AuditRecord]:
     _initialize_state(config, shards, manifest)
     if config.distributed:
         _initialize_distributed_queue(config, shards, manifest)
-
-    if config.status_only:
-        _refresh_run_summary(config, shards)
-        return []
 
     try:
         if config.distributed:
@@ -604,9 +602,7 @@ def _initialize_distributed_queue(
         "jobs": jobs,
         "stale_after_seconds": config.stale_after_seconds,
         "fingerprint": hashlib.sha256(
-            json.dumps(
-                {"audit_fingerprint": manifest["fingerprint"], "jobs": jobs}, sort_keys=True
-            ).encode("utf-8")
+            json.dumps({"audit_fingerprint": manifest["fingerprint"], "jobs": jobs}, sort_keys=True).encode("utf-8")
         ).hexdigest(),
     }
     initialise_queue(
@@ -627,8 +623,7 @@ def _execute_distributed(config: AuditConfig, shards: list[AuditShard]) -> None:
     workers = max(1, config.workers)
     with ProcessPoolExecutor(max_workers=workers) as executor:
         futures = [
-            executor.submit(_distributed_worker_loop, config, by_database, queue_dir, host)
-            for _ in range(workers)
+            executor.submit(_distributed_worker_loop, config, by_database, queue_dir, host) for _ in range(workers)
         ]
         for future in futures:
             future.result()
