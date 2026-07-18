@@ -17,6 +17,18 @@ from mahilda.utils.tgd_factory import TGDRuleFactory
 logger = logging.getLogger(__name__)
 
 
+class RuleConversionError(RuntimeError):
+    """Raised when a discovered candidate cannot be represented as a rule."""
+
+    def __init__(self, failures: list[str]) -> None:
+        self.failure_count = len(failures)
+        self.failures = tuple(failures)
+        preview = "\n".join(f"- {failure}" for failure in failures[:5])
+        if self.failure_count > 5:
+            preview += f"\n- ... {self.failure_count - 5} more conversion failures"
+        super().__init__(f"Failed to convert {self.failure_count} discovered rule(s):\n{preview}")
+
+
 @dataclass(frozen=True)
 class HornRuleExtended:
     """Compatibility data structure for legacy consumers of MAHILDA."""
@@ -261,6 +273,7 @@ class MAHILDA(BaseAlgorithm):
         mahilda_core.APPLY_FULL_JOINABILITY = joinability == "full"
 
         start_time = time.time()
+        conversion_failures: list[str] = []
 
         try:
             if should_stop and should_stop():
@@ -300,6 +313,7 @@ class MAHILDA(BaseAlgorithm):
                 if not candidate_rule:
                     continue
 
+                tgd_str = "<unavailable>"
                 try:
                     candidate_rule_list = cast(Any, candidate_rule)
                     split_body = cast(set[Any], body)
@@ -324,8 +338,12 @@ class MAHILDA(BaseAlgorithm):
                         confidence=float(confidence),
                     )
                 except Exception as exc:
-                    logger.warning("Failed to instantiate rule %r: %s", tgd_str, exc, exc_info=True)
-                    continue
+                    failure = f"{tgd_str}: {exc}"
+                    conversion_failures.append(failure)
+                    logger.error("Failed to convert discovered rule: %s", failure, exc_info=True)
+
+            if conversion_failures:
+                raise RuleConversionError(conversion_failures)
 
         finally:
             mahilda_core.APPLY_DISJOINT = previous_disjoint

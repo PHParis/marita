@@ -68,6 +68,38 @@ def test_rule_io_round_trip_tgd_rule() -> None:
     assert restored == rule
 
 
+def test_save_rules_to_json_replaces_target_atomically(tmp_path) -> None:
+    path = tmp_path / "rules.json"
+    path.write_text("old", encoding="utf-8")
+
+    written = RuleIO.save_rules_to_json(
+        [
+            MARITARule(
+                body=(Predicate("row", "table___sep___left", "x"),),
+                head=(Predicate("row", "table___sep___right", "y"),),
+                display="rule",
+                support=1,
+                confidence=1.0,
+            )
+        ],
+        str(path),
+    )
+
+    assert written == 1
+    assert len(json.loads(path.read_text(encoding="utf-8"))) == 1
+    assert not list(tmp_path.glob(".rules.json.*.tmp"))
+
+
+def test_save_rules_to_json_keeps_existing_target_when_serialization_fails(tmp_path) -> None:
+    path = tmp_path / "rules.json"
+    path.write_text("old", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unknown rule type"):
+        RuleIO.save_rules_to_json(["not-a-rule"], str(path))  # type: ignore[list-item]
+
+    assert path.read_text(encoding="utf-8") == "old"
+
+
 def test_rule_io_round_trip_relation_name_with_spaces() -> None:
     rule = MARITARule(
         body=(Predicate("id", "Order Details_0", "x0"),),

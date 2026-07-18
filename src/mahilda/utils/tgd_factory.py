@@ -3,7 +3,9 @@ import re
 from collections import Counter
 
 from mahilda.utils.relation_names import (
+    RelationAtom,
     internal_relation_name,
+    parse_relation_atom,
     parse_relation_reference,
     split_conjuncts,
     split_implication,
@@ -26,9 +28,68 @@ class TGDRuleFactory:
         if head_str.strip().startswith("∃") and ":" in head_str:
             head_str = head_str.split(":", maxsplit=1)[1]
 
-        body = tuple(PredicateUtils.str_to_predicate(atom) for atom in split_conjuncts(body_str))
-        head = tuple(PredicateUtils.str_to_predicate(atom) for atom in split_conjuncts(head_str))
+        body_atoms = split_conjuncts(body_str)
+        head_atoms = split_conjuncts(head_str)
+        parsed_atoms: list[RelationAtom | tuple[Predicate, ...]] = []
+        for atom in (*body_atoms, *head_atoms):
+            try:
+                parsed_atoms.append(parse_relation_atom(atom))
+            except ValueError as parse_error:
+                try:
+                    parsed_atoms.append((PredicateUtils.str_to_predicate(atom),))
+                except ValueError as predicate_error:
+                    raise ValueError(f"Invalid atom {atom!r} in TGD {tgd_str!r}: {parse_error}") from predicate_error
+
+        logical_variables = {
+            variable
+            for parsed_atom in parsed_atoms
+            for variable in TGDRuleFactory._atom_variables(parsed_atom)
+        }
+        row_variables = TGDRuleFactory._fresh_row_variables(len(parsed_atoms), logical_variables)
+        predicates_by_atom = [
+            TGDRuleFactory._atom_to_predicates(parsed_atom, row_variable)
+            for parsed_atom, row_variable in zip(parsed_atoms, row_variables, strict=True)
+        ]
+        body = tuple(predicate for predicates in predicates_by_atom[: len(body_atoms)] for predicate in predicates)
+        head = tuple(predicate for predicates in predicates_by_atom[len(body_atoms) :] for predicate in predicates)
         return TGDRule(body=body, head=head, display=tgd_str, accuracy=support, confidence=confidence)
+
+    @staticmethod
+    def _fresh_row_variables(count: int, reserved: set[str]) -> tuple[str, ...]:
+        variables: list[str] = []
+        candidate = 0
+        while len(variables) < count:
+            variable = f"__row_{candidate}"
+            candidate += 1
+            if variable in reserved:
+                continue
+            variables.append(variable)
+        return tuple(variables)
+
+    @staticmethod
+    def _atom_variables(atom: RelationAtom | tuple[Predicate, ...]) -> set[str]:
+        if isinstance(atom, RelationAtom):
+            return {variable for _, variable in atom.terms}
+        return {variable for predicate in atom for variable in predicate[:1] + predicate[2:]}
+
+    @staticmethod
+    def _atom_to_predicates(
+        atom: RelationAtom | tuple[Predicate, ...], row_variable: str
+    ) -> tuple[Predicate, ...]:
+        if not isinstance(atom, RelationAtom):
+            return atom
+        relation = internal_relation_name(atom.table, atom.occurrence, atom.has_occurrence)
+        if len(atom.terms) == 1:
+            column, variable = atom.terms[0]
+            return (Predicate(variable1=column, relation=relation, variable2=variable),)
+        return tuple(
+            Predicate(
+                variable1=row_variable,
+                relation=f"{relation}___sep___{column}",
+                variable2=variable,
+            )
+            for column, variable in atom.terms
+        )
 
     @classmethod
     def create_from_ilp_display(cls, display: str, accuracy: float) -> TGDRule:

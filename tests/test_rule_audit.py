@@ -82,6 +82,29 @@ def test_audit_matches_quoted_and_structured_relation_names(tmp_path: Path) -> N
     assert records[0].match_status == MatchStatus.RECALLED_ALPHA
 
 
+def test_audit_alpha_matches_multi_column_body_rule(tmp_path: Path) -> None:
+    database_dir = tmp_path / "data"
+    results_dir = tmp_path / "results"
+    output_dir = tmp_path / "audit"
+    database_dir.mkdir()
+    _write_tiny_database(database_dir, "tiny.db")
+    display = "∀ x0, y0: child_0(parent_id=x0, id=y0) ⇒ parent_0(id=x0)"
+    _write_results(results_dir, "MAHILDA", "tiny", [display])
+    _write_results(results_dir, "MATILDA", "tiny", [display])
+
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=False,
+        )
+    )
+
+    assert records[0].match_status == MatchStatus.RECALLED_ALPHA
+
+
 def test_sqlite_evaluator_recomputes_confidence(tmp_path: Path) -> None:
     db_path = _write_tiny_database(tmp_path)
     evaluator = SQLiteRuleEvaluator(db_path)

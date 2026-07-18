@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from mahilda.algorithms import mahilda as mahilda_module
-from mahilda.algorithms.mahilda import MAHILDA, HornRuleExtended
+from mahilda.algorithms.mahilda import MAHILDA, HornRuleExtended, RuleConversionError
 from mahilda.algorithms.mahilda_core.constraint_graph import IndexedAttribute, JoinableIndexedAttributes
 from mahilda.utils.rules import Predicate, TGDRule
 
@@ -41,7 +43,7 @@ def test_discover_rules_handles_empty_jia_and_restores_globals(monkeypatch) -> N
     assert old_full_join == mahilda_module.mahilda_core.APPLY_FULL_JOINABILITY
 
 
-def test_discover_rules_yields_only_single_head_and_skips_errors(monkeypatch) -> None:
+def test_discover_rules_yields_only_single_head_and_fails_on_conversion_errors(monkeypatch) -> None:
     algorithm = MAHILDA(database=object(), settings={"timeout": 100})
 
     ia1 = IndexedAttribute(0, 0, 0)
@@ -56,6 +58,7 @@ def test_discover_rules_yields_only_single_head_and_skips_errors(monkeypatch) ->
         del args, kwargs
         yield [jia], ({(0, 0)}, {(1, 0)}), (1, 0.8)
         yield [jia], ({(0, 0)}, {(1, 0)}), (1, 0.5)
+        yield [jia], ({(0, 0)}, {(1, 0)}), (1, 0.2)
 
     calls = {"n": 0}
 
@@ -78,9 +81,11 @@ def test_discover_rules_yields_only_single_head_and_skips_errors(monkeypatch) ->
     monkeypatch.setattr(mahilda_module, "instantiate_tgd", lambda *args, **kwargs: "∀ x: A(x=x) ⇒ B(x=x)")
     monkeypatch.setattr(mahilda_module.TGDRuleFactory, "str_to_tgd", fake_str_to_tgd)
 
-    rules = list(algorithm.discover_rules())
-    assert len(rules) == 1
-    assert rules[0].support == 1
+    iterator = algorithm.discover_rules()
+    first_rule = next(iterator)
+    assert first_rule.support == 1
+    with pytest.raises(RuleConversionError, match="Failed to convert 1 discovered rule"):
+        list(iterator)
 
 
 def test_discover_rules_respects_should_stop_and_timeout(monkeypatch) -> None:

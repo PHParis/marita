@@ -1,5 +1,8 @@
 import json
 import logging
+import os
+import tempfile
+from contextlib import suppress
 from dataclasses import asdict
 
 from mahilda.utils.rules import (
@@ -124,8 +127,27 @@ class RuleIO:
     @staticmethod
     def save_rules_to_json(rules: list[Rule], filepath: str) -> int:
         rules_generated = [RuleIO.rule_to_dict(rule) for rule in rules]
-        with open(filepath, "w") as f:
-            json.dump(rules_generated, f, indent=4)
+        target = os.fspath(filepath)
+        parent = os.path.dirname(target) or "."
+        temporary_path: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=parent,
+                prefix=f".{os.path.basename(target)}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temporary_path = handle.name
+                json.dump(rules_generated, handle, indent=4)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_path, target)
+        finally:
+            if temporary_path is not None:
+                with suppress(FileNotFoundError):
+                    os.unlink(temporary_path)
         return len(rules_generated)
 
     @staticmethod
