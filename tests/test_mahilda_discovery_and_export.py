@@ -88,6 +88,36 @@ def test_discover_rules_yields_only_single_head_and_fails_on_conversion_errors(m
         list(iterator)
 
 
+def test_discover_rules_emits_multi_column_body_without_conversion_loss(monkeypatch) -> None:
+    algorithm = MAHILDA(database=object(), settings={"support_threshold": 1})
+    ia1 = IndexedAttribute(0, 0, 0)
+    ia2 = IndexedAttribute(1, 0, 0)
+    jia = JoinableIndexedAttributes(ia1, ia2)
+
+    monkeypatch.setattr(mahilda_module, "init", lambda *args, **kwargs: (object(), object(), [jia]))
+    monkeypatch.setattr(
+        mahilda_module,
+        "dfs",
+        lambda *args, **kwargs: iter(
+            [([jia], ({(0, 0)}, {(1, 0)}), (1, 1.0))]
+        ),
+    )
+    monkeypatch.setattr(
+        mahilda_module,
+        "instantiate_tgd",
+        lambda *args, **kwargs: (
+            "∀ x0, y0: child_0(parent_id=x0, id=y0) ⇒ parent_0(id=x0)"
+        ),
+    )
+
+    rules = list(algorithm.discover_rules())
+
+    assert len(rules) == 1
+    assert len(rules[0].body) == 2
+    assert len(rules[0].head) == 1
+    assert rules[0].body[0].variable1 == rules[0].body[1].variable1
+
+
 def test_discover_rules_respects_should_stop_and_timeout(monkeypatch) -> None:
     algorithm = MAHILDA(database=object())
 
