@@ -153,7 +153,25 @@ def test_metadata_helpers_and_foreign_keys() -> None:
     assert util._get_attribute_is_key("a", "id") is True
 
     fk = util._get_foreign_keys()
-    assert fk["a"]["b_id"] == ("b", "id")
+    assert fk["a"]["b_id"] == (("b", "id"),)
+
+
+def test_foreign_keys_preserve_multiple_targets_for_one_local_column() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    metadata = MetaData()
+    Table("first", metadata, Column("id", Integer, primary_key=True))
+    Table("second", metadata, Column("id", Integer, primary_key=True))
+    Table(
+        "source",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("value", Integer, ForeignKey("first.id"), ForeignKey("second.id")),
+    )
+    metadata.create_all(engine)
+
+    util = _utility(engine, metadata)
+
+    assert util._get_foreign_keys()["source"]["value"] == (("first", "id"), ("second", "id"))
 
 
 def test_color_formatter_wraps_message() -> None:

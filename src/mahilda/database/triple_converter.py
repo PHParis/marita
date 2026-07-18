@@ -8,6 +8,8 @@ from sqlalchemy import MetaData, select
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
+    from mahilda.database.foreign_keys import ForeignKeyMap
+
 
 class TripleConverter:
     """
@@ -51,41 +53,36 @@ class TripleConverter:
                     if attribute in fk_columns:
                         # Foreign key triple
                         try:
-                            ref_table, ref_column = fk_columns[attribute]
-                            # Skip if foreign key column is missing
-                            if ref_column not in row_dict or row_dict[ref_column] is None:
-                                # self.logger.warning(
-                                #    f"Missing foreign key column '{ref_column}' for row {row_dict}, skipping."
-                                # )
-                                continue
+                            for ref_table, ref_column in fk_columns[attribute]:
+                                # A local column may reference more than one target.
+                                ref_pk_columns = primary_keys.get(ref_table, [])
+                                if not ref_pk_columns:
+                                    self.logger.warning(f"Referenced table {ref_table} has no PK. Skipping.")
+                                    continue
 
-                            ref_pk_columns = primary_keys.get(ref_table, [])
-                            if not ref_pk_columns:
-                                self.logger.warning(f"Referenced table {ref_table} has no PK. Skipping.")
-                                continue
-
-                            # Build FK dict with all available PK columns from current row
-                            # For composite PKs, we need all columns present in the current row
-                            row_dict_fk: dict[str, Any] = {}
-                            missing_pk_columns = []
-                            for pk_col in ref_pk_columns:
-                                if pk_col in row_dict and row_dict[pk_col] is not None:
-                                    row_dict_fk[pk_col] = row_dict[pk_col]
+                                row_dict_fk: dict[str, Any] = {}
+                                missing_pk_columns = []
+                                if len(ref_pk_columns) == 1:
+                                    reference_value = row_dict.get(ref_column, row_dict[attribute])
+                                    if reference_value is None:
+                                        continue
+                                    row_dict_fk[ref_pk_columns[0]] = reference_value
                                 else:
-                                    missing_pk_columns.append(pk_col)
+                                    for pk_col in ref_pk_columns:
+                                        if pk_col in row_dict and row_dict[pk_col] is not None:
+                                            row_dict_fk[pk_col] = row_dict[pk_col]
+                                        else:
+                                            missing_pk_columns.append(pk_col)
+                                if missing_pk_columns:
+                                    if self.logger.isEnabledFor(logging.DEBUG):
+                                        self.logger.debug(
+                                            f"Skipping FK triple for {table_name}.{attribute}: "
+                                            f"missing columns {missing_pk_columns} needed for {ref_table} PK"
+                                        )
+                                    continue
 
-                            # If any PK column is missing, skip this FK triple
-                            if missing_pk_columns:
-                                # Only log at debug level to reduce noise
-                                if self.logger.isEnabledFor(logging.DEBUG):
-                                    self.logger.debug(
-                                        f"Skipping FK triple for {table_name}.{attribute}: "
-                                        f"missing columns {missing_pk_columns} needed for {ref_table} PK"
-                                    )
-                                continue
-
-                            ref_subject = self._generate_rdf_id(ref_table, ref_pk_columns, row_dict_fk)
-                            triples.append((subject, predicate, ref_subject))
+                                ref_subject = self._generate_rdf_id(ref_table, ref_pk_columns, row_dict_fk)
+                                triples.append((subject, predicate, ref_subject))
                         except Exception as e:
                             self.logger.error(f"Error processing foreign key for table {table_name}: {e}")
                     elif attribute not in pk_columns:
@@ -98,16 +95,17 @@ class TripleConverter:
     def _get_table_names(self) -> list[str]:
         return sorted(self.metadata.tables.keys())
 
-    def _get_foreign_keys(self) -> dict[str, dict[str, tuple[str, str]]]:
-        foreign_keys_info: dict[str, dict[str, tuple[str, str]]] = {}
+    def _get_foreign_keys(self) -> ForeignKeyMap:
+        foreign_keys_info: ForeignKeyMap = {}
         for table_name, table in self.metadata.tables.items():
             for fk in table.foreign_keys:
                 ref_table = fk.column.table.name
                 local_column = fk.parent.name
                 reference_column = fk.column.name
-                if table_name not in foreign_keys_info:
-                    foreign_keys_info[table_name] = {}
-                foreign_keys_info[table_name][local_column] = (ref_table, reference_column)
+                targets = foreign_keys_info.setdefault(table_name, {}).setdefault(local_column, ())
+                foreign_keys_info[table_name][local_column] = tuple(
+                    sorted(set(targets) | {(ref_table, reference_column)})
+                )
         return foreign_keys_info
 
     def _get_primary_keys(self, table_name: str) -> list[str]:

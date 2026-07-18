@@ -2,6 +2,13 @@ import logging
 import re
 from collections import Counter
 
+from mahilda.utils.relation_names import (
+    internal_relation_name,
+    parse_relation_reference,
+    split_conjuncts,
+    split_implication,
+    split_relation_atom,
+)
 from mahilda.utils.rules import Predicate, PredicateUtils, TGDRule
 
 
@@ -10,27 +17,18 @@ class TGDRuleFactory:
 
     @staticmethod
     def str_to_tgd(tgd_str: str, support: float, confidence: float) -> TGDRule:
-        pattern = r"∀ (.*): (.*?) ⇒ (∃.*:)?(.*?)$"
-        match = re.match(pattern, tgd_str)
+        try:
+            body_str, head_str = split_implication(tgd_str)
+        except ValueError as exc:
+            raise ValueError(f"Invalid TGD string format: {tgd_str}") from exc
+        if body_str.strip().startswith("∀") and ":" in body_str:
+            body_str = body_str.split(":", maxsplit=1)[1]
+        if head_str.strip().startswith("∃") and ":" in head_str:
+            head_str = head_str.split(":", maxsplit=1)[1]
 
-        if match:
-            variables_str, body_str, variables_head_str, head_str = match.groups()
-
-            body_predicates = []
-            for split in body_str.split(" ∧ "):
-                body_pred = PredicateUtils.str_to_predicate(split)
-                body_predicates.append(body_pred)
-            body = tuple(body_predicates)
-
-            head_predicates = []
-            for split in head_str.split(" ∧ "):
-                head_pred = PredicateUtils.str_to_predicate(split)
-                head_predicates.append(head_pred)
-            head = tuple(head_predicates)
-
-            return TGDRule(body=body, head=head, display=tgd_str, accuracy=support, confidence=confidence)
-        else:
-            raise ValueError(f"Invalid TGD string format: {tgd_str}")
+        body = tuple(PredicateUtils.str_to_predicate(atom) for atom in split_conjuncts(body_str))
+        head = tuple(PredicateUtils.str_to_predicate(atom) for atom in split_conjuncts(head_str))
+        return TGDRule(body=body, head=head, display=tgd_str, accuracy=support, confidence=confidence)
 
     @classmethod
     def create_from_ilp_display(cls, display: str, accuracy: float) -> TGDRule:
@@ -78,10 +76,9 @@ class TGDRuleFactory:
 
     def _create_predicates_from_relation(self, relation_str: str) -> list[Predicate]:
         sep_relation_variable = "___sep___"
-        match = re.match(r"(\w+)\(([^)]*)\)", relation_str.strip())
-        if not match:
-            raise ValueError(f"Invalid relation string: {relation_str}")
-        relation, vars_str = match.groups()
+        relation, vars_str = split_relation_atom(relation_str.strip())
+        table, occurrence, has_occurrence = parse_relation_reference(relation)
+        relation = internal_relation_name(table, occurrence, has_occurrence)
         variables = [v.strip() for v in vars_str.split(",")]
 
         predicates = []

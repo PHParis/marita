@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from mahilda.utils.relation_names import canonical_relation_reference
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -75,7 +77,7 @@ class RelationalRule:
 
         def normalize_atom(atom: Atom) -> str:
             terms = ",".join(f"{column}={normalize_var(variable)}" for column, variable in sorted(atom.terms))
-            return f"{atom.table}({terms})"
+            return f"{canonical_relation_reference(atom.table)}({terms})"
 
         body = sorted(self.body, key=lambda atom: (atom.table, atom.occurrence, atom.terms))
         body_key = " & ".join(normalize_atom(atom) for atom in body)

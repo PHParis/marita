@@ -18,6 +18,27 @@ def test_str_to_tgd_valid() -> None:
     assert len(tgd.head) == 1
 
 
+@pytest.mark.parametrize("table", ["Order Details", "Metadata - Countries", "table_0"])
+def test_str_to_tgd_supports_quoted_relation_names(table: str) -> None:
+    tgd = TGDRuleFactory.str_to_tgd(
+        f'∀ x0: "{table}"_0(id=x0) ⇒ parent_0(id=x0)',
+        support=1,
+        confidence=1,
+    )
+
+    assert tgd.body[0].relation == f"{table}_0"
+
+
+def test_str_to_tgd_ignores_implication_text_inside_quoted_relation_name() -> None:
+    tgd = TGDRuleFactory.str_to_tgd(
+        '∀ x0: "left => right"_0(id=x0) ⇒ parent_0(id=x0)',
+        support=1,
+        confidence=1,
+    )
+
+    assert tgd.body[0].relation == "left => right_0"
+
+
 def test_str_to_tgd_invalid_raises() -> None:
     with pytest.raises(ValueError):
         TGDRuleFactory.str_to_tgd("not a tgd", support=0.1, confidence=0.2)

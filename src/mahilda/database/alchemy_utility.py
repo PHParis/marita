@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from mahilda.database.data_exporter import DataExporter
 from mahilda.database.database_connection_manager import DatabaseConnectionManager
+from mahilda.database.foreign_keys import normalise_foreign_key_targets
 from mahilda.database.index_manager import IndexManager
 from mahilda.database.query_utility import QueryUtility
 from mahilda.database.triple_converter import TripleConverter
@@ -220,16 +221,17 @@ class AlchemyUtility:
         log_level: str = "error",
     ) -> bool:
         foreign_keys = self.query_utility._get_foreign_keys()
-        if table in foreign_keys and column in foreign_keys[table]:
-            referenced_table, referenced_column = foreign_keys[table][column]
-            if referenced_table == other_table and referenced_column == other_column:
-                return True
-            if log_errors:
-                log_msg = (
-                    f"Incorrect foreign key for table '{table}': '{column}' references "
-                    f"'{referenced_table}.{referenced_column}' instead of '{other_table}.{other_column}'."
-                )
-                self._log_foreign_key_message(log_msg, log_level)
+        targets = normalise_foreign_key_targets(foreign_keys.get(table, {}).get(column, ()))
+        if (other_table, other_column) in targets:
+            return True
+        if targets and log_errors:
+            references = ", ".join(f"'{target}.{attribute}'" for target, attribute in targets)
+            log_msg = (
+                f"Incorrect foreign key for table '{table}': '{column}' references {references} "
+                f"instead of '{other_table}.{other_column}'."
+            )
+            self._log_foreign_key_message(log_msg, log_level)
+        if targets:
             return False
 
         if log_errors:

@@ -7,8 +7,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable, Iterator
 from itertools import chain as iter_chain
-from itertools import combinations
-from itertools import permutations, product
+from itertools import combinations, permutations, product
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +23,8 @@ from mahilda.algorithms.mahilda_core.constraint_graph import (
     jia_sort_key,
 )
 from mahilda.database.alchemy_utility import AlchemyUtility
+from mahilda.database.foreign_keys import normalise_foreign_key_targets
+from mahilda.utils.relation_names import format_relation_reference
 from mahilda.utils.rules import Predicate, TGDRule
 
 # from runs_utils.postprocessing.analytics.generate_overall_table import logger
@@ -186,11 +187,14 @@ def _foreign_key_attribute_pairs(
     attributes_by_name = {(attribute.table, attribute.name): attribute for attribute in attributes}
     pairs: set[tuple[Attribute, Attribute]] = set()
     for table, columns in get_foreign_keys().items():
-        for column, (referenced_table, referenced_column) in columns.items():
+        for column, targets in columns.items():
             local = attributes_by_name.get((table, column))
-            referenced = attributes_by_name.get((referenced_table, referenced_column))
-            if local is not None and referenced is not None:
-                pairs.add((local, referenced))
+            if local is None:
+                continue
+            for referenced_table, referenced_column in normalise_foreign_key_targets(targets):
+                referenced = attributes_by_name.get((referenced_table, referenced_column))
+                if referenced is not None:
+                    pairs.add((local, referenced))
     return pairs
 
 
@@ -1071,7 +1075,7 @@ def construct_predicates(
         # Convert IndexedAttribute to Attribute for readable representation
         table = mapper.index_to_table_name[table_occurrence[0]]
         attr_list = ", ".join(attr_list)
-        predicate = f"{table}_{table_occurrence[1]}({attr_list})"
+        predicate = f"{format_relation_reference(table, table_occurrence[1])}({attr_list})"
         # Append the variable-attribute pair to the appropriate predicate part
         if table_occurrence in body:
             body_predicates.append(predicate)
@@ -1276,9 +1280,7 @@ def next_node_test(
         return False
     if not check_max_table(candidate_rule, next_node, max_table, _analysis_cache=_analysis_cache):
         return False
-    if not check_max_vars(candidate_rule, next_node, max_vars, _analysis_cache=_analysis_cache):
-        return False
-    return True
+    return check_max_vars(candidate_rule, next_node, max_vars, _analysis_cache=_analysis_cache)
 def is_start_node(
     candidate_rule: CandidateRule) -> bool:
     """
@@ -1305,7 +1307,7 @@ def check_table_occurrences(
     table_occurrences = sorted(list(table_occurrences))
     tables_occurrences_dict = {}
     for table_occur in table_occurrences:
-        if table_occur[0] not in tables_occurrences_dict.keys():
+        if table_occur[0] not in tables_occurrences_dict:
             tables_occurrences_dict[table_occur[0]] = []
         tables_occurrences_dict[table_occur[0]].append(table_occur[1])
     for table_index in tables_occurrences_dict:
@@ -1395,7 +1397,10 @@ def horn_rule_key(
     for selected_mappings in product(*table_mappings):
         occurrence_mapping = dict(zip(table_order, selected_mappings, strict=True))
 
-        def normalize_occurrence(value: TableOccurrence) -> TableOccurrence:
+        def normalize_occurrence(
+            value: TableOccurrence,
+            occurrence_mapping: dict[int, dict[int, int]] = occurrence_mapping,
+        ) -> TableOccurrence:
             table, occurrence = value
             return table, occurrence_mapping[table][occurrence]
 
@@ -1481,7 +1486,6 @@ def str_to_predicate(relation_str):
         random_int = str(random.randint(0, 10000))
         for assignment in assignments:
             var, idx = assignment.split("=")
-            relation_id = relation.split("_")[-1].lower()
             relation_sep = "___sep___"
             relation_name = "".join(relation.split("_")[:-1]).lower()
             relation_clean = f"{relation_name}{relation_sep}{var}".lower()

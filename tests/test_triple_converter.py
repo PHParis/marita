@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, create_engine
+from sqlalchemy import Column, ForeignKey, ForeignKeyConstraint, Integer, MetaData, String, Table, create_engine
 
 from mahilda.database.triple_converter import TripleConverter
 
@@ -53,6 +53,33 @@ def test_convert_to_triples_skips_no_pk_and_single_column() -> None:
 
     converter = TripleConverter(engine, metadata, _make_logger())
     assert converter.convert_to_triples() == []
+
+
+def test_convert_to_triples_keeps_multiple_foreign_key_targets() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    metadata = MetaData()
+    first_target = Table("first_target", metadata, Column("id", Integer, primary_key=True))
+    second_target = Table("second_target", metadata, Column("id", Integer, primary_key=True))
+    source = Table(
+        "source",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("value", Integer),
+        ForeignKeyConstraint(["value"], ["first_target.id"]),
+        ForeignKeyConstraint(["value"], ["second_target.id"]),
+    )
+    metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(first_target.insert(), [{"id": 1}])
+        conn.execute(second_target.insert(), [{"id": 1}])
+        conn.execute(source.insert(), [{"id": 10, "value": 1}])
+
+    converter = TripleConverter(engine, metadata, _make_logger())
+
+    assert converter._get_foreign_keys()["source"]["value"] == (
+        ("first_target", "id"),
+        ("second_target", "id"),
+    )
 
 
 def test_select_query_handles_missing_table_and_execution_error(monkeypatch) -> None:

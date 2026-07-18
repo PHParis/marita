@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, Any
 
 from mahilda.audit.models import Atom, ParsedRule, RelationalRule, SourceRule
+from mahilda.utils.relation_names import parse_relation_atom, split_conjuncts, split_implication
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-FORMULA_SPLIT_RE = re.compile(r"\s*(?:⇒|=>)\s*")
-ATOM_RE = re.compile(r"(?P<relation>[A-Za-z_][A-Za-z0-9_]*)\((?P<args>[^()]*)\)")
-TRAILING_OCCURRENCE_RE = re.compile(r"^(?P<table>.+)_(?P<occurrence>\d+)$")
 
 
 def load_source_rules(results_dir: Path, algorithm: str) -> list[SourceRule]:
@@ -60,17 +56,14 @@ def parse_source_rule(source: SourceRule) -> ParsedRule:
 
 
 def parse_formula(display: str) -> RelationalRule:
-    parts = FORMULA_SPLIT_RE.split(display, maxsplit=1)
-    if len(parts) != 2:
-        raise ValueError("missing_implication")
-    body_text, head_text = parts
-    if ":" in body_text:
+    body_text, head_text = split_implication(display)
+    if body_text.strip().startswith("∀") and ":" in body_text:
         body_text = body_text.split(":", maxsplit=1)[1]
     if ":" in head_text and head_text.strip().startswith("∃"):
         head_text = head_text.split(":", maxsplit=1)[1]
 
-    body_atoms = tuple(_parse_atom(match) for match in ATOM_RE.finditer(body_text))
-    head_atoms = tuple(_parse_atom(match) for match in ATOM_RE.finditer(head_text))
+    body_atoms = tuple(_parse_atom(atom) for atom in split_conjuncts(body_text))
+    head_atoms = tuple(_parse_atom(atom) for atom in split_conjuncts(head_text))
     if not body_atoms:
         raise ValueError("missing_body_atoms")
     if len(head_atoms) != 1:
@@ -78,32 +71,9 @@ def parse_formula(display: str) -> RelationalRule:
     return RelationalRule(body=body_atoms, head=head_atoms[0])
 
 
-def _parse_atom(match: re.Match[str]) -> Atom:
-    relation = match.group("relation")
-    occurrence_match = TRAILING_OCCURRENCE_RE.match(relation)
-    if occurrence_match:
-        table = occurrence_match.group("table")
-        occurrence = int(occurrence_match.group("occurrence"))
-    else:
-        table = relation
-        occurrence = 0
-
-    terms: list[tuple[str, str]] = []
-    for raw_assignment in match.group("args").split(","):
-        assignment = raw_assignment.strip()
-        if not assignment:
-            continue
-        if "=" not in assignment:
-            raise ValueError("atom_argument_without_column_assignment")
-        column, variable = assignment.split("=", maxsplit=1)
-        column = column.strip()
-        variable = variable.strip()
-        if not column or not variable:
-            raise ValueError("empty_atom_assignment")
-        terms.append((column, variable))
-    if not terms:
-        raise ValueError("atom_without_terms")
-    return Atom(table=table, occurrence=occurrence, terms=tuple(sorted(terms)))
+def _parse_atom(text: str) -> Atom:
+    parsed = parse_relation_atom(text)
+    return Atom(table=parsed.table, occurrence=parsed.occurrence, terms=tuple(sorted(parsed.terms)))
 
 
 def _parse_inclusion_dependency(source: SourceRule) -> ParsedRule:

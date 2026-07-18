@@ -19,12 +19,14 @@ from mahilda.algorithms.mahilda_core.tgd_discovery import (
     duplicate_test,
     extract_table_occurrences,
     horn_rule_key,
+    instantiate_tgd,
     is_safe_split,
     is_start_node,
     next_node_test,
     split_candidate_rule,
     split_pruning,
 )
+from mahilda.audit.parsing import parse_formula
 
 
 def _ia(i: int, j: int, k: int) -> IndexedAttribute:
@@ -369,3 +371,19 @@ def test_construct_predicates_smoke_with_mapper() -> None:
     tgd = construct_tgd_string("a_0(id=x0)", "b_0(id=z0)", assigned, split[0], split[1])
     assert mapper.index_to_table_name[0] == "a"
     assert "a_0" in tgd
+
+
+def test_construct_predicates_quotes_unsafe_relation_names() -> None:
+    mapper = AttributeMapper(
+        table_name_to_index={"Order Details": 0, "parent": 1},
+        attribute_name_to_index={"Order Details": {"id": 0}, "parent": {"id": 0}},
+    )
+    candidate = [_jia(_ia(0, 0, 0), _ia(1, 0, 0))]
+    tgd = instantiate_tgd(
+        candidate,
+        ({(0, 0)}, {(1, 0)}),
+        mapper,
+    )
+
+    parsed = parse_formula(tgd)
+    assert parsed.body[0].table == "Order Details"

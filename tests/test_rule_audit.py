@@ -25,6 +25,63 @@ def test_parse_formula_canonicalizes_variable_names() -> None:
     assert first.canonical_key() == second.canonical_key()
 
 
+def test_parse_formula_supports_quoted_relation_names() -> None:
+    rule = parse_formula('∀ x0: "Order Details"_0(ProductID=x0) ⇒ Products_0(ProductID=x0)')
+
+    assert rule.body[0].table == "Order Details"
+    assert rule.body[0].occurrence == 0
+    assert rule.head.table == "Products"
+
+
+def test_parse_formula_ignores_implication_text_inside_quoted_relation_name() -> None:
+    rule = parse_formula('∀ x0: "left => right"_0(id=x0) ⇒ parent_0(id=x0)')
+
+    assert rule.body[0].table == "left => right"
+
+
+def test_audit_matches_quoted_and_structured_relation_names(tmp_path: Path) -> None:
+    database_dir = tmp_path / "data"
+    results_dir = tmp_path / "results"
+    output_dir = tmp_path / "audit"
+    database_dir.mkdir()
+    _write_tiny_database(database_dir, "tiny.db")
+    _write_results(
+        results_dir,
+        "MAHILDA",
+        "tiny",
+        ['∀ x0: "child"_0(parent_id=x0) ⇒ "parent"_0(id=x0)'],
+    )
+    competitor_dir = results_dir / "MATILDA" / "MATILDA_tiny"
+    competitor_dir.mkdir(parents=True)
+    (competitor_dir / "MATILDA_tiny_results.json").write_text(
+        json.dumps(
+            [
+                {
+                    "type": "InclusionDependency",
+                    "table_dependant": "child",
+                    "columns_dependant": ["parent_id"],
+                    "table_referenced": "parent",
+                    "columns_referenced": ["id"],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            joinability="fk",
+            show_progress=False,
+        )
+    )
+
+    assert records[0].match_status == MatchStatus.RECALLED_ALPHA
+
+
 def test_sqlite_evaluator_recomputes_confidence(tmp_path: Path) -> None:
     db_path = _write_tiny_database(tmp_path)
     evaluator = SQLiteRuleEvaluator(db_path)

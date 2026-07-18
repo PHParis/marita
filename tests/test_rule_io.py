@@ -68,6 +68,18 @@ def test_rule_io_round_trip_tgd_rule() -> None:
     assert restored == rule
 
 
+def test_rule_io_round_trip_relation_name_with_spaces() -> None:
+    rule = MARITARule(
+        body=(Predicate("id", "Order Details_0", "x0"),),
+        head=(Predicate("id", "Products_0", "x0"),),
+        display='∀ x0: "Order Details"_0(id=x0) ⇒ Products_0(id=x0)',
+        support=1,
+        confidence=1.0,
+    )
+
+    assert RuleIO.rule_from_dict(RuleIO.rule_to_dict(rule)) == rule
+
+
 def test_rule_from_dict_validation_errors() -> None:
     with pytest.raises(ValueError):
         RuleIO.rule_from_dict({"type": "Unknown"})

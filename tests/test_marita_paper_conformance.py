@@ -102,6 +102,49 @@ def test_discovery_initialization_is_read_only(tmp_path: Path) -> None:
         database.close()
 
 
+def test_fk_metadata_keeps_multiple_targets_for_one_column(tmp_path: Path) -> None:
+    database_path = tmp_path / "multi_target_fk.db"
+    connection = sqlite3.connect(database_path)
+    try:
+        connection.executescript(
+            """
+            PRAGMA foreign_keys = ON;
+            CREATE TABLE first_target (id INTEGER PRIMARY KEY);
+            CREATE TABLE second_target (id INTEGER PRIMARY KEY);
+            CREATE TABLE source (
+                id INTEGER PRIMARY KEY,
+                value INTEGER,
+                FOREIGN KEY(value) REFERENCES first_target(id),
+                FOREIGN KEY(value) REFERENCES second_target(id)
+            );
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    database = AlchemyUtility(
+        f"sqlite:///{database_path}",
+        create_index=False,
+        create_csv=False,
+        create_tsv=False,
+        get_data=False,
+    )
+    try:
+        attributes = Attribute.generate_attributes(database)
+        pairs = discovery._foreign_key_attribute_pairs(attributes, database)
+        assert pairs is not None
+        assert database.check_foreign_key_silently("source", "value", "first_target", "id") is True
+        assert database.check_foreign_key_silently("source", "value", "second_target", "id") is True
+        pair_names = {(left.table, left.name, right.table, right.name) for left, right in pairs}
+        assert pair_names == {
+            ("source", "value", "first_target", "id"),
+            ("source", "value", "second_target", "id"),
+        }
+    finally:
+        database.close()
+
+
 def _reference_graph(jia_list) -> ConstraintGraph:
     """Build the pre-optimization pairwise graph for conformance comparison."""
     graph = ConstraintGraph()

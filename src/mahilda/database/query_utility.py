@@ -10,6 +10,8 @@ from sqlalchemy import MetaData, alias, and_, false, func, or_, select, true
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
+    from mahilda.database.foreign_keys import ForeignKeyMap
+
 
 class ColorFormatter(logging.Formatter):
     COLOR_MAP = {
@@ -60,7 +62,7 @@ class QueryUtility:
         self._column_names_cache: dict[str, tuple[str, ...]] = {}
         self._column_name_sets_cache: dict[str, frozenset[str]] = {}
         self._primary_key_cache: dict[str, tuple[str, ...]] = {}
-        self._foreign_keys_cache: dict[str, dict[str, tuple[str, str]]] | None = None
+        self._foreign_keys_cache: ForeignKeyMap | None = None
         self._setup_logging_handlers()
 
     @staticmethod
@@ -571,10 +573,10 @@ class QueryUtility:
                 return bool(column.primary_key)
         return False
 
-    def _get_foreign_keys(self) -> dict[str, dict[str, tuple[str, str]]]:
+    def _get_foreign_keys(self) -> ForeignKeyMap:
         if self._foreign_keys_cache is not None:
             return self._foreign_keys_cache
-        foreign_keys_info: dict[str, dict[str, tuple[str, str]]] = {}
+        foreign_keys_info: ForeignKeyMap = {}
         for table_name, table in self.metadata.tables.items():
             for fk in table.foreign_keys:
                 ref_table = fk.column.table.name
@@ -595,7 +597,10 @@ class QueryUtility:
                     )
                     continue
 
-                foreign_keys_info.setdefault(table_name, {})[local_column] = (ref_table, reference_column)
+                targets = foreign_keys_info.setdefault(table_name, {}).setdefault(local_column, ())
+                foreign_keys_info[table_name][local_column] = tuple(
+                    sorted(set(targets) | {(ref_table, reference_column)})
+                )
         self._foreign_keys_cache = foreign_keys_info
         return foreign_keys_info
 

@@ -3,6 +3,8 @@ import re
 from dataclasses import asdict, dataclass
 from typing import List, NamedTuple, Optional, Tuple, Union
 
+from mahilda.utils.relation_names import internal_relation_name, parse_relation_reference, split_relation_atom
+
 
 @dataclass(frozen=True)
 class InclusionDependency:
@@ -270,19 +272,27 @@ class PredicateUtils:
             variable1, relation, variable2 = match.groups()
             return Predicate(variable1, relation, variable2)
 
-        match = re.match(r"^([A-Za-z0-9_]+)\(([^=]+)=([^)]*)\)$", s)
-        if match:
-            relation, variable1, variable2 = match.groups()
-            return Predicate(variable1.strip(), relation.strip(), variable2.strip())
-
-        match = re.match(r"^([A-Za-z0-9_]+)\(([^,]+),\s*([^)]+)\)$", s)
-        if match:
-            relation, variable1, variable2 = match.groups()
-            return Predicate(variable1.strip(), relation.strip(), variable2.strip())
+        relation_text, arguments = split_relation_atom(s)
+        table, occurrence, has_occurrence = parse_relation_reference(relation_text)
+        relation = internal_relation_name(table, occurrence, has_occurrence)
+        raw_arguments = [part.strip() for part in arguments.split(",") if part.strip()]
+        if len(raw_arguments) == 1 and "=" in raw_arguments[0]:
+            variable1, variable2 = raw_arguments[0].split("=", maxsplit=1)
+            return Predicate(variable1.strip(), relation, variable2.strip())
+        if len(raw_arguments) == 2 and all("=" not in part for part in raw_arguments):
+            return Predicate(raw_arguments[0], relation, raw_arguments[1])
 
         raise ValueError(f"Invalid Predicate string: {s}")
 
 
-# Re-export for backward compatibility — callers should import from the specific modules.
-from mahilda.utils.rule_io import RuleIO as RuleIO  # noqa: E402, F401
-from mahilda.utils.tgd_factory import TGDRuleFactory as TGDRuleFactory  # noqa: E402, F401
+def __getattr__(name: str):
+    """Lazily provide historical utility re-exports without import cycles."""
+    if name == "RuleIO":
+        from mahilda.utils.rule_io import RuleIO
+
+        return RuleIO
+    if name == "TGDRuleFactory":
+        from mahilda.utils.tgd_factory import TGDRuleFactory
+
+        return TGDRuleFactory
+    raise AttributeError(name)

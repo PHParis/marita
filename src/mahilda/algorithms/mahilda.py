@@ -324,7 +324,7 @@ class MAHILDA(BaseAlgorithm):
                         confidence=float(confidence),
                     )
                 except Exception as exc:
-                    logger.debug("Failed to instantiate rule: %s", exc, exc_info=True)
+                    logger.warning("Failed to instantiate rule %r: %s", tgd_str, exc, exc_info=True)
                     continue
 
         finally:
