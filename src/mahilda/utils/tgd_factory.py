@@ -41,9 +41,7 @@ class TGDRuleFactory:
                     raise ValueError(f"Invalid atom {atom!r} in TGD {tgd_str!r}: {parse_error}") from predicate_error
 
         logical_variables = {
-            variable
-            for parsed_atom in parsed_atoms
-            for variable in TGDRuleFactory._atom_variables(parsed_atom)
+            variable for parsed_atom in parsed_atoms for variable in TGDRuleFactory._atom_variables(parsed_atom)
         }
         row_variables = TGDRuleFactory._fresh_row_variables(len(parsed_atoms), logical_variables)
         predicates_by_atom = [
@@ -73,9 +71,7 @@ class TGDRuleFactory:
         return {variable for predicate in atom for variable in predicate[:1] + predicate[2:]}
 
     @staticmethod
-    def _atom_to_predicates(
-        atom: RelationAtom | tuple[Predicate, ...], row_variable: str
-    ) -> tuple[Predicate, ...]:
+    def _atom_to_predicates(atom: RelationAtom | tuple[Predicate, ...], row_variable: str) -> tuple[Predicate, ...]:
         if not isinstance(atom, RelationAtom):
             return atom
         relation = internal_relation_name(atom.table, atom.occurrence, atom.has_occurrence)

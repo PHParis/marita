@@ -98,16 +98,12 @@ def test_discover_rules_emits_multi_column_body_without_conversion_loss(monkeypa
     monkeypatch.setattr(
         mahilda_module,
         "dfs",
-        lambda *args, **kwargs: iter(
-            [([jia], ({(0, 0)}, {(1, 0)}), (1, 1.0))]
-        ),
+        lambda *args, **kwargs: iter([([jia], ({(0, 0)}, {(1, 0)}), (1, 1.0))]),
     )
     monkeypatch.setattr(
         mahilda_module,
         "instantiate_tgd",
-        lambda *args, **kwargs: (
-            "∀ x0, y0: child_0(parent_id=x0, id=y0) ⇒ parent_0(id=x0)"
-        ),
+        lambda *args, **kwargs: "∀ x0, y0: child_0(parent_id=x0, id=y0) ⇒ parent_0(id=x0)",
     )
 
     rules = list(algorithm.discover_rules())
