@@ -108,7 +108,7 @@ Equivalent CLI flags are available: `--email-to`, `--email-from`, `--smtp-host`,
 - `docs/architecture.md`: package structure, active modules, and runtime data flow
 - `docs/cli.md`: command behavior and examples
 - `docs/config.md`: configuration schema, defaults, normalization, and precedence
-- `docs/benchmark-datasets.md`: relational benchmark dataset download and conversion workflow
+- `docs/benchmark-datasets.md`: relational benchmark dataset download, conversion workflow, and fast MAHILDA regression-testing guidance
 - `docs/iswc2026-benchmark-extraction.md`: extracted paper parameters, reported results, and rerun notes
 - `docs/archive.md`: archive notes for `legacy/` and `research/`
 - `docs/yago-rdf-benchmark-protocol.md`: RDF-to-SQLite benchmark protocol for YAGO-derived datasets
