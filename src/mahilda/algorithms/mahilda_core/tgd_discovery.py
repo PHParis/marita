@@ -65,15 +65,14 @@ class CandidateAnalysis:
             for chain in self.chains
             for attribute in chain
         )
-        signatures: dict[TableOccurrence, frozenset[tuple[int, int]]] = {}
-        for occurrence in self.occurrences:
-            signatures[occurrence] = frozenset(
-                (attribute.i, attribute.k)
-                for chain in self.chains
-                for attribute in chain
-                if (attribute.i, attribute.j) == occurrence
-            )
-        self.attribute_signatures = signatures
+        signature_sets: dict[TableOccurrence, set[tuple[int, int]]] = {}
+        for chain in self.chains:
+            for attribute in chain:
+                signature_sets.setdefault((attribute.i, attribute.j), set()).add((attribute.i, attribute.k))
+        self.attribute_signatures = {
+            occurrence: frozenset(signature_sets.get(occurrence, set()))
+            for occurrence in self.occurrences
+        }
         self._projection_cache: dict[tuple[Any, ...], tuple[tuple[tuple[str, int, str], ...], ...]] = {}
 
     def get_x_chains(
@@ -1300,11 +1299,16 @@ def check_table_occurrences(
     :param next_node: next node to add to the candidate rule
     :return: True if the table occurrences are consecutive, False otherwise.
     """
-    test_candidate_rule = candidate_rule.copy()
-    test_candidate_rule.append(next_node)
-    table_occurrences = _candidate_analysis(test_candidate_rule, _analysis_cache).occurrences
-    test_candidate_rule.pop()
-    table_occurrences = sorted(list(table_occurrences))
+    # This bound depends only on relation occurrences, not on equality
+    # classes.  Computing it directly avoids constructing a full transitive
+    # analysis for candidates that will be rejected here.
+    table_occurrences = sorted(
+        {
+            (attribute.i, attribute.j)
+            for jia in (*candidate_rule, next_node)
+            for attribute in jia
+        }
+    )
     tables_occurrences_dict = {}
     for table_occur in table_occurrences:
         if table_occur[0] not in tables_occurrences_dict:
@@ -1431,9 +1435,16 @@ def check_max_table(
     max_table: int,
     _analysis_cache: CandidateAnalysisCache | None = None,
 ):
-    test_candidate_rule = candidate_rule.copy()
-    test_candidate_rule.append(next_node)
-    return len(_candidate_analysis(test_candidate_rule, _analysis_cache).occurrences) <= max_table
+    return (
+        len(
+            {
+                (attribute.i, attribute.j)
+                for jia in (*candidate_rule, next_node)
+                for attribute in jia
+            }
+        )
+        <= max_table
+    )
 
 
 def check_max_vars(

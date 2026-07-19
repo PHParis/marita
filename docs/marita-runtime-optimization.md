@@ -74,4 +74,14 @@ At the end of this pass:
 
 ## Remaining limits
 
-The JIA list and directed edge sets are still materialized, and SQL evaluation still runs once per candidate split. The next optimization should target query construction/cache reuse only after a profiler and a second exhaustive reference comparison demonstrate that it preserves FK-only joinability, disjoint semantics, support, and all configured bounds.
+The JIA list and directed edge sets are still materialized, and SQL evaluation still runs once per candidate split. A subsequent profiling pass found that candidate-bound checks were constructing full transitive analyses even when only relation-occurrence bounds were needed. Those checks now use the endpoint occurrences directly, and candidate signatures are accumulated in one pass rather than rescanning every equivalence class for every occurrence.
+
+The change was verified against the stored July 19 rule oracles for the three recommended datasets. The generated ordered sequences of display, support, and confidence values have identical SHA-256 hashes:
+
+| Database | Rules | Current/reference hash |
+| --- | ---: | --- |
+| Mesh | 1,173 | `767dcbc6973d78d497c52eb1fc0d15fa71a830a4d8df5559e0a674b4c62c044e` |
+| SAT | 3,139 | `243d10f7f53f32f0a261d945e2d8abd94d07fa6bb86c5c73bbeda3694ef0c76f` |
+| Biodegradability | 39 | `a7bd55549cea1aa7e9234942374301bd7f19b9b01a78f0b2a42a9e7a1c24fe25` |
+
+On the current host, direct library runs measured approximately 3.7 s, 45.2 s, and 21.0 s respectively. These wall-clock values are directional because the stored reference was captured on another host; the hashes and counts are the regression gates. A future SQL query-construction optimization should retain the same exact-oracle comparison before acceptance.
