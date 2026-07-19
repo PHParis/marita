@@ -57,7 +57,7 @@ dev = [
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 addopts = "-ra --strict-markers --strict-config --cov=mahilda --cov-report=term-missing --cov-report=xml --cov-report=html"
 markers = [
   "integration: marks slow external dependency integration tests",
