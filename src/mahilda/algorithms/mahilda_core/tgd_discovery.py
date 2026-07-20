@@ -674,6 +674,7 @@ def calculate_rule_metrics(
         equality_constraints,
         projected(head),
         disjoint_semantics=APPLY_DISJOINT,
+        flag="support",
     )
     body_relation_occurrences = [
         occurrence for occurrence in relation_occurrences if occurrence in body_occurrences
@@ -683,12 +684,14 @@ def calculate_rule_metrics(
         body_equality_constraints,
         projected(body),
         disjoint_semantics=APPLY_DISJOINT,
+        flag="confidence",
     )
     numerator = db_inspector.get_rule_count(
         relation_occurrences,
         equality_constraints,
         projected(body),
         disjoint_semantics=APPLY_DISJOINT,
+        flag="confidence",
     )
     # The current equality classes encode body/head joins, so numerator is the
     # same explicit query with the head constraints applied. Keep the separate

@@ -2,6 +2,7 @@ import logging
 
 import pytest
 from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, create_engine
+from sqlalchemy.dialects.sqlite import dialect
 
 from mahilda.database.query_utility import ColorFormatter, QueryUtility
 
@@ -142,6 +143,56 @@ def test_check_threshold_and_query_failures() -> None:
     assert util.check_threshold(conds, threshold=0) == 1
 
     assert util.get_join_row_count([("missing", 0, "x", "b", 0, "id")]) == 0
+
+
+def test_threshold_uses_bounded_rows_and_preserves_empty_and_positive_results() -> None:
+    engine, metadata, _a, _b = _build_db()
+    util = _utility(engine, metadata)
+    conditions = [("a", 0, "b_id", "b", 0, "id")]
+
+    query, _, _ = util._construct_threshold_query(conditions, False, False, None, threshold=1)
+    assert query is not None
+    sql = str(query.compile(dialect=dialect()))
+    assert "LIMIT" in sql
+    assert "count(" not in sql.lower()
+
+    assert util.check_threshold(conditions, threshold=1) == 1
+    assert util.check_threshold(conditions, threshold=2) == 0
+    assert util.check_threshold([("a", 0, "id", "b", 0, "id")], threshold=0) == 0
+    assert util.query_metrics()["sql_time_by_kind"]["threshold"]["count"] == 3
+
+
+def test_rule_count_distinguishes_duplicate_multi_column_projection_rows() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    metadata = MetaData()
+    projection = Table(
+        "projection",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("kind", String),
+        Column("value", Integer),
+    )
+    metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            projection.insert(),
+            [
+                {"id": 1, "kind": "x", "value": 10},
+                {"id": 2, "kind": "x", "value": 10},
+                {"id": 3, "kind": "x", "value": 11},
+            ],
+        )
+
+    util = _utility(engine, metadata)
+    assert (
+        util.get_rule_count(
+            [("projection", 0)],
+            [],
+            [[("projection", 0, "kind")], [("projection", 0, "value")]],
+        )
+        == 2
+    )
+    assert util.query_metrics()["sql_time_by_kind"]["projected_count"]["count"] == 1
 
 
 def test_metadata_helpers_and_foreign_keys() -> None:

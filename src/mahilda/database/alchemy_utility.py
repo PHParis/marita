@@ -179,12 +179,14 @@ class AlchemyUtility:
         equality_constraints: list[tuple[str, int, str, str, int, str]],
         projected_classes: list[list[tuple[str, int, str]]],
         disjoint_semantics: bool = False,
+        flag: str = "",
     ) -> int:
         return self.query_utility.get_rule_count(
             relation_occurrences,
             equality_constraints,
             projected_classes,
             disjoint_semantics,
+            flag,
         )
 
     def get_attribute_values(self, table_name: str, attribute_name: str) -> list[Any]:

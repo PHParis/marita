@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
@@ -58,6 +59,10 @@ class QueryUtility:
         self.query_cache_misses = 0
         self.column_value_cache_hits = 0
         self.column_value_cache_misses = 0
+        self.sql_query_count = 0
+        self.sql_time_seconds = 0.0
+        self.sql_time_by_kind: dict[str, dict[str, float | int]] = {}
+        self.sql_time_by_flag: dict[str, dict[str, float | int]] = {}
         self._table_names_cache: tuple[str, ...] | None = None
         self._column_names_cache: dict[str, tuple[str, ...]] = {}
         self._column_name_sets_cache: dict[str, frozenset[str]] = {}
@@ -108,6 +113,45 @@ class QueryUtility:
         self.column_value_cache_hits = 0
         self.column_value_cache_misses = 0
 
+    def reset_query_metrics(self) -> None:
+        """Reset SQL execution counters without changing result caches."""
+        self.sql_query_count = 0
+        self.sql_time_seconds = 0.0
+        self.sql_time_by_kind.clear()
+        self.sql_time_by_flag.clear()
+
+    def query_metrics(self) -> dict[str, Any]:
+        """Return query execution and cache metrics for the current lifecycle."""
+        return {
+            "sql_query_count": self.sql_query_count,
+            "sql_time_seconds": self.sql_time_seconds,
+            "sql_time_by_kind": {kind: values.copy() for kind, values in self.sql_time_by_kind.items()},
+            "sql_time_by_flag": {flag: values.copy() for flag, values in self.sql_time_by_flag.items()},
+            "query_cache_hits": self.query_cache_hits,
+            "query_cache_misses": self.query_cache_misses,
+            "column_value_cache_hits": self.column_value_cache_hits,
+            "column_value_cache_misses": self.column_value_cache_misses,
+        }
+
+    def _record_sql_execution(self, kind: str, elapsed: float, flag: str = "") -> None:
+        self.sql_query_count += 1
+        self.sql_time_seconds += elapsed
+        metrics = self.sql_time_by_kind.setdefault(kind, {"count": 0, "time_seconds": 0.0})
+        metrics["count"] = int(metrics["count"]) + 1
+        metrics["time_seconds"] = float(metrics["time_seconds"]) + elapsed
+        if flag:
+            flag_metrics = self.sql_time_by_flag.setdefault(flag, {"count": 0, "time_seconds": 0.0})
+            flag_metrics["count"] = int(flag_metrics["count"]) + 1
+            flag_metrics["time_seconds"] = float(flag_metrics["time_seconds"]) + elapsed
+
+    def _execute_scalar(self, query: Any, kind: str, flag: str = "") -> Any:
+        started = time.perf_counter()
+        try:
+            with self.engine.connect() as conn:
+                return conn.execute(query).scalar()
+        finally:
+            self._record_sql_execution(kind, time.perf_counter() - started, flag)
+
     close = clear_caches
 
     def _setup_logging_handlers(self) -> None:
@@ -156,8 +200,13 @@ class QueryUtility:
             raise ValueError(f"Invalid join conditions or query construction failed for flag: {flag}")
 
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(query).scalar()
+            if threshold >= 0:
+                started = time.perf_counter()
+                with self.engine.connect() as conn:
+                    result = len(conn.execute(query).fetchmany(threshold + 1)) > threshold
+                self._record_sql_execution("threshold", time.perf_counter() - started, flag)
+            else:
+                result = self._execute_scalar(query, "threshold", flag)
         except Exception as err:
             raise ValueError(f"Error executing threshold query for flag '{flag}'") from err
         value = int(bool(result))
@@ -188,8 +237,7 @@ class QueryUtility:
             return 0
 
         try:
-            with self.engine.connect() as conn:
-                result_sqlite = conn.execute(query).scalar()
+            result_sqlite = self._execute_scalar(query, "join_count", flag)
         except Exception as err:
             self.logger_query_time.error(f"Error executing count query for flag '{flag}': {err}")
             return 0
@@ -203,6 +251,7 @@ class QueryUtility:
         equality_constraints: list[tuple[str, int, str, str, int, str]],
         projected_classes: list[list[tuple[str, int, str]]],
         disjoint_semantics: bool = False,
+        flag: str = "",
     ) -> int:
         """Count distinct variable assignments for an explicit rule query.
 
@@ -272,8 +321,7 @@ class QueryUtility:
             query = query.where(and_(*predicates))
         count_query = select(func.count()).select_from(query.subquery())
         try:
-            with self.engine.connect() as conn:
-                value = conn.execute(count_query).scalar()
+            value = self._execute_scalar(count_query, "projected_count", flag)
         except Exception as err:
             self.logger_query_time.error("Error executing explicit rule count: %s", err)
             return 0
@@ -298,7 +346,10 @@ class QueryUtility:
         if join_base is None:
             return None, None, None
 
-        threshold_query = select((func.count() > threshold).label("count_exceeds_threshold")).select_from(join_base)
+        if threshold >= 0:
+            threshold_query = select(true()).select_from(join_base).limit(threshold + 1)
+        else:
+            threshold_query = select((func.count() > threshold).label("count_exceeds_threshold")).select_from(join_base)
         if primary_key_conditions:
             threshold_query = threshold_query.where(and_(*primary_key_conditions))
         return threshold_query, primary_key_conditions, join_base
@@ -619,8 +670,10 @@ class QueryUtility:
             return frozenset()
         column = table.columns[attribute_name]
         try:
+            started = time.perf_counter()
             with self.engine.connect() as conn:
                 values = [row[0] for row in conn.execute(select(column)).fetchall()]
+            self._record_sql_execution("column_values", time.perf_counter() - started)
         except Exception as err:
             self.logger_query_time.error("Error getting values for %s.%s: %s", table_name, attribute_name, err)
             return frozenset()
