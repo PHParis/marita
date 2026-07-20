@@ -1,0 +1,27 @@
+monitor:
+  memory_threshold: 10737418240
+  timeout: 3600
+database:
+  path: ../../results/mahilda_tipi01_20260719/laptop_ubuntu_20260720/combined_laptop_optimizations/inputs
+  name: Mesh.db
+logging:
+  log_dir: ../../results/mahilda_tipi01_20260719/laptop_ubuntu_20260720/combined_laptop_optimizations/logs/Mesh
+results:
+  output_dir: ../../results/mahilda_tipi01_20260719/laptop_ubuntu_20260720/combined_laptop_optimizations/results/MAHILDA
+algorithm:
+  name: MAHILDA
+  parameters:
+    walk_length: 3
+    max_tables: 3
+    max_variables: 3
+    disjoint_semantics: true
+    joinability: fk
+    support_threshold: 1
+    timeout: 3600
+batch:
+  workers: 1
+  timeout: 3600
+mlflow:
+  use: false
+  tracking_uri: file:mlruns
+  experiment_name: ISWC 2026 Benchmark
