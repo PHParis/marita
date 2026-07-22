@@ -35,7 +35,13 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--no-disjoint-semantics", action="store_true")
     parser.add_argument("--no-diagnose-unmatched", action="store_true")
     parser.add_argument("--include-amie-rdf", action="store_true")
+    parser.add_argument(
+        "--allow-legacy-amie-mapping",
+        action="store_true",
+        help="Translate AMIE3 without a hash-validated TSV mapping manifest.",
+    )
     parser.add_argument("--confidence-threshold", type=float, default=1.0)
+    parser.add_argument("--support-threshold", type=int, default=0)
     parser.add_argument("--max-examples", type=int, default=25)
     parser.add_argument("--strict", action="store_true", help="Exit 2 if comparable true rules are unmatched.")
     parser.add_argument("--no-progress", action="store_true", help="Disable audit progress bars.")
@@ -91,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
         target=args.target.strip().upper(),
         competitors=competitors,
         confidence_threshold=args.confidence_threshold,
+        support_threshold=args.support_threshold,
         max_examples=args.max_examples,
         strict=args.strict,
         show_progress=not args.no_progress,
@@ -110,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
         coverage=args.coverage,
         diagnose_unmatched=not args.no_diagnose_unmatched,
         include_amie_rdf=args.include_amie_rdf,
+        allow_legacy_amie_mapping=args.allow_legacy_amie_mapping,
         workers=workers,
         hosts=tuple(hosts),
         host=host,

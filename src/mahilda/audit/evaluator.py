@@ -4,7 +4,7 @@ import sqlite3
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
-from mahilda.audit.models import Atom, Evaluation, RelationalRule
+from mahilda.audit.models import Atom, Evaluation, RelationalDependency, RelationalRule
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -28,7 +28,7 @@ class SQLiteRuleEvaluator:
     def close(self) -> None:
         self.connection.close()
 
-    def evaluate(self, rule: RelationalRule) -> Evaluation:
+    def evaluate(self, rule: RelationalRule | RelationalDependency) -> Evaluation:
         predictions = self._count_assignments(rule.body, sorted(rule.body_variables()))
         support = self._count_assignments(rule.all_atoms(), sorted(rule.body_variables()))
         return Evaluation(support=support, predictions=predictions)
@@ -43,7 +43,16 @@ class SQLiteRuleEvaluator:
             raise AuditEvaluationError(str(exc)) from exc
         return {tuple(row) for row in rows}
 
-    def is_fk_joinable(self, rule: RelationalRule) -> bool:
+    def validate(self, rule: RelationalRule | RelationalDependency) -> None:
+        for atom in rule.all_atoms():
+            if atom.table not in self._tables:
+                raise AuditEvaluationError(f"unknown_table:{atom.table}")
+            table_columns = self._tables[atom.table]
+            for column, _ in atom.terms:
+                if column not in table_columns:
+                    raise AuditEvaluationError(f"unknown_column:{atom.table}.{column}")
+
+    def is_fk_joinable(self, rule: RelationalRule | RelationalDependency) -> bool:
         occurrences = _indexed_atoms(rule.all_atoms())
         variable_refs: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
         for alias, atom in occurrences:
@@ -59,7 +68,7 @@ class SQLiteRuleEvaluator:
                         return False
         return True
 
-    def is_relation_disjoint_vacuous(self, rule: RelationalRule) -> bool:
+    def is_relation_disjoint_vacuous(self, rule: RelationalRule | RelationalDependency) -> bool:
         atoms_by_table: dict[str, list[Atom]] = defaultdict(list)
         for atom in rule.all_atoms():
             atoms_by_table[atom.table].append(atom)
@@ -74,7 +83,10 @@ class SQLiteRuleEvaluator:
                 left_terms = dict(left.terms)
                 for right in atoms[left_index + 1 :]:
                     right_terms = dict(right.terms)
-                    if all(left_terms.get(pk) == right_terms.get(pk) for pk in primary_keys):
+                    if all(
+                        pk in left_terms and pk in right_terms and left_terms[pk] == right_terms[pk]
+                        for pk in primary_keys
+                    ):
                         return True
         return False
 

@@ -40,7 +40,7 @@ def test_convert_to_triples_literals_and_foreign_keys() -> None:
 
     assert ("parent_1", "parent.name", '"Alice"') in triples
     assert ("child_10", "child.label", '"A \\"quoted\\" child"') in triples
-    assert ("child_10", "child.parent_id", "parent_10") in triples
+    assert ("child_10", "child.parent_id", "parent_1") in triples
 
 
 def test_convert_to_triples_skips_no_pk_and_single_column() -> None:

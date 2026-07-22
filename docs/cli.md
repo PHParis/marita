@@ -59,11 +59,13 @@ Important flags:
 - `--coverage`: claim criterion, one of `alpha`, `subsumption`, or `instance`
 - `--settings`: optional YAML config used to load MAHILDA bounds
 - `--walk-length`, `--max-tables`, `--max-variables`, `--joinability`: explicit target-class bounds
-- `--include-amie-rdf`: include AMIE3 RDF rows as unsupported diagnostics; default is to skip them
+- `--include-amie-rdf`: reconstruct the RDB-to-KG mapping and audit translatable AMIE3 rules; default is to skip them
+- `--allow-legacy-amie-mapping`: bypass the hash-validated TSV mapping manifest; diagnostic use only
+- `--confidence-threshold`, `--support-threshold`: exactness thresholds, default `1.0` and `0`
 - `--no-diagnose-unmatched`: generate counts but suppress unmatched examples in `audit_diagnosis.md`
 - `--strict`: exit `2` when comparable true rules remain uncovered under the selected criterion
 
-Outputs include `audit_summary.json`, `audit_rules.csv`, `audit_unmatched.md`, `audit_diagnosis.md`, and `audit_claims.md`. See `docs/rule-audit.md` for the exact claim semantics.
+Outputs include `audit_summary.json`, `audit_rules.csv`, `audit_funnel.csv`, `audit_exclusions.csv`, `audit_paper_table.tex`, `audit_examples.md`, `audit_unmatched.md`, `audit_diagnosis.md`, and `audit_claims.md`. See `docs/rule-audit.md` for the exact claim semantics.
 
 ## `import-rdf`
 

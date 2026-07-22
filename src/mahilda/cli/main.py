@@ -62,7 +62,9 @@ def main(argv: list[str] | None = None) -> int:
     audit_parser.add_argument("--no-disjoint-semantics", action="store_true")
     audit_parser.add_argument("--no-diagnose-unmatched", action="store_true")
     audit_parser.add_argument("--include-amie-rdf", action="store_true")
+    audit_parser.add_argument("--allow-legacy-amie-mapping", action="store_true")
     audit_parser.add_argument("--confidence-threshold", type=float, default=1.0)
+    audit_parser.add_argument("--support-threshold", type=int, default=0)
     audit_parser.add_argument("--max-examples", type=int, default=25)
     audit_parser.add_argument("--strict", action="store_true")
     audit_parser.add_argument("--no-progress", action="store_true")
@@ -181,6 +183,8 @@ def main(argv: list[str] | None = None) -> int:
             args.coverage,
             "--confidence-threshold",
             str(args.confidence_threshold),
+            "--support-threshold",
+            str(args.support_threshold),
             "--max-examples",
             str(args.max_examples),
         ]
@@ -226,6 +230,8 @@ def main(argv: list[str] | None = None) -> int:
             audit_args.append("--no-diagnose-unmatched")
         if args.include_amie_rdf:
             audit_args.append("--include-amie-rdf")
+        if args.allow_legacy_amie_mapping:
+            audit_args.append("--allow-legacy-amie-mapping")
         if args.reuse_cache:
             audit_args.append("--reuse-cache")
         if args.trust_legacy_cache:

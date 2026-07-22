@@ -8,8 +8,15 @@ from typing import TYPE_CHECKING
 from mahilda.audit import AuditConfig, run_audit
 from mahilda.audit.evaluator import SQLiteRuleEvaluator
 from mahilda.audit.matching import alpha_equivalent, covered_on_instance, subsumes
-from mahilda.audit.models import AuditClassification, MatchStatus, RelationalRule, ScopeStatus
-from mahilda.audit.parsing import parse_formula
+from mahilda.audit.models import (
+    AuditClassification,
+    MatchStatus,
+    PaperCategory,
+    RelationalRule,
+    ScopeStatus,
+    SourceRule,
+)
+from mahilda.audit.parsing import parse_dependency_formula, parse_formula, parse_popper_source
 from mahilda.cli.audit import main as audit_main
 
 if TYPE_CHECKING:
@@ -37,6 +44,33 @@ def test_parse_formula_ignores_implication_text_inside_quoted_relation_name() ->
     rule = parse_formula('∀ x0: "left => right"_0(id=x0) ⇒ parent_0(id=x0)')
 
     assert rule.body[0].table == "left => right"
+
+
+def test_parse_dependency_formula_preserves_existential_and_multi_head_tgds() -> None:
+    dependency = parse_dependency_formula(
+        "∀ x0: child_0(parent_id=x0) ⇒ ∃ y0: parent_0(id=x0, name=y0) ∧ child_1(parent_id=x0)"
+    )
+
+    assert len(dependency.head) == 2
+    assert dependency.existential_variables() == {"y0"}
+
+
+def test_parse_popper_source_uses_database_column_positions(tmp_path: Path) -> None:
+    database = _write_tiny_database(tmp_path)
+    source = SourceRule(
+        algorithm="POPPER",
+        database="tiny",
+        source_path=tmp_path / "POPPER_tiny_results.json",
+        index=0,
+        display="parent(X,Y):-child(Z,X,W).",
+        payload={},
+    )
+
+    dependency = parse_popper_source(source, database).relational_dependency()
+
+    assert dependency is not None
+    assert dict(dependency.body[0].terms) == {"id": "Z", "parent_id": "X", "label": "W"}
+    assert dict(dependency.head[0].terms) == {"id": "X", "name": "Y"}
 
 
 def test_audit_matches_quoted_and_structured_relation_names(tmp_path: Path) -> None:
@@ -124,6 +158,49 @@ def test_sqlite_evaluator_recomputes_confidence(tmp_path: Path) -> None:
     assert approximate_eval.confidence == 0.5
 
 
+def test_sqlite_evaluator_uses_existential_tgd_semantics(tmp_path: Path) -> None:
+    db_path = _write_tiny_database(tmp_path)
+    dependency = parse_dependency_formula("∀ x0: child_0(parent_id=x0) ⇒ ∃ y0: parent_0(id=x0, name=y0)")
+    evaluator = SQLiteRuleEvaluator(db_path)
+    try:
+        evaluation = evaluator.evaluate(dependency)
+    finally:
+        evaluator.close()
+
+    assert evaluation.predictions == 1
+    assert evaluation.support == 1
+    assert evaluation.confidence == 1.0
+
+
+def test_audit_classifies_exact_non_horn_tgd(tmp_path: Path) -> None:
+    database_dir = tmp_path / "data"
+    results_dir = tmp_path / "results"
+    output_dir = tmp_path / "audit"
+    database_dir.mkdir()
+    _write_tiny_database(database_dir)
+    _write_results(results_dir, "MAHILDA", "tiny", [])
+    _write_results(
+        results_dir,
+        "MATILDA",
+        "tiny",
+        ["∀ x0: child_0(parent_id=x0) ⇒ ∃ y0: parent_0(id=x0, name=y0)"],
+    )
+
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=False,
+        )
+    )
+
+    assert records[0].paper_category == PaperCategory.EXACT_NON_HORN_TGD
+    assert records[0].scope_status == ScopeStatus.NON_HORN_TGD
+    assert records[0].confidence == 1.0
+
+
 def test_sqlite_fk_scope_accepts_both_fk_orientations_but_not_same_table(tmp_path: Path) -> None:
     db_path = _write_tiny_database(tmp_path)
     evaluator = SQLiteRuleEvaluator(db_path)
@@ -137,6 +214,57 @@ def test_sqlite_fk_scope_accepts_both_fk_orientations_but_not_same_table(tmp_pat
         assert evaluator.is_fk_joinable(same_table) is False
     finally:
         evaluator.close()
+
+
+def test_static_disjoint_vacuity_requires_all_primary_key_terms(tmp_path: Path) -> None:
+    db_path = _write_tiny_database(tmp_path)
+    evaluator = SQLiteRuleEvaluator(db_path)
+    try:
+        missing_primary_key = parse_formula(
+            "∀ x0: child_0(parent_id=x0) ⇒ child_1(parent_id=x0)"
+        )
+        forced_same_tuple = parse_formula("∀ x0: child_0(id=x0) ⇒ child_1(id=x0)")
+
+        assert evaluator.is_relation_disjoint_vacuous(missing_primary_key) is False
+        assert evaluator.is_relation_disjoint_vacuous(forced_same_tuple) is True
+    finally:
+        evaluator.close()
+
+
+def test_audit_skips_sql_evaluation_for_structurally_excluded_rules(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_dir = tmp_path / "data"
+    results_dir = tmp_path / "results"
+    output_dir = tmp_path / "audit"
+    database_dir.mkdir()
+    _write_tiny_database(database_dir)
+    _write_results(results_dir, "MAHILDA", "tiny", [])
+    _write_results(
+        results_dir,
+        "MATILDA",
+        "tiny",
+        ["∀ x0, y0: child_0(id=x0) ⇒ parent_0(id=y0)"],
+    )
+
+    def fail_evaluate(self: SQLiteRuleEvaluator, rule) -> None:
+        raise AssertionError("structurally excluded rule reached SQL evaluation")
+
+    monkeypatch.setattr(SQLiteRuleEvaluator, "evaluate", fail_evaluate)
+    records = run_audit(
+        AuditConfig(
+            results_dir=results_dir,
+            database_dir=database_dir,
+            output_dir=output_dir,
+            competitors=("MATILDA",),
+            show_progress=False,
+        )
+    )
+
+    assert records[0].paper_category == PaperCategory.OTHER_OUT_OF_SCOPE
+    assert records[0].confidence is None
+    assert "not_connected" in records[0].scope_reasons
 
 
 def test_rule_matching_alpha_subsumption_and_instance_coverage(tmp_path: Path) -> None:
@@ -197,13 +325,17 @@ def test_run_audit_classifies_and_reports(tmp_path: Path) -> None:
         "matched",
     ) in statuses
     assert any(record.classification == AuditClassification.APPROXIMATE for record in records)
-    assert any(record.scope_status == ScopeStatus.OUTSIDE_FK_JOINABILITY for record in records)
+    assert any(record.paper_category == PaperCategory.VACUOUS for record in records)
+    assert any(record.paper_category == PaperCategory.OTHER_OUT_OF_SCOPE for record in records)
     assert any(record.reason == "existential_or_head_only_variable" for record in records)
     assert any(record.claim_relevant and record.coverage_alpha for record in records)
     assert (output_dir / "audit_summary.json").exists()
     assert (output_dir / "audit_rules.csv").exists()
     assert (output_dir / "audit_diagnosis.md").exists()
     assert (output_dir / "audit_claims.md").exists()
+    assert (output_dir / "audit_exclusions.csv").exists()
+    assert (output_dir / "audit_paper_table.tex").exists()
+    assert (output_dir / "audit_examples.md").exists()
 
     summary = json.loads((output_dir / "audit_summary.json").read_text(encoding="utf-8"))
     assert summary["coverage_mode"] == "alpha"
@@ -211,11 +343,25 @@ def test_run_audit_classifies_and_reports(tmp_path: Path) -> None:
     funnel = summary["funnel_by_algorithm"]["MATILDA"]
     assert funnel["total"] == 4
     assert funnel["parseable"] == 4
+    assert funnel["translatable"] == 4
+    assert funnel["evaluable"] == 4
     assert funnel["within_scope"] == 2
     assert funnel["non_vacuous"] == 2
     assert funnel["above_threshold"] == 1
     assert funnel["exactly_recovered"] == 1
     assert funnel["covered_by_more_general_rule"] == 0
+    exclusions = summary["exclusions_by_algorithm"]["MATILDA"]
+    assert exclusions["total"] == sum(
+        exclusions[key]
+        for key in (
+            "technical_exclusion",
+            "vacuous",
+            "non_exact",
+            "exact_non_horn_tgd",
+            "other_out_of_scope",
+            "comparable_exact",
+        )
+    )
 
     with (output_dir / "audit_rules.csv").open(encoding="utf-8", newline="") as handle:
         row = next(csv.DictReader(handle))
@@ -257,6 +403,7 @@ def test_audit_skips_amie_rdf_by_default(tmp_path: Path) -> None:
     )
     assert len(included) == 1
     assert included[0].scope_status == ScopeStatus.UNSUPPORTED_REPRESENTATION
+    assert included[0].reason == "amie_mapping_manifest_missing"
 
 
 def test_audit_excludes_competitor_rules_when_target_run_failed(tmp_path: Path) -> None:
@@ -448,7 +595,7 @@ def test_alpha_coverage_skips_instance_matching(tmp_path: Path, monkeypatch: pyt
         )
     )
 
-    assert [record.match_status for record in records] == [MatchStatus.UNMATCHED]
+    assert [record.match_status for record in records] == [MatchStatus.RECALLED_SUBSUMED]
 
 
 def test_subsumption_coverage_skips_instance_matching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -567,7 +714,7 @@ def test_run_audit_reuses_one_evaluator_per_database(tmp_path: Path, monkeypatch
     )
 
     assert len(records) == 2
-    assert init_calls == [database_dir / "tiny.db"]
+    assert init_calls == [database_dir / "tiny.db", database_dir / "tiny.db"]
 
 
 def test_instance_coverage_caches_target_projected_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 import psutil
@@ -9,6 +10,7 @@ from sqlalchemy import select, text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
+from mahilda.audit.amie_translation import write_mapping_manifest
 from mahilda.database.data_exporter import DataExporter
 from mahilda.database.database_connection_manager import DatabaseConnectionManager
 from mahilda.database.foreign_keys import normalise_foreign_key_targets
@@ -79,6 +81,13 @@ class AlchemyUtility:
             triples = self.triple_converter.convert_to_triples()
             self.data_exporter.export_triples_to_tsv(triples)
             self.database_path_tsv = os.path.join(self.database_path, self.base_name, "tsv")
+            if url.drivername == "sqlite" and url.database:
+                tsv_path = Path(self.database_path_tsv) / f"{self.base_name}.tsv"
+                write_mapping_manifest(
+                    Path(url.database),
+                    tsv_path.with_suffix(".mapping.json"),
+                    tsv_path=tsv_path,
+                )
 
         self.tables_data = self._extract_table_data() if get_data else {}
 

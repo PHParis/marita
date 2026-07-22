@@ -53,7 +53,7 @@ class TripleConverter:
                     if attribute in fk_columns:
                         # Foreign key triple
                         try:
-                            for ref_table, ref_column in fk_columns[attribute]:
+                            for ref_table, _ref_column in fk_columns[attribute]:
                                 # A local column may reference more than one target.
                                 ref_pk_columns = primary_keys.get(ref_table, [])
                                 if not ref_pk_columns:
@@ -63,7 +63,7 @@ class TripleConverter:
                                 row_dict_fk: dict[str, Any] = {}
                                 missing_pk_columns = []
                                 if len(ref_pk_columns) == 1:
-                                    reference_value = row_dict.get(ref_column, row_dict[attribute])
+                                    reference_value = row_dict[attribute]
                                     if reference_value is None:
                                         continue
                                     row_dict_fk[ref_pk_columns[0]] = reference_value

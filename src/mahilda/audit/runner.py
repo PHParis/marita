@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from tqdm import tqdm
 
+from mahilda.audit.amie_translation import translate_amie_source, validate_mapping_artifacts
 from mahilda.audit.distributed import (
     LeaseHeartbeat,
     QueueLease,
@@ -36,13 +37,17 @@ from mahilda.audit.matching import covered_on_instance, subsumes
 from mahilda.audit.models import (
     AuditClassification,
     AuditRecord,
+    Evaluation,
     MatchStatus,
+    PaperCategory,
     ParsedRule,
+    RelationalDependency,
     RelationalRule,
+    RuleKind,
     ScopeStatus,
     SourceRule,
 )
-from mahilda.audit.parsing import load_source_rules, parse_formula, parse_source_rule
+from mahilda.audit.parsing import load_source_rules, parse_formula, parse_popper_source, parse_source_rule
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -57,8 +62,8 @@ STATE_INTERRUPTED = "interrupted"
 STATE_DIRNAME = ".audit_state"
 CACHE_DIRNAME = ".audit_cache"
 SHARDS_DIRNAME = "shards"
-STATE_VERSION = 1
-CACHE_VERSION = 1
+STATE_VERSION = 2
+CACHE_VERSION = 2
 SUCCESS_RUN_STATUS = "success"
 STATUS_DIRNAME = "progress"
 
@@ -72,6 +77,7 @@ class AuditConfig:
     target: str = "MAHILDA"
     competitors: tuple[str, ...] = ("AMIE3", "MATILDA", "SPIDER", "POPPER")
     confidence_threshold: float = 1.0
+    support_threshold: int = 0
     max_examples: int = 25
     strict: bool = False
     show_progress: bool = True
@@ -83,6 +89,7 @@ class AuditConfig:
     coverage: str = "alpha"
     diagnose_unmatched: bool = True
     include_amie_rdf: bool = False
+    allow_legacy_amie_mapping: bool = False
     workers: int = 1
     resume: bool = False
     reset_state: bool = False
@@ -140,16 +147,17 @@ class AuditShard:
 @dataclass
 class AuditRuntime:
     target_indexes_by_db: dict[str, TargetRuleIndex]
-    evaluator_cache: dict[str, SQLiteRuleEvaluator] = field(default_factory=dict)
+    evaluator_cache: dict[tuple[str, bool], SQLiteRuleEvaluator] = field(default_factory=dict)
     projected_head_rows_cache: dict[str, dict[str, set[tuple[object, ...]]]] = field(
         default_factory=lambda: defaultdict(dict)
     )
 
     def get_evaluator(self, database: str, database_path: Path, *, disjoint_semantics: bool) -> SQLiteRuleEvaluator:
-        evaluator = self.evaluator_cache.get(database)
+        key = database, disjoint_semantics
+        evaluator = self.evaluator_cache.get(key)
         if evaluator is None:
             evaluator = SQLiteRuleEvaluator(database_path, relation_disjoint=disjoint_semantics)
-            self.evaluator_cache[database] = evaluator
+            self.evaluator_cache[key] = evaluator
         return evaluator
 
     def close(self) -> None:
@@ -275,7 +283,9 @@ def _evaluate_shard_records(config: AuditConfig, shard: AuditShard) -> list[Audi
             disable=not config.show_progress,
             unit="rule",
         )
-        return [_audit_rule(config, runtime, parse_source_rule(source), shard.target_index) for source in progress]
+        return [
+            _audit_rule(config, runtime, _parse_audit_source(config, source), shard.target_index) for source in progress
+        ]
     finally:
         runtime.close()
 
@@ -353,6 +363,10 @@ def _evaluation_manifest(config: AuditConfig, shards: list[AuditShard]) -> dict[
         "max_variables": config.max_variables,
         "disjoint_semantics": config.disjoint_semantics,
         "joinability": config.joinability,
+        "confidence_threshold": config.confidence_threshold,
+        "support_threshold": config.support_threshold,
+        "include_amie_rdf": config.include_amie_rdf,
+        "allow_legacy_amie_mapping": config.allow_legacy_amie_mapping,
         "results_dir": str(config.results_dir),
         "database_dir": str(config.database_dir),
         "status_dir": str(config.status_dir or config.results_dir / STATUS_DIRNAME),
@@ -853,7 +867,7 @@ def _run_audit_shard(
         for source in progress:
             if lease is not None:
                 _assert_lease_owned(lease)
-            parsed = parse_source_rule(source)
+            parsed = _parse_audit_source(config, source)
             record = _audit_rule(config, runtime, parsed, shard.target_index)
             if lease is not None:
                 _assert_lease_owned(lease)
@@ -999,6 +1013,7 @@ def _build_manifest(config: AuditConfig, shards: list[AuditShard]) -> dict[str, 
         "competitors": list(config.competitors),
         "coverage": config.coverage,
         "confidence_threshold": config.confidence_threshold,
+        "support_threshold": config.support_threshold,
         "walk_length": config.walk_length,
         "max_tables": config.max_tables,
         "max_variables": config.max_variables,
@@ -1006,6 +1021,7 @@ def _build_manifest(config: AuditConfig, shards: list[AuditShard]) -> dict[str, 
         "joinability": config.joinability,
         "diagnose_unmatched": config.diagnose_unmatched,
         "include_amie_rdf": config.include_amie_rdf,
+        "allow_legacy_amie_mapping": config.allow_legacy_amie_mapping,
         "results_dir": str(config.results_dir),
         "database_dir": str(config.database_dir),
         "status_dir": str(config.status_dir or config.results_dir / STATUS_DIRNAME),
@@ -1116,6 +1132,20 @@ def _load_records_from_csv(path: Path) -> list[AuditRecord]:
                     canonical_rule=row["canonical_rule"],
                     matched_rule=row["matched_rule"],
                     display=row["display"],
+                    paper_category=PaperCategory(row.get("paper_category") or PaperCategory.TECHNICAL_EXCLUSION.value),
+                    rule_kind=RuleKind(row.get("rule_kind") or RuleKind.UNKNOWN.value),
+                    native_parseable=row.get("native_parseable") == "True",
+                    relationally_translatable=row.get("relationally_translatable") == "True",
+                    evaluable=row.get("evaluable") == "True",
+                    structurally_eligible=row.get("structurally_eligible") == "True",
+                    scope_reasons=row.get("scope_reasons", ""),
+                    vacuity_reasons=row.get("vacuity_reasons", ""),
+                    ordinary_support=_optional_int(row.get("ordinary_support", "")),
+                    ordinary_predictions=_optional_int(row.get("ordinary_predictions", "")),
+                    disjoint_support=_optional_int(row.get("disjoint_support", "")),
+                    disjoint_predictions=_optional_int(row.get("disjoint_predictions", "")),
+                    support_reduced=row.get("support_reduced") == "True",
+                    canonical_dependency=row.get("canonical_dependency", ""),
                 )
             )
     return records
@@ -1149,8 +1179,10 @@ def _build_target_rule_indexes(
             continue
         for source in sources:
             parsed = parse_source_rule(source)
-            if parsed.rule is not None:
-                by_database[database].append(parsed.rule)
+            dependency = parsed.relational_dependency()
+            rule = dependency.to_horn_rule() if dependency is not None else None
+            if rule is not None:
+                by_database[database].append(rule)
 
     indexes: dict[str, TargetRuleIndex] = {}
     for database, rules in by_database.items():
@@ -1291,6 +1323,21 @@ def _load_target_rule_indexes(config: AuditConfig) -> dict[str, TargetRuleIndex]
     )
 
 
+def _parse_audit_source(config: AuditConfig, source: SourceRule) -> ParsedRule:
+    if source.algorithm.upper() == "AMIE3":
+        database_path = config.database_dir / f"{source.database}.db"
+        if not config.allow_legacy_amie_mapping:
+            tsv_path = config.database_dir / source.database / "tsv" / f"{source.database}.tsv"
+            manifest_path = tsv_path.with_suffix(".mapping.json")
+            error = validate_mapping_artifacts(database_path, tsv_path, manifest_path)
+            if error is not None:
+                return ParsedRule(source=source, rule=None, unsupported_reason=error)
+        return translate_amie_source(source, database_path)
+    if source.algorithm.upper() == "POPPER" and ":-" in source.display:
+        return parse_popper_source(source, config.database_dir / f"{source.database}.db")
+    return parse_source_rule(source)
+
+
 def _audit_rule(
     config: AuditConfig,
     runtime: AuditRuntime,
@@ -1298,32 +1345,24 @@ def _audit_rule(
     target_index: TargetRuleIndex,
 ) -> AuditRecord:
     source = parsed.source
-    rule = parsed.rule
-    if rule is None:
-        unsupported = bool(parsed.unsupported_reason and parsed.unsupported_reason.endswith("_rule"))
+    dependency = parsed.relational_dependency()
+    if dependency is None:
+        reason = parsed.unsupported_reason or "parse_failed"
+        native_parseable = _native_rule_was_parsed(source.algorithm, reason)
+        unsupported = native_parseable
         classification = AuditClassification.OUT_OF_SCOPE if unsupported else AuditClassification.PARSE_FAILED
         scope_status = ScopeStatus.UNSUPPORTED_REPRESENTATION if unsupported else ScopeStatus.NOT_PARSED
-        reason = parsed.unsupported_reason or "parse_failed"
         return _record(
             parsed=parsed,
+            dependency=None,
             classification=classification,
+            paper_category=PaperCategory.TECHNICAL_EXCLUSION,
             match_status=MatchStatus.NOT_APPLICABLE,
             scope_status=scope_status,
             scope_reason=reason,
             diagnosis=scope_status.value,
             reason=reason,
-        )
-
-    scope_status, scope_reason = _static_scope_status(config, rule)
-    if scope_status != ScopeStatus.IN_TARGET_CLASS:
-        return _record(
-            parsed=parsed,
-            classification=AuditClassification.OUT_OF_SCOPE,
-            match_status=MatchStatus.NOT_APPLICABLE,
-            scope_status=scope_status,
-            scope_reason=scope_reason,
-            diagnosis=scope_status.value,
-            reason=scope_reason,
+            native_parseable=native_parseable,
         )
 
     database_path = config.database_dir / f"{source.database}.db"
@@ -1331,41 +1370,31 @@ def _audit_rule(
         reason = f"missing_database:{database_path}"
         return _record(
             parsed=parsed,
-            classification=AuditClassification.PARSE_FAILED,
+            dependency=dependency,
+            classification=AuditClassification.OUT_OF_SCOPE,
+            paper_category=PaperCategory.TECHNICAL_EXCLUSION,
             match_status=MatchStatus.NOT_APPLICABLE,
             scope_status=ScopeStatus.MISSING_DATABASE,
             scope_reason=reason,
             diagnosis=ScopeStatus.MISSING_DATABASE.value,
             reason=reason,
+            native_parseable=True,
+            relationally_translatable=True,
         )
 
-    evaluator = runtime.get_evaluator(
+    ordinary_evaluator = runtime.get_evaluator(
         source.database,
         database_path,
-        disjoint_semantics=config.disjoint_semantics,
+        disjoint_semantics=False,
+    )
+    disjoint_evaluator = runtime.get_evaluator(
+        source.database,
+        database_path,
+        disjoint_semantics=True,
     )
     try:
-        if config.joinability == "fk" and not evaluator.is_fk_joinable(rule):
-            return _record(
-                parsed=parsed,
-                classification=AuditClassification.OUT_OF_SCOPE,
-                match_status=MatchStatus.NOT_APPLICABLE,
-                scope_status=ScopeStatus.OUTSIDE_FK_JOINABILITY,
-                scope_reason="not_foreign_key_joinable",
-                diagnosis=ScopeStatus.OUTSIDE_FK_JOINABILITY.value,
-                reason="not_foreign_key_joinable",
-            )
-        if _has_head_atom_in_body(rule) or (config.disjoint_semantics and evaluator.is_relation_disjoint_vacuous(rule)):
-            return _record(
-                parsed=parsed,
-                classification=AuditClassification.VACUOUS,
-                match_status=MatchStatus.NOT_APPLICABLE,
-                scope_status=ScopeStatus.OUTSIDE_RELATION_DISJOINTNESS,
-                scope_reason="vacuous_under_relation_disjoint_semantics",
-                diagnosis=ScopeStatus.OUTSIDE_RELATION_DISJOINTNESS.value,
-                reason="vacuous_under_relation_disjoint_semantics",
-            )
-        evaluation = evaluator.evaluate(rule)
+        disjoint_evaluator.validate(dependency)
+        structural_reasons = _structural_scope_reasons(config, dependency, disjoint_evaluator)
     except AuditEvaluationError as exc:
         reason = str(exc)
         scope_status = (
@@ -1373,30 +1402,167 @@ def _audit_rule(
         )
         return _record(
             parsed=parsed,
+            dependency=dependency,
             classification=AuditClassification.OUT_OF_SCOPE,
+            paper_category=PaperCategory.TECHNICAL_EXCLUSION,
             match_status=MatchStatus.NOT_APPLICABLE,
             scope_status=scope_status,
             scope_reason=reason,
             diagnosis=scope_status.value,
             reason=reason,
+            native_parseable=True,
+            relationally_translatable=True,
         )
 
-    if evaluation.confidence < config.confidence_threshold:
+    structurally_eligible = dependency.rule_kind() == RuleKind.HORN and not structural_reasons
+    static_vacuity_reasons = _static_vacuity_reasons(dependency, disjoint_evaluator)
+    if static_vacuity_reasons:
         return _record(
             parsed=parsed,
-            classification=AuditClassification.APPROXIMATE,
+            dependency=dependency,
+            classification=AuditClassification.VACUOUS,
+            paper_category=PaperCategory.VACUOUS,
             match_status=MatchStatus.NOT_APPLICABLE,
-            scope_status=ScopeStatus.IN_TARGET_CLASS,
-            scope_reason=ScopeStatus.IN_TARGET_CLASS.value,
+            scope_status=ScopeStatus.OUTSIDE_RELATION_DISJOINTNESS,
+            scope_reason=";".join(static_vacuity_reasons),
+            diagnosis=AuditClassification.VACUOUS.value,
+            reason=";".join(static_vacuity_reasons),
+            native_parseable=True,
+            relationally_translatable=True,
+            evaluable=True,
+            structurally_eligible=structurally_eligible,
+            structural_reasons=structural_reasons,
+            vacuity_reasons=static_vacuity_reasons,
+        )
+
+    scope_status, scope_reason = _scope_status_for(dependency, structural_reasons)
+    if structural_reasons:
+        return _record(
+            parsed=parsed,
+            dependency=dependency,
+            classification=AuditClassification.OUT_OF_SCOPE,
+            paper_category=PaperCategory.OTHER_OUT_OF_SCOPE,
+            match_status=MatchStatus.NOT_APPLICABLE,
+            scope_status=scope_status,
+            scope_reason=scope_reason,
+            diagnosis=PaperCategory.OTHER_OUT_OF_SCOPE.value,
+            reason=scope_reason,
+            native_parseable=True,
+            relationally_translatable=True,
+            evaluable=True,
+            structural_reasons=structural_reasons,
+        )
+
+    try:
+        ordinary = ordinary_evaluator.evaluate(dependency)
+        disjoint = disjoint_evaluator.evaluate(dependency)
+    except AuditEvaluationError as exc:
+        reason = str(exc)
+        scope_status = (
+            ScopeStatus.MISSING_PK if reason.startswith("missing_primary_key") else ScopeStatus.EVALUATOR_ERROR
+        )
+        return _record(
+            parsed=parsed,
+            dependency=dependency,
+            classification=AuditClassification.OUT_OF_SCOPE,
+            paper_category=PaperCategory.TECHNICAL_EXCLUSION,
+            match_status=MatchStatus.NOT_APPLICABLE,
+            scope_status=scope_status,
+            scope_reason=reason,
+            diagnosis=scope_status.value,
+            reason=reason,
+            native_parseable=True,
+            relationally_translatable=True,
+        )
+
+    dynamic_vacuity_reasons = _dynamic_vacuity_reasons(ordinary, disjoint)
+    support_reduced = disjoint.support < ordinary.support
+    if dynamic_vacuity_reasons:
+        return _record(
+            parsed=parsed,
+            dependency=dependency,
+            classification=AuditClassification.VACUOUS,
+            paper_category=PaperCategory.VACUOUS,
+            match_status=MatchStatus.NOT_APPLICABLE,
+            scope_status=ScopeStatus.OUTSIDE_RELATION_DISJOINTNESS,
+            scope_reason=";".join(dynamic_vacuity_reasons),
+            diagnosis=AuditClassification.VACUOUS.value,
+            reason=";".join(dynamic_vacuity_reasons),
+            native_parseable=True,
+            relationally_translatable=True,
+            evaluable=True,
+            structurally_eligible=structurally_eligible,
+            vacuity_reasons=dynamic_vacuity_reasons,
+            ordinary=ordinary,
+            disjoint=disjoint,
+            support_reduced=support_reduced,
+        )
+
+    if disjoint.confidence < config.confidence_threshold or disjoint.support < config.support_threshold:
+        return _record(
+            parsed=parsed,
+            dependency=dependency,
+            classification=AuditClassification.APPROXIMATE,
+            paper_category=PaperCategory.NON_EXACT,
+            match_status=MatchStatus.NOT_APPLICABLE,
+            scope_status=scope_status,
+            scope_reason=scope_reason,
             diagnosis=AuditClassification.APPROXIMATE.value,
-            reason="confidence_below_threshold",
-            support=evaluation.support,
-            predictions=evaluation.predictions,
-            confidence=evaluation.confidence,
+            reason="confidence_or_support_below_threshold",
+            native_parseable=True,
+            relationally_translatable=True,
+            evaluable=True,
+            structurally_eligible=structurally_eligible,
+            structural_reasons=structural_reasons,
+            ordinary=ordinary,
+            disjoint=disjoint,
+            support_reduced=support_reduced,
+        )
+
+    rule_kind = dependency.rule_kind()
+    if rule_kind != RuleKind.HORN:
+        return _record(
+            parsed=parsed,
+            dependency=dependency,
+            classification=AuditClassification.OUT_OF_SCOPE,
+            paper_category=PaperCategory.EXACT_NON_HORN_TGD,
+            match_status=MatchStatus.NOT_APPLICABLE,
+            scope_status=ScopeStatus.NON_HORN_TGD,
+            scope_reason=scope_reason,
+            diagnosis=PaperCategory.EXACT_NON_HORN_TGD.value,
+            reason=scope_reason,
+            native_parseable=True,
+            relationally_translatable=True,
+            evaluable=True,
+            structural_reasons=structural_reasons,
+            ordinary=ordinary,
+            disjoint=disjoint,
+            support_reduced=support_reduced,
+        )
+
+    rule = dependency.to_horn_rule()
+    if rule is None:
+        return _record(
+            parsed=parsed,
+            dependency=dependency,
+            classification=AuditClassification.OUT_OF_SCOPE,
+            paper_category=PaperCategory.TECHNICAL_EXCLUSION,
+            match_status=MatchStatus.NOT_APPLICABLE,
+            scope_status=scope_status,
+            scope_reason=scope_reason,
+            diagnosis=PaperCategory.TECHNICAL_EXCLUSION.value,
+            reason=scope_reason,
+            native_parseable=True,
+            relationally_translatable=True,
+            evaluable=True,
+            structural_reasons=structural_reasons,
+            ordinary=ordinary,
+            disjoint=disjoint,
+            support_reduced=support_reduced,
         )
 
     match_status, matched_rule = _match_rule(
-        evaluator=evaluator,
+        evaluator=disjoint_evaluator,
         rule=rule,
         coverage=config.coverage,
         target_index=target_index,
@@ -1404,43 +1570,120 @@ def _audit_rule(
     )
     return _record(
         parsed=parsed,
+        dependency=dependency,
         classification=AuditClassification.COMPARABLE_TRUE,
+        paper_category=PaperCategory.COMPARABLE_EXACT,
         match_status=match_status,
         scope_status=ScopeStatus.IN_TARGET_CLASS,
         scope_reason=ScopeStatus.IN_TARGET_CLASS.value,
         diagnosis=_diagnosis_for_match(match_status),
         reason="matched" if match_status != MatchStatus.UNMATCHED else "unmatched",
-        support=evaluation.support,
-        predictions=evaluation.predictions,
-        confidence=evaluation.confidence,
+        native_parseable=True,
+        relationally_translatable=True,
+        evaluable=True,
+        structurally_eligible=True,
+        ordinary=ordinary,
+        disjoint=disjoint,
+        support_reduced=support_reduced,
         matched_rule=matched_rule,
     )
 
 
-def _static_scope_status(config: AuditConfig, rule: RelationalRule) -> tuple[ScopeStatus, str]:
-    if not rule.body:
-        return ScopeStatus.EMPTY_BODY, ScopeStatus.EMPTY_BODY.value
-    if rule.head_variables() - rule.body_variables():
-        return ScopeStatus.HEAD_ONLY_VARIABLE, "existential_or_head_only_variable"
-
-    total_atoms = len(rule.body) + 1
+def _structural_scope_reasons(
+    config: AuditConfig,
+    dependency: RelationalDependency,
+    evaluator: SQLiteRuleEvaluator,
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    total_atoms = len(dependency.all_atoms())
     if total_atoms > config.walk_length:
-        return ScopeStatus.OUTSIDE_BOUNDS, f"outside_walk_length:{total_atoms}>{config.walk_length}"
-
-    tables = {atom.table for atom in rule.all_atoms()}
+        reasons.append(f"outside_walk_length:{total_atoms}>{config.walk_length}")
+    tables = {atom.table for atom in dependency.all_atoms()}
     if len(tables) > config.max_tables:
-        return ScopeStatus.OUTSIDE_BOUNDS, f"outside_max_tables:{len(tables)}>{config.max_tables}"
-
-    variables = rule.body_variables() | rule.head_variables()
+        reasons.append(f"outside_max_tables:{len(tables)}>{config.max_tables}")
+    variables = dependency.body_variables() | dependency.head_variables()
     if len(variables) > config.max_variables:
-        return ScopeStatus.OUTSIDE_BOUNDS, f"outside_max_variables:{len(variables)}>{config.max_variables}"
+        reasons.append(f"outside_max_variables:{len(variables)}>{config.max_variables}")
+    if not _is_connected(dependency):
+        reasons.append("not_connected")
+    if config.joinability == "fk" and not evaluator.is_fk_joinable(dependency):
+        reasons.append("not_foreign_key_joinable")
+    return tuple(reasons)
 
-    return ScopeStatus.IN_TARGET_CLASS, ScopeStatus.IN_TARGET_CLASS.value
+
+def _scope_status_for(
+    dependency: RelationalDependency,
+    structural_reasons: tuple[str, ...],
+) -> tuple[ScopeStatus, str]:
+    if dependency.existential_variables():
+        return ScopeStatus.HEAD_ONLY_VARIABLE, "existential_or_head_only_variable"
+    if dependency.rule_kind() != RuleKind.HORN:
+        return ScopeStatus.NON_HORN_TGD, "multi_head_tgd"
+    if not structural_reasons:
+        return ScopeStatus.IN_TARGET_CLASS, ScopeStatus.IN_TARGET_CLASS.value
+    reason = ";".join(structural_reasons)
+    if any(item.startswith("outside_") for item in structural_reasons):
+        return ScopeStatus.OUTSIDE_BOUNDS, reason
+    if "not_connected" in structural_reasons:
+        return ScopeStatus.OUTSIDE_CONNECTIVITY, reason
+    return ScopeStatus.OUTSIDE_FK_JOINABILITY, reason
 
 
-def _has_head_atom_in_body(rule: RelationalRule) -> bool:
-    head = rule.head.without_occurrence()
-    return any(atom.without_occurrence() == head for atom in rule.body)
+def _is_connected(dependency: RelationalDependency) -> bool:
+    atoms = dependency.all_atoms()
+    if not atoms:
+        return False
+    visited = {0}
+    frontier = [0]
+    while frontier:
+        index = frontier.pop()
+        variables = atoms[index].variables()
+        for other_index, other in enumerate(atoms):
+            if other_index not in visited and variables & other.variables():
+                visited.add(other_index)
+                frontier.append(other_index)
+    return len(visited) == len(atoms)
+
+
+def _static_vacuity_reasons(
+    dependency: RelationalDependency,
+    evaluator: SQLiteRuleEvaluator,
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    body_atoms = {atom.without_occurrence() for atom in dependency.body}
+    if dependency.head and all(atom.without_occurrence() in body_atoms for atom in dependency.head):
+        reasons.append("head_entailed_by_body")
+    if evaluator.is_relation_disjoint_vacuous(dependency):
+        reasons.append("forced_same_tuple")
+    return tuple(reasons)
+
+
+def _dynamic_vacuity_reasons(
+    ordinary: Evaluation,
+    disjoint: Evaluation,
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    if disjoint.predictions == 0:
+        reasons.append("empty_body_evidence" if ordinary.predictions == 0 else "self_witness_only_body")
+    elif ordinary.support > 0 and disjoint.support == 0:
+        reasons.append("self_witness_only_support")
+    return tuple(reasons)
+
+
+def _native_rule_was_parsed(algorithm: str, reason: str) -> bool:
+    algorithm = algorithm.upper()
+    if algorithm == "POPPER":
+        return reason not in {"popper_missing_implication", "popper_invalid_rule_shape", "popper_malformed_literal"}
+    if algorithm != "AMIE3":
+        return reason.endswith("_rule")
+    parse_failures = {
+        "amie_missing_implication",
+        "amie_empty_body",
+        "amie_empty_head",
+        "amie_malformed_body",
+        "amie_malformed_head",
+    }
+    return reason not in parse_failures
 
 
 def _match_rule(
@@ -1455,9 +1698,6 @@ def _match_rule(
     alpha_match = target_index.rules_by_canonical_key.get(canonical_key)
     if alpha_match is not None:
         return MatchStatus.RECALLED_ALPHA, alpha_match.canonical_key()
-    if coverage == "alpha":
-        return MatchStatus.UNMATCHED, ""
-
     head_candidates = target_index.rules_by_head_key.get(rule.canonical_head_key(), [])
     for target_rule in head_candidates:
         if subsumes(target_rule, rule):
@@ -1490,18 +1730,26 @@ def _diagnosis_for_match(match_status: MatchStatus) -> str:
 def _record(
     *,
     parsed: ParsedRule,
+    dependency: RelationalDependency | None,
     classification: AuditClassification,
+    paper_category: PaperCategory,
     match_status: MatchStatus,
     scope_status: ScopeStatus,
     scope_reason: str,
     diagnosis: str,
     reason: str,
-    support: int | None = None,
-    predictions: int | None = None,
-    confidence: float | None = None,
+    native_parseable: bool = False,
+    relationally_translatable: bool = False,
+    evaluable: bool = False,
+    structurally_eligible: bool = False,
+    structural_reasons: tuple[str, ...] = (),
+    vacuity_reasons: tuple[str, ...] = (),
+    ordinary: Evaluation | None = None,
+    disjoint: Evaluation | None = None,
+    support_reduced: bool = False,
     matched_rule: str = "",
 ) -> AuditRecord:
-    rule = parsed.rule
+    rule = dependency.to_horn_rule() if dependency is not None else None
     coverage_alpha = match_status == MatchStatus.RECALLED_ALPHA
     coverage_subsumption = match_status in {MatchStatus.RECALLED_ALPHA, MatchStatus.RECALLED_SUBSUMED}
     coverage_instance = match_status in {
@@ -1509,7 +1757,7 @@ def _record(
         MatchStatus.RECALLED_SUBSUMED,
         MatchStatus.COVERED_ON_INSTANCE,
     }
-    target_class_member = scope_status == ScopeStatus.IN_TARGET_CLASS
+    target_class_member = paper_category == PaperCategory.COMPARABLE_EXACT
     claim_relevant = classification == AuditClassification.COMPARABLE_TRUE
     return AuditRecord(
         algorithm=parsed.source.algorithm,
@@ -1527,12 +1775,26 @@ def _record(
         diagnosis=diagnosis,
         claim_relevant=claim_relevant,
         reason=reason,
-        support=support,
-        predictions=predictions,
-        confidence=confidence,
+        support=disjoint.support if disjoint is not None else None,
+        predictions=disjoint.predictions if disjoint is not None else None,
+        confidence=disjoint.confidence if disjoint is not None else None,
         canonical_rule=rule.canonical_key() if rule is not None else "",
         matched_rule=matched_rule,
         display=parsed.source.display,
+        paper_category=paper_category,
+        rule_kind=dependency.rule_kind() if dependency is not None else RuleKind.UNKNOWN,
+        native_parseable=native_parseable,
+        relationally_translatable=relationally_translatable,
+        evaluable=evaluable,
+        structurally_eligible=structurally_eligible,
+        scope_reasons=";".join(structural_reasons),
+        vacuity_reasons=";".join(vacuity_reasons),
+        ordinary_support=ordinary.support if ordinary is not None else None,
+        ordinary_predictions=ordinary.predictions if ordinary is not None else None,
+        disjoint_support=disjoint.support if disjoint is not None else None,
+        disjoint_predictions=disjoint.predictions if disjoint is not None else None,
+        support_reduced=support_reduced,
+        canonical_dependency=dependency.canonical_key() if dependency is not None else "",
     )
 
 
@@ -1559,7 +1821,10 @@ def _write_outputs_in_dir(
     claims_path: Path,
 ) -> None:
     _write_rules_csv(output_dir / "audit_rules.csv", records)
-    _write_funnel_csv(output_dir / "audit_funnel.csv", records)
+    _write_funnel_csv(output_dir / "audit_funnel.csv", records, config)
+    _write_exclusions_csv(output_dir / "audit_exclusions.csv", records, config)
+    _write_paper_table_tex(output_dir / "audit_paper_table.tex", records, config)
+    _write_category_examples(output_dir / "audit_examples.md", records, config.max_examples)
     _write_summary_json(summary_path, records, config)
     _write_unmatched_markdown(unmatched_path, records, config.max_examples)
     _write_diagnosis_markdown(
@@ -1594,11 +1859,14 @@ def _write_rules_csv(path: Path, records: list[AuditRecord]) -> None:
             writer.writerow({field: getattr(record, field) for field in fieldnames})
 
 
-def _write_funnel_csv(path: Path, records: list[AuditRecord]) -> None:
+def _write_funnel_csv(path: Path, records: list[AuditRecord], config: AuditConfig) -> None:
     fieldnames = [
         "algorithm",
         "total",
         "parseable",
+        "translatable",
+        "evaluable",
+        "structurally_eligible",
         "within_scope",
         "non_vacuous",
         "above_threshold",
@@ -1609,8 +1877,11 @@ def _write_funnel_csv(path: Path, records: list[AuditRecord]) -> None:
         "out_of_scope",
         "vacuous",
         "below_threshold",
+        "technical_exclusion",
+        "exact_non_horn_tgd",
+        "other_out_of_scope",
     ]
-    funnels = _funnel_by_algorithm(records)
+    funnels = _funnel_by_algorithm(records, config.competitors)
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -1634,7 +1905,10 @@ def _write_summary_json(path: Path, records: list[AuditRecord], config: AuditCon
     payload = {
         "coverage_mode": config.coverage,
         "totals": _totals(records),
-        "funnel_by_algorithm": _funnel_by_algorithm(records),
+        "funnel_by_algorithm": _funnel_by_algorithm(records, config.competitors),
+        "exclusions_by_algorithm": _exclusions_by_algorithm(records, config.competitors),
+        "run_coverage_by_algorithm": _run_coverage_by_algorithm(config),
+        "partition_checks": _partition_checks(records, config.competitors),
         "by_scope_status": dict(sorted(by_scope_status.items())),
         "by_diagnosis": dict(sorted(by_diagnosis.items())),
         "by_algorithm": {algorithm: dict(counter) for algorithm, counter in sorted(by_algorithm.items())},
@@ -1644,23 +1918,39 @@ def _write_summary_json(path: Path, records: list[AuditRecord], config: AuditCon
 
 
 def _totals(records: list[AuditRecord]) -> dict[str, int | float]:
-    classification_counts = Counter(record.classification for record in records)
-    comparable = classification_counts[AuditClassification.COMPARABLE_TRUE]
-    alpha = sum(record.match_status == MatchStatus.RECALLED_ALPHA for record in records)
+    comparable_outputs = [record for record in records if record.paper_category == PaperCategory.COMPARABLE_EXACT]
+    unique_comparable: dict[tuple[str, str], AuditRecord] = {}
+    match_priority = {
+        MatchStatus.RECALLED_ALPHA: 3,
+        MatchStatus.RECALLED_SUBSUMED: 2,
+        MatchStatus.COVERED_ON_INSTANCE: 1,
+        MatchStatus.UNMATCHED: 0,
+        MatchStatus.NOT_APPLICABLE: -1,
+    }
+    for record in comparable_outputs:
+        key = record.database, record.canonical_dependency
+        previous = unique_comparable.get(key)
+        if previous is None or match_priority[record.match_status] > match_priority[previous.match_status]:
+            unique_comparable[key] = record
+    comparable_records = list(unique_comparable.values())
+    comparable = len(comparable_records)
+    alpha = sum(record.match_status == MatchStatus.RECALLED_ALPHA for record in comparable_records)
     alpha_or_subsumed = sum(
-        record.match_status in {MatchStatus.RECALLED_ALPHA, MatchStatus.RECALLED_SUBSUMED} for record in records
+        record.match_status in {MatchStatus.RECALLED_ALPHA, MatchStatus.RECALLED_SUBSUMED}
+        for record in comparable_records
     )
     alpha_subsumed_or_instance = sum(
         record.match_status
         in {MatchStatus.RECALLED_ALPHA, MatchStatus.RECALLED_SUBSUMED, MatchStatus.COVERED_ON_INSTANCE}
-        for record in records
+        for record in comparable_records
     )
-    unmatched = sum(record.match_status == MatchStatus.UNMATCHED for record in records)
+    unmatched = sum(record.match_status == MatchStatus.UNMATCHED for record in comparable_records)
     alpha_uncovered = comparable - alpha
     subsumption_uncovered = comparable - alpha_or_subsumed
     instance_uncovered = comparable - alpha_subsumed_or_instance
     return {
         "audited_rules": len(records),
+        "comparable_true_outputs": len(comparable_outputs),
         "comparable_true": comparable,
         "alpha_claim_denominator": comparable,
         "subsumption_claim_denominator": comparable,
@@ -1679,21 +1969,22 @@ def _totals(records: list[AuditRecord]) -> dict[str, int | float]:
     }
 
 
-def _funnel_by_algorithm(records: list[AuditRecord]) -> dict[str, dict[str, int]]:
+def _funnel_by_algorithm(
+    records: list[AuditRecord],
+    algorithms: tuple[str, ...] = (),
+) -> dict[str, dict[str, int]]:
     grouped: dict[str, list[AuditRecord]] = defaultdict(list)
     for record in records:
         grouped[record.algorithm].append(record)
 
     result: dict[str, dict[str, int]] = {}
-    for algorithm, rules in sorted(grouped.items()):
-        parseable = [record for record in rules if record.canonical_rule != ""]
-        within_scope = [
-            record
-            for record in parseable
-            if record.scope_status == ScopeStatus.IN_TARGET_CLASS
-            or record.classification == AuditClassification.VACUOUS
-        ]
-        non_vacuous = [record for record in within_scope if record.classification != AuditClassification.VACUOUS]
+    for algorithm in sorted(set(grouped) | set(algorithms)):
+        rules = grouped[algorithm]
+        parseable = [record for record in rules if record.native_parseable]
+        translatable = [record for record in parseable if record.relationally_translatable]
+        evaluable = [record for record in translatable if record.evaluable]
+        within_scope = [record for record in evaluable if record.structurally_eligible]
+        non_vacuous = [record for record in within_scope if record.paper_category != PaperCategory.VACUOUS]
         above_threshold = [
             record for record in non_vacuous if record.classification == AuditClassification.COMPARABLE_TRUE
         ]
@@ -1702,6 +1993,9 @@ def _funnel_by_algorithm(records: list[AuditRecord]) -> dict[str, dict[str, int]
         result[algorithm] = {
             "total": len(rules),
             "parseable": len(parseable),
+            "translatable": len(translatable),
+            "evaluable": len(evaluable),
+            "structurally_eligible": len(within_scope),
             "within_scope": len(within_scope),
             "non_vacuous": len(non_vacuous),
             "above_threshold": len(above_threshold),
@@ -1714,8 +2008,136 @@ def _funnel_by_algorithm(records: list[AuditRecord]) -> dict[str, dict[str, int]
             "out_of_scope": sum(record.classification == AuditClassification.OUT_OF_SCOPE for record in rules),
             "vacuous": sum(record.classification == AuditClassification.VACUOUS for record in rules),
             "below_threshold": sum(record.classification == AuditClassification.APPROXIMATE for record in rules),
+            "technical_exclusion": sum(record.paper_category == PaperCategory.TECHNICAL_EXCLUSION for record in rules),
+            "exact_non_horn_tgd": sum(record.paper_category == PaperCategory.EXACT_NON_HORN_TGD for record in rules),
+            "other_out_of_scope": sum(
+                record.paper_category == PaperCategory.OTHER_OUT_OF_SCOPE for record in rules
+            ),
         }
     return result
+
+
+def _exclusions_by_algorithm(
+    records: list[AuditRecord],
+    algorithms: tuple[str, ...] = (),
+) -> dict[str, dict[str, int]]:
+    grouped: dict[str, list[AuditRecord]] = defaultdict(list)
+    for record in records:
+        grouped[record.algorithm].append(record)
+    result: dict[str, dict[str, int]] = {}
+    for algorithm in sorted(set(grouped) | set(algorithms)):
+        rules = grouped[algorithm]
+        counts = Counter(record.paper_category for record in rules)
+        comparable = counts[PaperCategory.COMPARABLE_EXACT]
+        alpha = sum(record.match_status == MatchStatus.RECALLED_ALPHA for record in rules)
+        general = sum(record.match_status == MatchStatus.RECALLED_SUBSUMED for record in rules)
+        unmatched = sum(record.match_status == MatchStatus.UNMATCHED for record in rules)
+        result[algorithm] = {
+            "total": len(rules),
+            "technical_exclusion": counts[PaperCategory.TECHNICAL_EXCLUSION],
+            "vacuous": counts[PaperCategory.VACUOUS],
+            "non_exact": counts[PaperCategory.NON_EXACT],
+            "exact_non_horn_tgd": counts[PaperCategory.EXACT_NON_HORN_TGD],
+            "other_out_of_scope": counts[PaperCategory.OTHER_OUT_OF_SCOPE],
+            "comparable_exact": comparable,
+            "alpha_recovered": alpha,
+            "covered_by_more_general_rule": general,
+            "unmatched": unmatched,
+        }
+    return result
+
+
+def _run_coverage_by_algorithm(config: AuditConfig) -> dict[str, dict[str, int]]:
+    statuses, available = _load_benchmark_run_statuses(config)
+    if not available:
+        return {algorithm: {"target_successes": 0, "competitor_successes": 0} for algorithm in config.competitors}
+    target_successes = {
+        database
+        for (algorithm, database), status in statuses.items()
+        if algorithm == config.target and status.status == SUCCESS_RUN_STATUS and not status.partial
+    }
+    return {
+        algorithm: {
+            "target_successes": len(target_successes),
+            "competitor_successes": sum(
+                (status := statuses.get((algorithm, database))) is not None
+                and status.status == SUCCESS_RUN_STATUS
+                and not status.partial
+                for database in target_successes
+            ),
+        }
+        for algorithm in config.competitors
+    }
+
+
+def _partition_checks(
+    records: list[AuditRecord],
+    algorithms: tuple[str, ...],
+) -> dict[str, bool]:
+    exclusions = _exclusions_by_algorithm(records, algorithms)
+    checks: dict[str, bool] = {}
+    for algorithm, counts in exclusions.items():
+        category_total = sum(
+            counts[key]
+            for key in (
+                "technical_exclusion",
+                "vacuous",
+                "non_exact",
+                "exact_non_horn_tgd",
+                "other_out_of_scope",
+                "comparable_exact",
+            )
+        )
+        match_total = counts["alpha_recovered"] + counts["covered_by_more_general_rule"] + counts["unmatched"]
+        checks[f"{algorithm}:categories"] = category_total == counts["total"]
+        checks[f"{algorithm}:matches"] = match_total == counts["comparable_exact"]
+    return checks
+
+
+def _write_exclusions_csv(path: Path, records: list[AuditRecord], config: AuditConfig) -> None:
+    rows = _exclusions_by_algorithm(records, config.competitors)
+    fieldnames = ["algorithm", *next(iter(rows.values())).keys()] if rows else ["algorithm"]
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for algorithm, counts in rows.items():
+            writer.writerow({"algorithm": algorithm, **counts})
+
+
+def _write_paper_table_tex(path: Path, records: list[AuditRecord], config: AuditConfig) -> None:
+    rows = _exclusions_by_algorithm(records, config.competitors)
+    lines = [
+        "% Generated by `mahilda audit`; do not edit manually.",
+        r"\begin{tabular}{lrrrrrrrrr}",
+        r"\toprule",
+        r"System & Total & Tech. & Vac. & Non-exact & TGD & Other & Comparable & $\alpha$ & General \\",
+        r"\midrule",
+    ]
+    for algorithm, counts in rows.items():
+        lines.append(
+            f"{algorithm} & {counts['total']} & {counts['technical_exclusion']} & {counts['vacuous']} & "
+            f"{counts['non_exact']} & {counts['exact_non_horn_tgd']} & "
+            f"{counts['other_out_of_scope']} & {counts['comparable_exact']} & "
+            f"{counts['alpha_recovered']} & {counts['covered_by_more_general_rule']} \\\\"
+        )
+    lines.extend([r"\bottomrule", r"\end{tabular}", ""])
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _write_category_examples(path: Path, records: list[AuditRecord], max_examples: int) -> None:
+    lines = ["# Audit Category Examples", ""]
+    for category in PaperCategory:
+        examples = [record for record in records if record.paper_category == category][:max_examples]
+        lines.extend([f"## {category.value}", "", f"Count shown: {len(examples)}", ""])
+        for record in examples:
+            lines.extend(
+                [
+                    f"- `{record.algorithm}/{record.database}/{record.rule_index}`: "
+                    f"{record.reason}; `{record.display}`",
+                ]
+            )
+        lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _write_unmatched_markdown(path: Path, records: list[AuditRecord], max_examples: int) -> None:
@@ -1804,15 +2226,8 @@ def _write_claims_markdown(path: Path, records: list[AuditRecord], config: Audit
     alpha_or_subsumed = int(totals["recalled_alpha_or_subsumed"])
     alpha_subsumed_or_instance = int(totals["recalled_alpha_subsumed_or_instance"])
     claim_relevant_uncovered = int(totals["claim_relevant_uncovered"])
-    if config.coverage == "subsumption":
-        selected_uncovered = int(totals["subsumption_uncovered"])
-        selected_label = "alpha-equivalence or logical subsumption"
-    elif config.coverage == "instance":
-        selected_uncovered = int(totals["instance_uncovered"])
-        selected_label = "alpha-equivalence, logical subsumption, finite-instance coverage"
-    else:
-        selected_uncovered = claim_relevant_uncovered
-        selected_label = "alpha-equivalence"
+    exclusions = _exclusions_by_algorithm(records, config.competitors)
+    partitions_valid = all(_partition_checks(records, config.competitors).values())
 
     lines = [
         "# Audit Claims",
@@ -1822,45 +2237,60 @@ def _write_claims_markdown(path: Path, records: list[AuditRecord], config: Audit
         "## Computed Counts",
         "",
         f"- Audited competitor rules: {totals['audited_rules']}",
-        f"- Comparable true rules: {comparable}",
+        f"- Unique comparable exact rules: {comparable}",
+        f"- Comparable exact output rows: {totals['comparable_true_outputs']}",
         f"- Recalled by alpha-equivalence: {alpha}",
         f"- Recalled by alpha-equivalence or subsumption: {alpha_or_subsumed}",
         f"- Recalled by alpha-equivalence, subsumption, finite-instance coverage: {alpha_subsumed_or_instance}",
-        f"- Unmatched comparable true rules under {selected_label}: {selected_uncovered}",
-        "",
-        "## Supported Claim Shape",
+        f"- Unmatched comparable exact rules under alpha-equivalence: {claim_relevant_uncovered}",
         "",
     ]
     funnel_lines = [
         "## Per-System Funnel",
         "",
-        "| System | Total | Parseable | In scope | Non-vacuous | Above threshold | Exact | More general | Unmatched |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| System | Total | Parseable | Translatable | Evaluable | Structurally eligible | Non-vacuous | Exact | More general | Unmatched |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
-    for algorithm, funnel in _funnel_by_algorithm(records).items():
+    for algorithm, funnel in _funnel_by_algorithm(records, config.competitors).items():
         funnel_lines.append(
-            "| {algorithm} | {total} | {parseable} | {within_scope} | {non_vacuous} | "
-            "{above_threshold} | {exactly_recovered} | {covered_by_more_general_rule} | "
+            "| {algorithm} | {total} | {parseable} | {translatable} | {evaluable} | "
+            "{structurally_eligible} | {non_vacuous} | {exactly_recovered} | "
+            "{covered_by_more_general_rule} | "
             "{unmatched_above_threshold} |".format(algorithm=algorithm, **funnel)
         )
     funnel_lines.extend(
         [
             "",
-            "Excluded counts (parse_failed, out_of_scope, vacuous, below_threshold) are in "
-            "audit_summary.json under funnel_by_algorithm.",
+            "Mutually exclusive exclusion counts are in audit_exclusions.csv and "
+            "audit_summary.json under exclusions_by_algorithm.",
             "",
         ]
     )
-    lines[lines.index("## Supported Claim Shape") - 1 : lines.index("## Supported Claim Shape") - 1] = funnel_lines
-
-    if comparable == 0:
-        lines.append("- No comparable true competitor rules were found, so no empirical coverage claim is supported.")
-    elif selected_uncovered == 0:
+    lines.extend(funnel_lines)
+    lines.extend(["## Per-System Exclusions", ""])
+    for algorithm, counts in exclusions.items():
         lines.append(
-            f"- Under the configured audit scope, MAHILDA achieves 100% recall of comparable true rules by {selected_label}."
+            f"- {algorithm}: technical={counts['technical_exclusion']}, vacuous={counts['vacuous']}, "
+            f"non-exact={counts['non_exact']}, exact non-Horn TGD={counts['exact_non_horn_tgd']}, "
+            f"other out-of-scope={counts['other_out_of_scope']}."
+        )
+    lines.extend(["", "## Supported Claim Shape", ""])
+    if not partitions_valid:
+        lines.append("- Audit partition invariants failed, so no paper claim is supported.")
+    elif comparable == 0:
+        lines.append("- No comparable true competitor rules were found, so no empirical coverage claim is supported.")
+    elif claim_relevant_uncovered == 0:
+        lines.append(
+            f"- After the reported exclusions, MAHILDA recovers all {comparable} unique comparable exact "
+            "competitor rules under alpha-equivalence (100% empirical recall on the audited outputs)."
         )
     else:
-        lines.append(f"- Under the configured audit scope, MAHILDA does not achieve 100% recall by {selected_label}.")
+        lines.append("- MAHILDA does not achieve 100% alpha-equivalence recall on the audited outputs.")
+    if alpha_or_subsumed > alpha:
+        lines.append(
+            f"- Alpha-equivalence or logical subsumption covers {alpha_or_subsumed}/{comparable}; "
+            "this is broader logical coverage, not exact recall."
+        )
     lines.extend(
         [
             "",

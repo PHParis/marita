@@ -20,6 +20,7 @@ Useful options:
 ```sh
 uv run mahilda audit --competitors MATILDA
 uv run mahilda audit --confidence-threshold 1.0 --strict
+uv run mahilda audit --confidence-threshold 1.0 --support-threshold 0 --strict
 uv run mahilda audit --settings configs/paper/benchmark_83.yaml
 uv run mahilda audit --coverage subsumption
 uv run mahilda audit --coverage instance
@@ -111,7 +112,7 @@ Progress bars are enabled by default. Serial runs show one bar per shard; parall
 
 The default audit target-class settings match the paper benchmark defaults: `walk_length=3`, `max_tables=3`, `max_variables=3`, `joinability=fk`, and relation-disjoint semantics enabled. Override these with `--walk-length`, `--max-tables`, `--max-variables`, `--joinability`, `--no-disjoint-semantics`, or load a YAML config with `--settings`.
 
-AMIE3 RDF/triple rules are skipped by default because no relational back-translation is implemented. Use `--include-amie-rdf` only to count them as unsupported audit rows; they remain outside the claim denominator.
+AMIE3 RDF/triple rules are skipped by default because translating them requires the original SQLite schema. With `--include-amie-rdf`, the audit validates the TSV and its mapping sidecar against database and TSV hashes, reconstructs the deterministic RDB-to-KG mapping, and translates variable-only AMIE3 rules back to partial relational atoms. Unknown predicates, constants, sanitization collisions, and unsupported composite foreign keys are reported as technical exclusions rather than guessed. `--allow-legacy-amie-mapping` bypasses the sidecar requirement for diagnostics, but should not be used for paper claims.
 
 ## Inputs
 
@@ -129,17 +130,29 @@ results/paper_table2/
 data/relational/<DB>.db
 ```
 
-The audit recomputes support and confidence from the SQLite database. It does not trust exported confidence fields as proof of exactness.
+For rules that pass the structural scope filters, the audit recomputes support and confidence from the SQLite database. It does not trust exported confidence fields as proof of exactness. Rules that fail bounds, connectivity, or foreign-key joinability are excluded before SQL evaluation because they cannot enter the comparison denominator.
 
 ## Rule Categories
 
-Each competitor rule receives exactly one formal classification.
+Each competitor rule receives exactly one mutually exclusive paper category in addition to its detailed audit classification.
+
+`technical_exclusion`: the rule cannot be parsed, translated, or evaluated reliably.
+
+`vacuous`: the head is already entailed by the body, the body has no relation-disjoint evidence, or all ordinary support disappears under relation-disjoint semantics.
+
+`non_exact`: the rule is evaluable and non-vacuous, but its recomputed confidence or support is below the configured threshold.
+
+`exact_non_horn_tgd`: the rule is exact and satisfies the structural target restrictions except that it has existential head variables or multiple head atoms.
+
+`other_out_of_scope`: the rule fails another structural target restriction, such as bounds, connectivity, or foreign-key joinability. Exactness is not recomputed for these rules because they cannot enter the comparison denominator.
+
+`comparable_exact`: the rule is exact, non-vacuous, and inside MAHILDA's Horn target class.
 
 `parse_failed`: the rule cannot be parsed into a known representation.
 
 `out_of_scope`: the rule is parseable or recognized, but not comparable to MAHILDA's audited target class. Examples include RDF/triple AMIE3 rules that cannot be translated to relational atoms, ILP/Popper rules that remain outside the relational formula parser, rules with head-only variables, non-FK joins, missing database tables or columns, rules outside the configured MAHILDA bounds, and unsupported inclusion-dependency shapes.
 
-`vacuous`: the rule is formally redundant under the audit definition. The current checks mark a rule vacuous when the head atom is already present in the body after canonicalization, or when repeated occurrences of the same relation force reuse of the same primary-key tuple under relation-disjoint semantics.
+The audit records ordinary and relation-disjoint predictions and support separately. A partial support decrease is reported as support inflation but is not classified as fully vacuous.
 
 `approximate`: the rule is inside scope and evaluable, but its recomputed confidence is below the configured threshold. The default threshold is `1.0`, so only rules true on every body match are treated as exact.
 
@@ -173,7 +186,7 @@ audit_diagnosis.md
 audit_claims.md
 ```
 
-`audit_summary.json` contains totals by algorithm and database.
+`audit_summary.json` contains totals by algorithm and database, run-overlap counts, mutually exclusive exclusion counts, and partition-invariant checks.
 
 `audit_funnel.csv` and `audit_summary.json:funnel_by_algorithm` contain the
 per-system funnel: total, parseable, within scope, non-vacuous, above the
@@ -185,6 +198,8 @@ recovered value.
 
 `audit_rules.csv` contains one row per audited competitor rule: source, classification, reason, recomputed support/confidence, canonical rule, match status, matched MAHILDA rule, and original display string.
 
+`audit_exclusions.csv` contains the mutually exclusive per-system counts used by the paper. `audit_paper_table.tex` is the generated LaTeX rendering of those counts, and `audit_examples.md` provides deterministic examples from every category.
+
 `audit_unmatched.md` lists examples of comparable true rules not recovered by MAHILDA.
 
 `audit_diagnosis.md` groups rules by scope status and diagnosis, and lists claim-relevant uncovered examples.
@@ -195,7 +210,7 @@ recovered value.
 
 If there are comparable true rules and no uncovered comparable true rules under the selected coverage criterion, the following claim is supported for the audited artifacts:
 
-> After excluding approximate, vacuous, unparseable, and out-of-scope rules, MAHILDA recovered 100% of the remaining comparable true competitor rules under [alpha-equivalence / logical subsumption / finite-instance coverage].
+> After the reported technical, vacuous, non-exact, exact non-Horn TGD, and other structural exclusions, MAHILDA recovered 100% of the remaining unique comparable exact competitor rules under alpha-equivalence.
 
 If uncovered comparable true rules exist under the selected criterion, the audit does not support a 100% recall claim. The examples should be inspected as implementation bugs, scope mismatches, audit-model limitations, or evidence that MAHILDA does not recover all comparable rules.
 
@@ -211,4 +226,4 @@ The audit does not prove open-world truth; it uses closed-world truth on the SQL
 
 The audit does not justify calling competitor rules "wrong" or "bad" except through the formal categories reported in the CSV and summary.
 
-The audit does not make AMIE3 RDF/triple rules comparable unless they can be translated into the relational rule representation used by MAHILDA.
+The audit does not make an AMIE3 rule comparable unless its KG predicates and variables can be translated unambiguously into the relational rule representation used by MAHILDA.
