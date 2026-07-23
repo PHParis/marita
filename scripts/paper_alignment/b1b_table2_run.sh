@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # B-1b: run this host's 83-database benchmark shard using the hardened runner.
-# Usage: ./b1b_table2_run.sh [POPPER|AMIE3|SPIDER,MAHILDA|ALL]
+# Usage: ./b1b_table2_run.sh [POPPER|AMIE3|SPIDER,MARITA|ALL]
 set -euo pipefail
 REPO="${REPO:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel)}"
 cd "$REPO"
@@ -8,7 +8,7 @@ cd "$REPO"
 target="${1:-ALL}"
 mkdir -p logs/paper_table2 results/paper_table2
 
-nohup uv run mahilda paper-benchmark \
+nohup uv run marita paper-benchmark \
     --settings configs/paper/benchmark_83.yaml \
     --host auto \
     --algorithms "$target" \

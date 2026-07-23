@@ -24,7 +24,7 @@
 
 ## `algorithm`
 
-- `name` (required): one of `MAHILDA`, `AMIE3`, `SPIDER`, `POPPER`, `MATILDA`, `ILP`
+- `name` (required): one of `MARITA`, `AMIE3`, `SPIDER`, `POPPER`, `MATILDA`, `ILP`
 - `parameters` (optional mapping): algorithm-specific parameters
 
 ## `benchmark`
@@ -34,8 +34,8 @@
 - `timeout` (optional positive number): baseline subprocess timeout in seconds, default `300`
 - `memory_gb` (optional positive number): baseline subprocess RSS limit in GB
 - `java_heap_gb` (optional positive int): Java baseline heap size for AMIE3/SPIDER
-- `popper_command` (optional string): external Popper command, default `MAHILDA_POPPER_CMD` or `run-popper`
-- `matilda_path` (optional string): sibling MATILDA repository path, default `MAHILDA_MATILDA_PATH` or `../MATILDA`
+- `popper_command` (optional string): external Popper command, default `MARITA_POPPER_CMD` or `run-popper`
+- `matilda_path` (optional string): sibling MATILDA repository path, default `MARITA_MATILDA_PATH` or `../MATILDA`
 
 ## `batch`
 
@@ -77,9 +77,9 @@ Command-line flags override config values when provided:
 
 ISWC 2026 paper templates live under `configs/paper/`:
 
-- `iswc2026.mahilda.yaml`
+- `iswc2026.marita.yaml`
 - `iswc2026.amie3.yaml`
 - `iswc2026.spider.yaml`
 - `iswc2026.popper.yaml`
 
-These templates point at `data/relational`, use a 2-hour timeout and 15 GB monitor threshold, and write into `results/iswc2026`. For multi-database reruns, prefer `uv run mahilda paper-benchmark`, which generates one concrete config per selected algorithm and database.
+These templates point at `data/relational`, use a 2-hour timeout and 15 GB monitor threshold, and write into `results/iswc2026`. For multi-database reruns, prefer `uv run marita paper-benchmark`, which generates one concrete config per selected algorithm and database.

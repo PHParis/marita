@@ -49,7 +49,7 @@ logging:
 results:
   output_dir: $REPO/results/ablation_join/${mode}/${db}
 algorithm:
-  name: MAHILDA
+  name: MARITA
   parameters:
     walk_length: 3
     max_tables: 3
@@ -70,26 +70,26 @@ ls /tmp/ablation_join_cfg_"$host"/*.yaml | \
         out=$(grep "output_dir" "$cfg" | awk "{print \$2}")
         mkdir -p "$out"
         /usr/bin/time -v -o "${out}/time.log" \
-            uv run mahilda run --config "$cfg" \
+            uv run marita run --config "$cfg" \
             > "${out}/stdout.log" 2>&1
     ' _ {}
 
-MAHILDA_B3_HOST="$host" python3 - <<'PY' > "results/ablation_join/comparison_${host}.tsv"
+MARITA_B3_HOST="$host" python3 - <<'PY' > "results/ablation_join/comparison_${host}.tsv"
 import hashlib
 import json
 import os
 import pathlib
 
 hosts = ["tipi00", "tipi01", "tipi02", "tipi04"]
-host = os.environ["MAHILDA_B3_HOST"]
+host = os.environ["MARITA_B3_HOST"]
 host_index = hosts.index(host)
 print("database\tfk_only_rules_hash\tfull_join_rules_hash\tequivalent\tfk_time\tfull_time")
 for idx, db_path in enumerate(sorted(pathlib.Path("data/relational").glob("*.db"), key=lambda p: p.name.lower())):
     if idx % len(hosts) != host_index:
         continue
     db = db_path.stem
-    fk_rules = pathlib.Path(f"results/ablation_join/fk_only/{db}/MAHILDA_{db}_results.json")
-    fj_rules = pathlib.Path(f"results/ablation_join/full_join/{db}/MAHILDA_{db}_results.json")
+    fk_rules = pathlib.Path(f"results/ablation_join/fk_only/{db}/MARITA_{db}_results.json")
+    fj_rules = pathlib.Path(f"results/ablation_join/full_join/{db}/MARITA_{db}_results.json")
     fk_et = pathlib.Path(f"results/ablation_join/fk_only/{db}/execution_time_{db}.json")
     fj_et = pathlib.Path(f"results/ablation_join/full_join/{db}/execution_time_{db}.json")
 

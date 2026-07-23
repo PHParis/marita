@@ -14,7 +14,7 @@ from typing import Any
 
 ROOT = pathlib.Path("results/paper_table2")
 DB_DIR = pathlib.Path("data/relational")
-ALGOS = ["POPPER", "SPIDER", "AMIE3", "MATILDA", "MAHILDA"]
+ALGOS = ["POPPER", "SPIDER", "AMIE3", "MATILDA", "MARITA"]
 
 
 def load_json(path: pathlib.Path) -> dict[str, Any] | None:

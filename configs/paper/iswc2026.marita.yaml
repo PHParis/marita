@@ -1,0 +1,32 @@
+monitor:
+  memory_threshold: 16106127360  # 15 GB
+  timeout: 7200  # 2 hours
+
+database:
+  path: ../../data/relational
+  name: Biodegradability.db
+
+logging:
+  log_dir: ../../logs/iswc2026/MARITA
+
+results:
+  output_dir: ../../results/iswc2026/MARITA
+
+algorithm:
+  name: MARITA
+  parameters:
+    walk_length: 3
+    max_tables: 3
+    max_variables: 3
+    disjoint_semantics: true
+    support_threshold: 1
+    timeout: 7200
+
+batch:
+  workers: 1
+  timeout: 7200
+
+mlflow:
+  use: false
+  tracking_uri: file:../../mlruns
+  experiment_name: ISWC 2026 Benchmark

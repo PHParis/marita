@@ -14,7 +14,7 @@ The pipeline uses `configs/paper/benchmark_83.yaml` and a shared dynamic queue u
 Run on each server:
 
 ```bash
-cd /home/paris/dev/py/mahilda
+cd /home/paris/dev/py/marita
 uv sync
 mkdir -p logs/paper_pipeline results/paper_pipeline
 ```
@@ -42,7 +42,7 @@ The final pipeline requires exactly 83 converted `.db` files because `configs/pa
 Check once from any server:
 
 ```bash
-cd /home/paris/dev/py/mahilda
+cd /home/paris/dev/py/marita
 python3 - <<'PY'
 from pathlib import Path
 dbs = sorted(Path("data/relational").glob("*.db"), key=lambda p: p.name.lower())
@@ -67,8 +67,8 @@ If `run-popper` is missing, follow `docs/popper-user-space-install.md`.
 Run on each server:
 
 ```bash
-cd /home/paris/dev/py/mahilda
-uv run mahilda paper-pipeline \
+cd /home/paris/dev/py/marita
+uv run marita paper-pipeline \
   --settings configs/paper/benchmark_83.yaml \
   --host auto \
   --dry-run
@@ -80,7 +80,7 @@ Expected dry-run total with 83 DBs:
 Planned jobs: 519
 010_setup: 1 jobs
 020_b2_disjointness: 20 jobs
-030_b1_mahilda: 83 jobs
+030_b1_marita: 83 jobs
 040_b1_spider: 83 jobs
 050_b3_joinability: 166 jobs
 060_b1_amie3: 83 jobs
@@ -94,9 +94,9 @@ Dry-run does not create or consume the queue.
 Run this one command on each server:
 
 ```bash
-cd /home/paris/dev/py/mahilda
+cd /home/paris/dev/py/marita
 mkdir -p logs/paper_pipeline
-nohup uv run mahilda paper-pipeline \
+nohup uv run marita paper-pipeline \
   --settings configs/paper/benchmark_83.yaml \
   --host auto \
   > "logs/paper_pipeline/runner_$(hostname -s).log" 2>&1 &
@@ -129,7 +129,7 @@ The pipeline runs stages in this order:
 ```text
 010_setup             host/table setup work
 020_b2_disjointness   B-2 on Biodegradability only
-030_b1_mahilda        B-1 MAHILDA on all 83 DBs
+030_b1_marita        B-1 MARITA on all 83 DBs
 040_b1_spider         B-1 SPIDER on all 83 DBs
 050_b3_joinability    B-3 FK/full joinability on all 83 DBs
 060_b1_amie3          B-1 AMIE3 on all 83 DBs
@@ -143,8 +143,8 @@ Within a stage, jobs are dynamically claimed from the shared queue, so a slow da
 Run from any server:
 
 ```bash
-cd /home/paris/dev/py/mahilda
-uv run mahilda paper-pipeline \
+cd /home/paris/dev/py/marita
+uv run marita paper-pipeline \
   --settings configs/paper/benchmark_83.yaml \
   --status
 ```
@@ -152,8 +152,8 @@ uv run mahilda paper-pipeline \
 For direct `paper-benchmark` runs, use the live progress files in the shared output directory:
 
 ```bash
-cd /home/paris/dev/py/mahilda
-uv run mahilda paper-benchmark \
+cd /home/paris/dev/py/marita
+uv run marita paper-benchmark \
   --settings configs/paper/benchmark_83.yaml \
   --hosts tipi01,tipi02 \
   --status
@@ -173,8 +173,8 @@ find results/paper_pipeline/queue -maxdepth 3 -type f | wc -l
 If a server rebooted or the runner stopped, rerun the same launch command on that server:
 
 ```bash
-cd /home/paris/dev/py/mahilda
-nohup uv run mahilda paper-pipeline \
+cd /home/paris/dev/py/marita
+nohup uv run marita paper-pipeline \
   --settings configs/paper/benchmark_83.yaml \
   --host auto \
   > "logs/paper_pipeline/runner_$(hostname -s).log" 2>&1 &
@@ -191,18 +191,18 @@ Do not run `--reset` for a restart. Resetting discards the shared queue state.
 Run on each server:
 
 ```bash
-cd /home/paris/dev/py/mahilda
+cd /home/paris/dev/py/marita
 pgrep -af '[m]ahilda paper-pipeline.*configs/paper/benchmark_83.yaml'
 ```
 
 It is normal to see two matching processes for one runner:
 
 ```text
-75637 uv run mahilda paper-pipeline --settings configs/paper/benchmark_83.yaml --host auto
-75645 /people/paris/mahilda/.venv/bin/python3 /people/paris/mahilda/.venv/bin/mahilda paper-pipeline --settings configs/paper/benchmark_83.yaml --host auto
+75637 uv run marita paper-pipeline --settings configs/paper/benchmark_83.yaml --host auto
+75645 /people/paris/marita/.venv/bin/python3 /people/paris/marita/.venv/bin/marita paper-pipeline --settings configs/paper/benchmark_83.yaml --host auto
 ```
 
-The first process is the `uv run` wrapper. The second process is the actual Python `mahilda paper-pipeline` child. Stop both PIDs for a clean restart:
+The first process is the `uv run` wrapper. The second process is the actual Python `marita paper-pipeline` child. Stop both PIDs for a clean restart:
 
 ```bash
 kill -TERM 75637 75645
@@ -237,9 +237,9 @@ pkill -KILL -f '[r]un-popper'
 Relaunch exactly one runner per server:
 
 ```bash
-cd /home/paris/dev/py/mahilda
+cd /home/paris/dev/py/marita
 mkdir -p logs/paper_pipeline
-nohup uv run mahilda paper-pipeline \
+nohup uv run marita paper-pipeline \
   --settings configs/paper/benchmark_83.yaml \
   --host auto \
   > "logs/paper_pipeline/runner_$(hostname -s).log" 2>&1 &
@@ -259,8 +259,8 @@ If active jobs were killed, their queue markers can remain in `running` until st
 Only use this before a real launch, or if you intentionally want to discard the shared queue state:
 
 ```bash
-cd /home/paris/dev/py/mahilda
-uv run mahilda paper-pipeline \
+cd /home/paris/dev/py/marita
+uv run marita paper-pipeline \
   --settings configs/paper/benchmark_83.yaml \
   --reset
 ```
@@ -285,7 +285,7 @@ results/paper_pipeline/pipeline.complete
 To stop the runner on the current server:
 
 ```bash
-pkill -TERM -f 'mahilda paper-pipeline'
+pkill -TERM -f 'marita paper-pipeline'
 ```
 
 To stop one specific PID after verifying it with `ps -fp <PID>`:
@@ -297,7 +297,7 @@ kill <PID>
 If a process does not exit after a short wait:
 
 ```bash
-pkill -KILL -f 'mahilda paper-pipeline'
+pkill -KILL -f 'marita paper-pipeline'
 ```
 
 Or, for one specific PID only:

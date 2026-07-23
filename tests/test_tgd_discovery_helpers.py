@@ -1,13 +1,13 @@
 import pytest
 
-import mahilda.algorithms.mahilda_core.tgd_discovery as discovery
-from mahilda.algorithms.mahilda_core.constraint_graph import (
+import marita.algorithms.marita_core.tgd_discovery as discovery
+from marita.algorithms.marita_core.constraint_graph import (
     AttributeMapper,
     ConstraintGraph,
     IndexedAttribute,
     JoinableIndexedAttributes,
 )
-from mahilda.algorithms.mahilda_core.tgd_discovery import (
+from marita.algorithms.marita_core.tgd_discovery import (
     assign_variables,
     candidate_rule_key,
     check_max_table,
@@ -26,7 +26,7 @@ from mahilda.algorithms.mahilda_core.tgd_discovery import (
     split_candidate_rule,
     split_pruning,
 )
-from mahilda.audit.parsing import parse_formula
+from marita.audit.parsing import parse_formula
 
 
 def _ia(i: int, j: int, k: int) -> IndexedAttribute:

@@ -13,7 +13,7 @@ results:
   output_dir: ../results/smoke  # Directory for saving smoke-test results
 
 algorithm:
-  name: "MAHILDA"  # Algorithm to use
+  name: "MARITA"  # Algorithm to use
   parameters:
     walk_length: 1  # Absolute minimum recursivity
     max_tables: 2  # Minimal number of tables
@@ -25,4 +25,4 @@ algorithm:
 mlflow:
   use: false  # Disabled for testing
   tracking_uri: "http://localhost:5000"
-  experiment_name: "MAHILDA Test Run"
+  experiment_name: "MARITA Test Run"

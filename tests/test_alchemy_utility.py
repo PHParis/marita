@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import TYPE_CHECKING
 
-from mahilda.database.alchemy_utility import AlchemyUtility
+from marita.database.alchemy_utility import AlchemyUtility
 
 if TYPE_CHECKING:
     from pathlib import Path

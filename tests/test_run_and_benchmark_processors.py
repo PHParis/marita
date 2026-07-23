@@ -6,11 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from mahilda.cli import benchmark as benchmark_cli
-from mahilda.cli import processors as processors_cli
-from mahilda.cli import run as run_cli
-from mahilda.cli.processors import BaselineProcessor, DatabaseProcessor
-from mahilda.utils.rules import InclusionDependency
+from marita.cli import benchmark as benchmark_cli
+from marita.cli import processors as processors_cli
+from marita.cli import run as run_cli
+from marita.cli.processors import BaselineProcessor, DatabaseProcessor
+from marita.utils.rules import InclusionDependency
 
 
 class _FakeAlchemyUtility:
@@ -27,7 +27,7 @@ class _FakeAlchemyUtility:
 def test_run_processor_wires_should_stop_predicate(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 
-    class FakeMahilda:
+    class FakeMarita:
         def __init__(self, db_util, config=None) -> None:
             del db_util, config
 
@@ -36,13 +36,13 @@ def test_run_processor_wires_should_stop_predicate(monkeypatch, tmp_path: Path) 
             captured["should_stop_value"] = should_stop()
             return iter([])
 
-    monkeypatch.setattr(processors_cli, "MAHILDA", FakeMahilda)
+    monkeypatch.setattr(processors_cli, "MARITA", FakeMarita)
     monkeypatch.setattr(processors_cli, "AlchemyUtility", _FakeAlchemyUtility)
     monkeypatch.setattr(processors_cli.RuleIO, "save_rules_to_json", lambda rules, path: 0)
     monkeypatch.setattr(DatabaseProcessor, "generate_report", lambda *args, **kwargs: None)
 
     processor = DatabaseProcessor(
-        algorithm_name="MAHILDA",
+        algorithm_name="MARITA",
         database_name=Path("demo.db"),
         database_path=tmp_path,
         results_dir=tmp_path / "results",
@@ -54,13 +54,13 @@ def test_run_processor_wires_should_stop_predicate(monkeypatch, tmp_path: Path) 
         processor.discover_rules()
 
     assert captured["should_stop_value"] is True
-    assert str(tmp_path / "results" / "MAHILDA_demo") in str(captured["results_dir"])
+    assert str(tmp_path / "results" / "MARITA_demo") in str(captured["results_dir"])
 
 
 def test_run_processor_uses_expected_output_paths(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, str] = {}
 
-    class FakeMahilda:
+    class FakeMarita:
         def __init__(self, db_util, config=None) -> None:
             del db_util, config
 
@@ -74,13 +74,13 @@ def test_run_processor_uses_expected_output_paths(monkeypatch, tmp_path: Path) -
         captured["json_path"] = path
         return len(rules)
 
-    monkeypatch.setattr(processors_cli, "MAHILDA", FakeMahilda)
+    monkeypatch.setattr(processors_cli, "MARITA", FakeMarita)
     monkeypatch.setattr(processors_cli, "AlchemyUtility", _FakeAlchemyUtility)
     monkeypatch.setattr(processors_cli.RuleIO, "save_rules_to_json", fake_save_rules)
     monkeypatch.setattr(DatabaseProcessor, "generate_report", lambda *args, **kwargs: None)
 
     processor = DatabaseProcessor(
-        algorithm_name="MAHILDA",
+        algorithm_name="MARITA",
         database_name=Path("demo.db"),
         database_path=tmp_path,
         results_dir=tmp_path / "results",
@@ -90,8 +90,8 @@ def test_run_processor_uses_expected_output_paths(monkeypatch, tmp_path: Path) -
     count = processor.discover_rules()
 
     assert count == 1
-    assert captured["results_dir"].endswith("MAHILDA_demo")
-    assert captured["json_path"].endswith("MAHILDA_demo_results.json")
+    assert captured["results_dir"].endswith("MARITA_demo")
+    assert captured["json_path"].endswith("MARITA_demo_results.json")
 
 
 def test_benchmark_processor_uses_expected_output_paths(monkeypatch, tmp_path: Path) -> None:
@@ -282,7 +282,7 @@ def test_run_report_path_generation(tmp_path: Path) -> None:
     results_dir.mkdir(parents=True, exist_ok=True)
 
     processor = DatabaseProcessor(
-        algorithm_name="MAHILDA",
+        algorithm_name="MARITA",
         database_name=Path("demo.db"),
         database_path=tmp_path,
         results_dir=results_dir,
@@ -291,7 +291,7 @@ def test_run_report_path_generation(tmp_path: Path) -> None:
 
     processor.generate_report(number_of_rules=0, result_path=results_dir / "foo.json", top_rules=[])
 
-    assert (results_dir / "report_MAHILDA_demo.md").exists()
+    assert (results_dir / "report_MARITA_demo.md").exists()
 
 
 def test_benchmark_report_path_generation(tmp_path: Path) -> None:
@@ -311,7 +311,7 @@ def test_benchmark_report_path_generation(tmp_path: Path) -> None:
     assert (results_dir / "report_SPIDER_demo.md").exists()
 
 
-def test_run_processor_cleanup_only_removes_mahilda_temp_dir(tmp_path: Path) -> None:
+def test_run_processor_cleanup_only_removes_marita_temp_dir(tmp_path: Path) -> None:
     prolog_dir = tmp_path / "prolog_tmp"
     spider_dir = tmp_path / "SPIDER_temp"
     popper_dir = tmp_path / "popper"
@@ -320,7 +320,7 @@ def test_run_processor_cleanup_only_removes_mahilda_temp_dir(tmp_path: Path) -> 
     popper_dir.mkdir()
 
     processor = DatabaseProcessor(
-        algorithm_name="MAHILDA",
+        algorithm_name="MARITA",
         database_name=Path("demo.db"),
         database_path=tmp_path,
         results_dir=tmp_path / "results",

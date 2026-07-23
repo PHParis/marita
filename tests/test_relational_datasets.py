@@ -5,8 +5,8 @@ import subprocess
 from importlib import resources
 from typing import TYPE_CHECKING
 
-from mahilda.evaluation.datasets import relational
-from mahilda.evaluation.datasets.relational import (
+from marita.evaluation.datasets import relational
+from marita.evaluation.datasets.relational import (
     DatasetPreparationReport,
     RelationalDatasetPreparer,
     RelationalDownloadSettings,
@@ -120,7 +120,7 @@ def test_prepare_redumps_empty_sql_files(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_dump_database_cleans_failed_empty_dump_and_masks_password(monkeypatch, tmp_path: Path, caplog) -> None:
-    monkeypatch.setattr(logging.getLogger("mahilda"), "propagate", True)
+    monkeypatch.setattr(logging.getLogger("marita"), "propagate", True)
     caplog.set_level(logging.ERROR, logger=relational.LOGGER.name)
     settings = RelationalDownloadSettings(output_dir=tmp_path, password="secret")
     preparer = RelationalDatasetPreparer(settings)
@@ -234,7 +234,7 @@ def test_shell_converter_skips_versioned_multiline_create_view(tmp_path: Path) -
         "INSERT INTO `Products` VALUES (1);\n",
         encoding="latin1",
     )
-    script = resources.files("mahilda.evaluation.datasets").joinpath("convert_sql_sqlite3.sh")
+    script = resources.files("marita.evaluation.datasets").joinpath("convert_sql_sqlite3.sh")
 
     result = subprocess.run(
         ["awk", "-f", str(script), str(sql_file)],

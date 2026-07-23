@@ -3,14 +3,14 @@ import os
 from contextlib import nullcontext
 from pathlib import Path
 
-from mahilda.cli import run as run_cli
-from mahilda.utils.config_loader import load_typed_config
-from mahilda.utils.log_setup import setup_loggers
-from mahilda.utils.logging_utils import configure_global_logger
+from marita.cli import run as run_cli
+from marita.utils.config_loader import load_typed_config
+from marita.utils.log_setup import setup_loggers
+from marita.utils.logging_utils import configure_global_logger
 
 
 def _reset_logger() -> None:
-    logger = logging.getLogger("mahilda")
+    logger = logging.getLogger("marita")
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
         handler.close()
@@ -71,7 +71,7 @@ def test_repeated_run_command_does_not_duplicate_handlers(monkeypatch, tmp_path:
                 "results:",
                 "  output_dir: ./results",
                 "algorithm:",
-                "  name: MAHILDA",
+                "  name: MARITA",
                 "mlflow:",
                 "  use: false",
             ]
@@ -109,7 +109,7 @@ def test_repeated_run_command_does_not_duplicate_handlers(monkeypatch, tmp_path:
     monkeypatch.setattr(run_cli, "mlflow_run_context", lambda *_args, **_kwargs: nullcontext())
 
     assert run_cli.main(["--config", str(config_path)]) == 0
-    logger = logging.getLogger("mahilda")
+    logger = logging.getLogger("marita")
     first_count = len(logger.handlers)
     assert first_count > 0
 
@@ -158,19 +158,19 @@ def test_setup_loggers_follows_env_log_dir_between_invocations(tmp_path: Path) -
     _reset_query_loggers()
     first_dir = tmp_path / "env_first"
     second_dir = tmp_path / "env_second"
-    previous = os.environ.get("MAHILDA_LOG_DIR")
+    previous = os.environ.get("MARITA_LOG_DIR")
 
     try:
-        os.environ["MAHILDA_LOG_DIR"] = str(first_dir)
+        os.environ["MARITA_LOG_DIR"] = str(first_dir)
         setup_loggers()
 
-        os.environ["MAHILDA_LOG_DIR"] = str(second_dir)
+        os.environ["MARITA_LOG_DIR"] = str(second_dir)
         setup_loggers()
     finally:
         if previous is None:
-            os.environ.pop("MAHILDA_LOG_DIR", None)
+            os.environ.pop("MARITA_LOG_DIR", None)
         else:
-            os.environ["MAHILDA_LOG_DIR"] = previous
+            os.environ["MARITA_LOG_DIR"] = previous
 
     query_time = logging.getLogger("query_time")
     query_time_files = [handler for handler in query_time.handlers if isinstance(handler, logging.FileHandler)]

@@ -5,21 +5,21 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-from mahilda.cli.artifacts import (
+from marita.cli.artifacts import (
     build_command_artifacts,
     format_duration,
     write_batch_summary,
     write_execution_time_metrics,
     write_markdown_report,
 )
-from mahilda.utils.rules import InclusionDependency
+from marita.utils.rules import InclusionDependency
 
 
 def test_build_command_artifacts_paths(tmp_path: Path) -> None:
-    artifacts = build_command_artifacts(tmp_path, "MAHILDA", Path("demo.db"))
-    assert artifacts.run_dir == tmp_path / "MAHILDA_demo"
-    assert artifacts.result_json.name == "MAHILDA_demo_results.json"
-    assert artifacts.report_md.name == "report_MAHILDA_demo.md"
+    artifacts = build_command_artifacts(tmp_path, "MARITA", Path("demo.db"))
+    assert artifacts.run_dir == tmp_path / "MARITA_demo"
+    assert artifacts.result_json.name == "MARITA_demo_results.json"
+    assert artifacts.report_md.name == "report_MARITA_demo.md"
     assert artifacts.execution_time_json.name == "execution_time_demo.json"
 
 
@@ -41,7 +41,7 @@ def test_write_markdown_report_and_escape(tmp_path: Path) -> None:
         report_path=report,
         report_title="Demo Report",
         subject_label="Algorithm",
-        subject_name="MAHILDA",
+        subject_name="MARITA",
         database_name="demo.db",
         number_of_rules=2,
         result_path=tmp_path / "results.json",
@@ -95,7 +95,7 @@ def test_write_execution_time_metrics_payload(tmp_path: Path) -> None:
         execution_time=2.5,
         status="success",
         rules_count=7,
-        algorithm_name="MAHILDA",
+        algorithm_name="MARITA",
         start_time=start,
         end_time=end,
     )
@@ -105,7 +105,7 @@ def test_write_execution_time_metrics_payload(tmp_path: Path) -> None:
     assert payload["execution_time_ms"] == 2500.0
     assert payload["status"] == "success"
     assert payload["rules_count"] == 7
-    assert payload["algorithm"] == "MAHILDA"
+    assert payload["algorithm"] == "MARITA"
     assert payload["start_time"] == start.isoformat()
     assert payload["end_time"] == end.isoformat()
 

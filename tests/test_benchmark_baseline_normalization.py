@@ -1,4 +1,4 @@
-from mahilda.cli.benchmark import normalise_baseline_name
+from marita.cli.benchmark import normalise_baseline_name
 
 
 def test_normalise_baseline_name_accepts_canonical_values() -> None:

@@ -6,16 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from mahilda.database.alchemy_utility import AlchemyUtility
-from mahilda.evaluation.baselines import Amie3, Popper, Spider
+from marita.database.alchemy_utility import AlchemyUtility
+from marita.evaluation.baselines import Amie3, Popper, Spider
 
 
 def _should_run_integration() -> bool:
-    return os.environ.get("MAHILDA_RUN_INTEGRATION") == "1"
+    return os.environ.get("MARITA_RUN_INTEGRATION") == "1"
 
 
 def _ensure_test_db(db_path: Path) -> None:
-    from mahilda.cli.test_data import create_test_database
+    from marita.cli.test_data import create_test_database
 
     if not db_path.exists():
         create_test_database(str(db_path))
@@ -25,7 +25,7 @@ def _ensure_test_db(db_path: Path) -> None:
 @pytest.mark.java_required
 def test_amie3_integration(tmp_path: Path) -> None:
     if not _should_run_integration():
-        pytest.skip("Set MAHILDA_RUN_INTEGRATION=1 to run integration tests")
+        pytest.skip("Set MARITA_RUN_INTEGRATION=1 to run integration tests")
     if shutil.which("java") is None:
         pytest.skip("Java is required for AMIE3 integration")
 
@@ -45,7 +45,7 @@ def test_amie3_integration(tmp_path: Path) -> None:
 @pytest.mark.java_required
 def test_spider_integration(tmp_path: Path) -> None:
     if not _should_run_integration():
-        pytest.skip("Set MAHILDA_RUN_INTEGRATION=1 to run integration tests")
+        pytest.skip("Set MARITA_RUN_INTEGRATION=1 to run integration tests")
     if shutil.which("java") is None:
         pytest.skip("Java is required for SPIDER integration")
 
@@ -65,7 +65,7 @@ def test_spider_integration(tmp_path: Path) -> None:
 @pytest.mark.prolog_required
 def test_popper_integration(tmp_path: Path) -> None:
     if not _should_run_integration():
-        pytest.skip("Set MAHILDA_RUN_INTEGRATION=1 to run integration tests")
+        pytest.skip("Set MARITA_RUN_INTEGRATION=1 to run integration tests")
     if shutil.which("run-popper") is None:
         pytest.skip("run-popper is required for Popper integration")
 

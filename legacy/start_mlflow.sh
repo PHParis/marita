@@ -48,4 +48,4 @@ echo -e "${YELLOW}Press Ctrl+C to stop the server${NC}"
 echo ""
 
 # Use the package CLI launcher
-uv run mahilda mlflow start
+uv run marita mlflow start

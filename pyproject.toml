@@ -3,13 +3,13 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mahilda"
+name = "marita"
 version = "0.1.0"
-description = "MAHILDA rule discovery toolkit with optional benchmark baselines"
+description = "MARITA rule discovery toolkit with optional benchmark baselines"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary" }
-authors = [{ name = "MAHILDA contributors" }]
+authors = [{ name = "MARITA contributors" }]
 dependencies = [
   "setuptools>=69",
   "PyYAML>=6.0",
@@ -29,7 +29,7 @@ datasets = [
 ]
 
 [project.scripts]
-mahilda = "mahilda.cli.main:main"
+marita = "marita.cli.main:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -37,11 +37,11 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["mahilda*"]
+include = ["marita*"]
 
 [tool.setuptools.package-data]
-"mahilda.evaluation" = ["third_party/**/*.jar"]
-"mahilda.evaluation.datasets" = ["*.sh"]
+"marita.evaluation" = ["third_party/**/*.jar"]
+"marita.evaluation.datasets" = ["*.sh"]
 
 [dependency-groups]
 dev = [
@@ -58,7 +58,7 @@ dev = [
 minversion = "8.0"
 testpaths = ["tests"]
 pythonpath = ["src", "."]
-addopts = "-ra --strict-markers --strict-config --cov=mahilda --cov-report=term-missing --cov-report=xml --cov-report=html"
+addopts = "-ra --strict-markers --strict-config --cov=marita --cov-report=term-missing --cov-report=xml --cov-report=html"
 markers = [
   "integration: marks slow external dependency integration tests",
   "java_required: marks tests that require Java runtime",
@@ -67,10 +67,10 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["mahilda"]
+source = ["marita"]
 omit = [
-  "src/mahilda/evaluation/third_party/amie3/*",
-  "src/mahilda/evaluation/third_party/metanome/*",
+  "src/marita/evaluation/third_party/amie3/*",
+  "src/marita/evaluation/third_party/metanome/*",
 ]
 
 [tool.coverage.report]
@@ -85,10 +85,10 @@ src = ["src"]
 extend-exclude = [
   "legacy",
   "research/legacy",
-  "src/mahilda/algorithms/mahilda_core",
-  "src/mahilda/evaluation/third_party",
-  "src/mahilda/utils/log_setup.py",
-  "src/mahilda/utils/monitor.py",
+  "src/marita/algorithms/marita_core",
+  "src/marita/evaluation/third_party",
+  "src/marita/utils/log_setup.py",
+  "src/marita/utils/monitor.py",
 ]
 
 [tool.ruff.lint]
@@ -108,14 +108,14 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["mahilda"]
+known-first-party = ["marita"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/mahilda/algorithms/__init__.py" = ["F401"]
-"src/mahilda/algorithms/base_algorithm.py" = ["I001"]
-"src/mahilda/algorithms/mahilda.py" = ["UP", "TC001", "TC006", "SIM102"]
-"src/mahilda/utils/rules.py" = ["I001", "UP", "SIM102"]
-"src/mahilda/utils/run_cmd.py" = ["TC003"]
+"src/marita/algorithms/__init__.py" = ["F401"]
+"src/marita/algorithms/base_algorithm.py" = ["I001"]
+"src/marita/algorithms/marita.py" = ["UP", "TC001", "TC006", "SIM102"]
+"src/marita/utils/rules.py" = ["I001", "UP", "SIM102"]
+"src/marita/utils/run_cmd.py" = ["TC003"]
 "tests/test_baselines_integration.py" = ["TC003"]
 
 [tool.ruff.format]
@@ -126,7 +126,7 @@ line-ending = "lf"
 [tool.pyright]
 typeCheckingMode = "basic"
 include = [
-  "src/mahilda",
+  "src/marita",
 ]
 exclude = [
   "legacy",
@@ -135,12 +135,12 @@ exclude = [
   "**/__pycache__",
 ]
 ignore = [
-  "src/mahilda/algorithms/mahilda_core",
-  "src/mahilda/evaluation/baselines/spider.py",
-  "src/mahilda/evaluation/baselines/amie3.py",
-  "src/mahilda/utils/rules.py",
-  "src/mahilda/utils/rule_io.py",
-  "src/mahilda/utils/tgd_factory.py",
+  "src/marita/algorithms/marita_core",
+  "src/marita/evaluation/baselines/spider.py",
+  "src/marita/evaluation/baselines/amie3.py",
+  "src/marita/utils/rules.py",
+  "src/marita/utils/rule_io.py",
+  "src/marita/utils/tgd_factory.py",
 ]
 pythonVersion = "3.10"
 venvPath = "."

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mahilda.cli import smoke
+from marita.cli import smoke
 
 
 def test_smoke_returns_error_for_missing_config(tmp_path: Path) -> None:
@@ -21,11 +21,11 @@ def test_smoke_sets_verbose_env_temporarily(monkeypatch, tmp_path: Path) -> None
         del argv
         import os
 
-        observed["verbose"] = os.environ.get("MAHILDA_VERBOSE")
-        observed["quiet"] = os.environ.get("MAHILDA_QUIET")
+        observed["verbose"] = os.environ.get("MARITA_VERBOSE")
+        observed["quiet"] = os.environ.get("MARITA_QUIET")
         return 0
 
-    monkeypatch.setattr("mahilda.cli.run.main", fake_run_main)
+    monkeypatch.setattr("marita.cli.run.main", fake_run_main)
 
     exit_code = smoke.main(["--config", str(config_path), "--verbose"])
 

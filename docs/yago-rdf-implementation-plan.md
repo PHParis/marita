@@ -1,6 +1,6 @@
 # YAGO RDF Import Implementation Plan
 
-This plan implements the benchmark protocol in `docs/yago-rdf-benchmark-protocol.md`. The goal is to transform `data/yago-tiny.ttl` into scientifically auditable artifacts for relational and graph-rule benchmarks without privileging MAHILDA or AMIE3.
+This plan implements the benchmark protocol in `docs/yago-rdf-benchmark-protocol.md`. The goal is to transform `data/yago-tiny.ttl` into scientifically auditable artifacts for relational and graph-rule benchmarks without privileging MARITA or AMIE3.
 
 ## Target Artifacts
 
@@ -19,7 +19,7 @@ The import command should produce the following files under a caller-provided ou
 ## Phase 1: Dependencies And Data Model
 
 1. Add `rdflib` as a runtime dependency.
-2. Add `src/mahilda/database/rdf_importer.py`.
+2. Add `src/marita/database/rdf_importer.py`.
 3. Define small dataclasses for normalized RDF terms, literals, statements, variant definitions, and import stats.
 4. Use stable integer IDs in SQLite and SHA-256 statement hashes for traceability.
 
@@ -118,7 +118,7 @@ Add optional direct TSV support to the AMIE3 baseline:
 Add a command such as:
 
 ```bash
-uv run mahilda import-rdf \
+uv run marita import-rdf \
   --input data/yago-tiny.ttl \
   --output-dir data/yago \
   --variants core,ontology-lite

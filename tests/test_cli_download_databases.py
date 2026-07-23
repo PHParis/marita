@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from mahilda.cli import download_databases
-from mahilda.evaluation.datasets.relational import DatasetPreparationReport
+from marita.cli import download_databases
+from marita.evaluation.datasets.relational import DatasetPreparationReport
 
 if TYPE_CHECKING:
     from pathlib import Path

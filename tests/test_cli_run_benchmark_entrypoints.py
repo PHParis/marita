@@ -5,8 +5,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
-from mahilda.cli import benchmark as benchmark_cli
-from mahilda.cli import run as run_cli
+from marita.cli import benchmark as benchmark_cli
+from marita.cli import run as run_cli
 
 
 @contextmanager
@@ -15,7 +15,7 @@ def _noop_cm(*args, **kwargs):
     yield
 
 
-def _typed_config(tmp_path: Path, *, algorithm: str = "MAHILDA", mlflow_use: bool = False):
+def _typed_config(tmp_path: Path, *, algorithm: str = "MARITA", mlflow_use: bool = False):
     return SimpleNamespace(
         monitor=SimpleNamespace(memory_threshold=80, timeout=10),
         database=SimpleNamespace(path=tmp_path, name=Path("demo.db")),
@@ -89,7 +89,7 @@ def test_run_main_happy_path(monkeypatch, tmp_path: Path) -> None:
     assert called["cleanup"] == 1
 
 
-def test_run_main_rejects_non_mahilda(monkeypatch, tmp_path: Path) -> None:
+def test_run_main_rejects_non_marita(monkeypatch, tmp_path: Path) -> None:
     cfg = _typed_config(tmp_path, algorithm="SPIDER")
     monkeypatch.setattr(run_cli, "load_typed_config", lambda _p: cfg)
     monkeypatch.setattr(run_cli, "initialize_directories", lambda *args, **kwargs: None)
@@ -98,7 +98,7 @@ def test_run_main_rejects_non_mahilda(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_benchmark_main_invalid_and_happy_path(monkeypatch, tmp_path: Path) -> None:
-    cfg = _typed_config(tmp_path, algorithm="MAHILDA")
+    cfg = _typed_config(tmp_path, algorithm="MARITA")
     monkeypatch.setattr(benchmark_cli, "load_typed_config", lambda _p: cfg)
     monkeypatch.setattr(benchmark_cli, "initialize_directories", lambda *args, **kwargs: None)
     monkeypatch.setattr(benchmark_cli, "configure_global_logger", lambda _p: logging.getLogger("test.bench"))

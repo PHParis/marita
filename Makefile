@@ -16,9 +16,9 @@ typecheck:
 	uv run pyright
 
 smoke:
-	uv run mahilda smoke
+	uv run marita smoke
 
 test-db:
-	uv run mahilda test-db
+	uv run marita test-db
 
 ci: lint typecheck test

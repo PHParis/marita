@@ -2,21 +2,21 @@
 
 ## Active Package Layout
 
-- `src/mahilda/cli/`: command entrypoints (`run`, `benchmark`, `batch`, `smoke`, `test-db`, `mlflow` helpers)
-- `src/mahilda/algorithms/`: `MAHILDA` implementation and shared algorithm base classes
-- `src/mahilda/algorithms/mahilda_core/`: internal discovery pipeline primitives
-- `src/mahilda/database/`: DB inspection and conversion helpers
-- `src/mahilda/evaluation/baselines/`: baseline adapters (`AMIE3`, `SPIDER`, `POPPER`)
-- `src/mahilda/utils/`: config loading, logging setup, subprocess wrapper, monitor, and rule serialization
+- `src/marita/cli/`: command entrypoints (`run`, `benchmark`, `batch`, `smoke`, `test-db`, `mlflow` helpers)
+- `src/marita/algorithms/`: `MARITA` implementation and shared algorithm base classes
+- `src/marita/algorithms/marita_core/`: internal discovery pipeline primitives
+- `src/marita/database/`: DB inspection and conversion helpers
+- `src/marita/evaluation/baselines/`: baseline adapters (`AMIE3`, `SPIDER`, `POPPER`)
+- `src/marita/utils/`: config loading, logging setup, subprocess wrapper, monitor, and rule serialization
 
 ## Entrypoint Wiring
 
-- Top-level CLI: `src/mahilda/cli/main.py`
-- Single run orchestrator: `src/mahilda/cli/run.py` (`DatabaseProcessor`)
-- Baseline runner: `src/mahilda/cli/benchmark.py` (`BaselineProcessor`)
-- Batch runner: `src/mahilda/cli/batch.py` (parallel fan-out over `.db` files)
+- Top-level CLI: `src/marita/cli/main.py`
+- Single run orchestrator: `src/marita/cli/run.py` (`DatabaseProcessor`)
+- Baseline runner: `src/marita/cli/benchmark.py` (`BaselineProcessor`)
+- Batch runner: `src/marita/cli/batch.py` (parallel fan-out over `.db` files)
 
-`mahilda run` is restricted to `MAHILDA`; baseline execution is routed through `mahilda benchmark`.
+`marita run` is restricted to `MARITA`; baseline execution is routed through `marita benchmark`.
 
 ## Runtime Data Flow
 
@@ -40,5 +40,5 @@
 
 ## Scope Boundaries
 
-- Vendored baseline assets: `src/mahilda/evaluation/third_party/` (kept as external code, not first-party cleanup targets)
+- Vendored baseline assets: `src/marita/evaluation/third_party/` (kept as external code, not first-party cleanup targets)
 - Archived historical code: `legacy/` and `research/`

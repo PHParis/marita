@@ -1,11 +1,11 @@
 import subprocess
 
-from mahilda.cli import mlflow_start
+from marita.cli import mlflow_start
 
 
 def test_mlflow_start_launches_server(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("mahilda.cli.mlflow_start.importlib.util.find_spec", lambda _name: object())
+    monkeypatch.setattr("marita.cli.mlflow_start.importlib.util.find_spec", lambda _name: object())
 
     captured: dict[str, list[str]] = {}
 
@@ -18,7 +18,7 @@ def test_mlflow_start_launches_server(monkeypatch, tmp_path) -> None:
         captured["cmd"] = cmd
         return FakeProcess()
 
-    monkeypatch.setattr("mahilda.cli.mlflow_start.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("marita.cli.mlflow_start.subprocess.Popen", fake_popen)
 
     exit_code = mlflow_start.main([])
 
@@ -41,7 +41,7 @@ def test_mlflow_start_launches_server(monkeypatch, tmp_path) -> None:
 
 def test_mlflow_start_errors_when_mlflow_missing(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("mahilda.cli.mlflow_start.importlib.util.find_spec", lambda _name: None)
+    monkeypatch.setattr("marita.cli.mlflow_start.importlib.util.find_spec", lambda _name: None)
 
     exit_code = mlflow_start.main([])
 
@@ -50,7 +50,7 @@ def test_mlflow_start_errors_when_mlflow_missing(monkeypatch, tmp_path) -> None:
 
 def test_mlflow_start_handles_keyboard_interrupt(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("mahilda.cli.mlflow_start.importlib.util.find_spec", lambda _name: object())
+    monkeypatch.setattr("marita.cli.mlflow_start.importlib.util.find_spec", lambda _name: object())
 
     class FakeProcess:
         def __init__(self) -> None:
@@ -77,7 +77,7 @@ def test_mlflow_start_handles_keyboard_interrupt(monkeypatch, tmp_path) -> None:
         del cmd
         return process
 
-    monkeypatch.setattr("mahilda.cli.mlflow_start.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("marita.cli.mlflow_start.subprocess.Popen", fake_popen)
 
     exit_code = mlflow_start.main([])
 
@@ -87,7 +87,7 @@ def test_mlflow_start_handles_keyboard_interrupt(monkeypatch, tmp_path) -> None:
 
 def test_mlflow_start_kills_after_shutdown_timeout(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("mahilda.cli.mlflow_start.importlib.util.find_spec", lambda _name: object())
+    monkeypatch.setattr("marita.cli.mlflow_start.importlib.util.find_spec", lambda _name: object())
 
     class FakeProcess:
         def __init__(self) -> None:
@@ -118,7 +118,7 @@ def test_mlflow_start_kills_after_shutdown_timeout(monkeypatch, tmp_path) -> Non
         del cmd
         return process
 
-    monkeypatch.setattr("mahilda.cli.mlflow_start.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("marita.cli.mlflow_start.subprocess.Popen", fake_popen)
 
     exit_code = mlflow_start.main([])
 
@@ -129,13 +129,13 @@ def test_mlflow_start_kills_after_shutdown_timeout(monkeypatch, tmp_path) -> Non
 
 def test_mlflow_start_returns_error_on_unexpected_exception(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("mahilda.cli.mlflow_start.importlib.util.find_spec", lambda _name: object())
+    monkeypatch.setattr("marita.cli.mlflow_start.importlib.util.find_spec", lambda _name: object())
 
     def fake_popen(cmd: list[str]):
         del cmd
         raise OSError("cannot launch")
 
-    monkeypatch.setattr("mahilda.cli.mlflow_start.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("marita.cli.mlflow_start.subprocess.Popen", fake_popen)
 
     exit_code = mlflow_start.main([])
 

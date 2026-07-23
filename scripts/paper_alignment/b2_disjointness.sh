@@ -30,7 +30,7 @@ logging:
 results:
   output_dir: $REPO/results/ablation_${mode}/N${N}
 algorithm:
-  name: MAHILDA
+  name: MARITA
   parameters:
     walk_length: ${N}
     max_tables: 3
@@ -51,7 +51,7 @@ ls /tmp/ablation_cfg/*.yaml | \
         out=$(grep "output_dir" "$cfg" | awk "{print \$2}")
         mkdir -p "$out"
         /usr/bin/time -v -o "${out}/time.log" \
-            uv run mahilda run --config "$cfg" \
+            uv run marita run --config "$cfg" \
             > "${out}/stdout.log" 2>&1
     ' _ {}
 

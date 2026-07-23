@@ -4,7 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from mahilda.audit.amie_translation import (
+from marita.audit.amie_translation import (
     build_rdb_kg_mapping,
     parse_amie_display,
     translate_amie_source,
@@ -12,7 +12,7 @@ from mahilda.audit.amie_translation import (
     validate_tsv_predicates,
     write_mapping_manifest,
 )
-from mahilda.audit.models import RuleKind, SourceRule
+from marita.audit.models import RuleKind, SourceRule
 
 
 def _database(tmp_path: Path) -> Path:

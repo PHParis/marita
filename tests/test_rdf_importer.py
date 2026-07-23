@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import TYPE_CHECKING
 
-from mahilda.database.rdf_importer import import_rdf_benchmark
+from marita.database.rdf_importer import import_rdf_benchmark
 
 if TYPE_CHECKING:
     from pathlib import Path

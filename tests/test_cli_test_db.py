@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from mahilda.cli.main import main
+from marita.cli.main import main
 
 
 def test_test_db_command_creates_sqlite_file(tmp_path: Path) -> None:

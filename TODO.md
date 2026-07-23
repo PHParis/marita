@@ -6,25 +6,25 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ## [Done][P0] Remove Dead Code: `structure_analysis.py`
 
-**File:** `src/mahilda/utils/structure_analysis.py` (246 lines)
+**File:** `src/marita/utils/structure_analysis.py` (246 lines)
 
 **Problem:** This module is never imported by any active code path. The only import is in `legacy/main_all.py` which is archived. The file is excluded from ruff and pyright scope.
 
 **Action:** Delete the file. The `log_structure_analysis()` and `save_pattern_2_2_rules()` functions were likely extracted for reuse but never wired into the batch pipeline.
 
 **Steps:**
-1. Verify no active imports (grep for `structure_analysis` in `src/mahilda/` — confirmed only in `legacy/`)
-2. Remove `src/mahilda/utils/structure_analysis.py`
-3. Remove the exclusion from `pyproject.toml` ruff scope: `src/mahilda/utils/structure_analysis.py`
+1. Verify no active imports (grep for `structure_analysis` in `src/marita/` — confirmed only in `legacy/`)
+2. Remove `src/marita/utils/structure_analysis.py`
+3. Remove the exclusion from `pyproject.toml` ruff scope: `src/marita/utils/structure_analysis.py`
 4. Run `uv run ruff check . && uv run pyright && uv run pytest` to verify
 
 ---
 
 ## [Done][P0] Fix `mlflow start` — Currently a No-Op
 
-**File:** `src/mahilda/cli/mlflow_start.py`
+**File:** `src/marita/cli/mlflow_start.py`
 
-**Problem:** The `mahilda mlflow start` command doesn't start an MLflow tracking server. It prints instructions and enters a `while True: sleep(1)` loop. The docstring says "Uses a built-in server without gunicorn workers" but no server process is ever launched.
+**Problem:** The `marita mlflow start` command doesn't start an MLflow tracking server. It prints instructions and enters a `while True: sleep(1)` loop. The docstring says "Uses a built-in server without gunicorn workers" but no server process is ever launched.
 
 **Action:** Replace the sleep loop with an actual MLflow tracking server invocation using `mlflow server`.
 
@@ -39,7 +39,7 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ## [Done][P1] Fix Config Defaults Masking Validation Errors
 
-**File:** `src/mahilda/utils/config_types.py`
+**File:** `src/marita/utils/config_types.py`
 
 **Problem:** `AppConfig.from_dict()` applies generous defaults (e.g., `database.path` → `"test_data"`, `database.name` → `"test.db"`) *before* validation runs. This means a completely missing or malformed config section can silently pass validation with wrong defaults, leading to confusing runtime behavior.
 
@@ -55,7 +55,7 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ## [Done][P1] Make MLflow UI Port Configurable
 
-**File:** `src/mahilda/cli/mlflow_ui.py`
+**File:** `src/marita/cli/mlflow_ui.py`
 
 **Problem:** Port `5000` is hardcoded. If another process uses that port, the command fails silently (`subprocess.run` with `check=False`).
 
@@ -70,9 +70,9 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ## [Done][P2] Clean Up `clean_up()` Hardcoded Temp Directories
 
-**Files:** `src/mahilda/cli/run.py:200-210`, `src/mahilda/cli/benchmark.py:109-118`
+**Files:** `src/marita/cli/run.py:200-210`, `src/marita/cli/benchmark.py:109-118`
 
-**Problem:** `clean_up()` unconditionally tries to remove `prolog_tmp`, `SPIDER_temp`, and `popper` directories under the database path. When running MAHILDA-only (not baselines), these directories don't exist and produce noisy "directory not found" log messages despite the `directory.exists()` check — actually the check prevents removal but the log message is only emitted on success. The real issue is these dirs are baseline-specific but always attempted.
+**Problem:** `clean_up()` unconditionally tries to remove `prolog_tmp`, `SPIDER_temp`, and `popper` directories under the database path. When running MARITA-only (not baselines), these directories don't exist and produce noisy "directory not found" log messages despite the `directory.exists()` check — actually the check prevents removal but the log message is only emitted on success. The real issue is these dirs are baseline-specific but always attempted.
 
 **Action:** Make the temp directory list algorithm-aware.
 
@@ -86,7 +86,7 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ## [Done][P2] Improve Signal Handler Portability in Batch Worker
 
-**File:** `src/mahilda/cli/batch.py:146-164`
+**File:** `src/marita/cli/batch.py:146-164`
 
 **Problem:** The timeout mechanism uses `signal.SIGALRM`, which is Unix-only. The `hasattr(signal, "SIGALRM")` check prevents crashes on Windows, but the timeout simply won't work there. Additionally, since `run_database()` runs in a child process via `ProcessPoolExecutor`, signal semantics differ from the main process.
 
@@ -103,7 +103,7 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ## [Done][P3] Refactor Bare `pass` in `_coerce_positive_int`
 
-**File:** `src/mahilda/algorithms/mahilda.py:150`
+**File:** `src/marita/algorithms/marita.py:150`
 
 **Problem:** The bare `pass` in the except block is functionally correct but slightly less clear than an explicit `return fallback`.
 
@@ -127,7 +127,7 @@ Items derived from the codebase inspection, ordered by priority and dependency.
 
 ## [Done][P3] Document Shell Script FIXMEs
 
-**File:** `src/mahilda/database/convert_sql_sqlite3.sh:5,183,223`
+**File:** `src/marita/database/convert_sql_sqlite3.sh:5,183,223`
 
 **Problem:** Three FIXME comments in a vendored/third-party awk script that converts MySQL dumps to SQLite. These are informational and unlikely to be acted on since the script works for the project's use cases.
 

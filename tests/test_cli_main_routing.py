@@ -1,4 +1,4 @@
-from mahilda.cli.main import main
+from marita.cli.main import main
 
 
 def test_main_routes_run_command(monkeypatch) -> None:
@@ -8,7 +8,7 @@ def test_main_routes_run_command(monkeypatch) -> None:
         captured["argv"] = argv
         return 17
 
-    monkeypatch.setattr("mahilda.cli.run.main", fake_run_main)
+    monkeypatch.setattr("marita.cli.run.main", fake_run_main)
 
     exit_code = main(["run", "--config", "cfg.yml"])
 
@@ -23,7 +23,7 @@ def test_main_routes_benchmark_command(monkeypatch) -> None:
         captured["argv"] = argv
         return 18
 
-    monkeypatch.setattr("mahilda.cli.benchmark.main", fake_benchmark_main)
+    monkeypatch.setattr("marita.cli.benchmark.main", fake_benchmark_main)
 
     exit_code = main(["benchmark", "--config", "cfg.yml", "--baseline", "SPIDER"])
 
@@ -38,7 +38,7 @@ def test_main_routes_benchmark_input_tsv(monkeypatch) -> None:
         captured["argv"] = argv
         return 18
 
-    monkeypatch.setattr("mahilda.cli.benchmark.main", fake_benchmark_main)
+    monkeypatch.setattr("marita.cli.benchmark.main", fake_benchmark_main)
 
     exit_code = main(["benchmark", "--config", "cfg.yml", "--baseline", "AMIE3", "--input-tsv", "kg.tsv"])
 
@@ -53,7 +53,7 @@ def test_main_routes_audit_command(monkeypatch) -> None:
         captured["argv"] = argv
         return 19
 
-    monkeypatch.setattr("mahilda.cli.audit.main", fake_audit_main)
+    monkeypatch.setattr("marita.cli.audit.main", fake_audit_main)
     exit_code = main(
         [
             "audit",
@@ -76,7 +76,7 @@ def test_main_routes_audit_command(monkeypatch) -> None:
         "--database-dir",
         "data/x",
         "--target",
-        "MAHILDA",
+        "MARITA",
         "--competitors",
         "MATILDA",
         "--coverage",
@@ -100,7 +100,7 @@ def test_main_routes_audit_parallel_resume_flags(monkeypatch) -> None:
         captured["argv"] = argv
         return 19
 
-    monkeypatch.setattr("mahilda.cli.audit.main", fake_audit_main)
+    monkeypatch.setattr("marita.cli.audit.main", fake_audit_main)
     exit_code = main(
         [
             "audit",
@@ -122,7 +122,7 @@ def test_main_routes_audit_parallel_resume_flags(monkeypatch) -> None:
         "--database-dir",
         "data/x",
         "--target",
-        "MAHILDA",
+        "MARITA",
         "--competitors",
         "AMIE3,MATILDA,SPIDER,POPPER",
         "--coverage",
@@ -147,7 +147,7 @@ def test_main_routes_audit_distributed_flags(monkeypatch) -> None:
         captured["argv"] = argv
         return 0
 
-    monkeypatch.setattr("mahilda.cli.audit.main", fake_audit_main)
+    monkeypatch.setattr("marita.cli.audit.main", fake_audit_main)
     assert (
         main(
             [
@@ -182,7 +182,7 @@ def test_main_routes_import_rdf_command(monkeypatch) -> None:
         captured["argv"] = argv
         return 24
 
-    monkeypatch.setattr("mahilda.cli.import_rdf.main", fake_import_rdf_main)
+    monkeypatch.setattr("marita.cli.import_rdf.main", fake_import_rdf_main)
 
     exit_code = main(
         [
@@ -218,7 +218,7 @@ def test_main_routes_download_databases_command(monkeypatch) -> None:
         captured["argv"] = argv
         return 25
 
-    monkeypatch.setattr("mahilda.cli.download_databases.main", fake_download_main)
+    monkeypatch.setattr("marita.cli.download_databases.main", fake_download_main)
 
     exit_code = main(
         [
@@ -258,7 +258,7 @@ def test_main_routes_batch_command(monkeypatch) -> None:
         captured["argv"] = argv
         return 19
 
-    monkeypatch.setattr("mahilda.cli.batch.main", fake_batch_main)
+    monkeypatch.setattr("marita.cli.batch.main", fake_batch_main)
 
     exit_code = main(
         [
@@ -306,7 +306,7 @@ def test_main_routes_paper_benchmark_hosts_override(monkeypatch) -> None:
         captured["argv"] = argv
         return 29
 
-    monkeypatch.setattr("mahilda.cli.paper_benchmark.main", fake_paper_benchmark_main)
+    monkeypatch.setattr("marita.cli.paper_benchmark.main", fake_paper_benchmark_main)
 
     exit_code = main(
         [
@@ -334,7 +334,7 @@ def test_main_routes_paper_benchmark_status(monkeypatch) -> None:
         captured["argv"] = argv
         return 29
 
-    monkeypatch.setattr("mahilda.cli.paper_benchmark.main", fake_paper_benchmark_main)
+    monkeypatch.setattr("marita.cli.paper_benchmark.main", fake_paper_benchmark_main)
 
     exit_code = main(["paper-benchmark", "--status"])
 
@@ -352,7 +352,7 @@ def test_main_routes_paper_benchmark_email_options(monkeypatch) -> None:
         captured["argv"] = argv
         return 29
 
-    monkeypatch.setattr("mahilda.cli.paper_benchmark.main", fake_paper_benchmark_main)
+    monkeypatch.setattr("marita.cli.paper_benchmark.main", fake_paper_benchmark_main)
 
     exit_code = main(
         [
@@ -398,7 +398,7 @@ def test_main_routes_smoke_command(monkeypatch) -> None:
         captured["argv"] = argv
         return 20
 
-    monkeypatch.setattr("mahilda.cli.smoke.main", fake_smoke_main)
+    monkeypatch.setattr("marita.cli.smoke.main", fake_smoke_main)
 
     exit_code = main(["smoke", "--config", "cfg.yml", "--verbose"])
 
@@ -413,7 +413,7 @@ def test_main_routes_test_db_command(monkeypatch) -> None:
         captured["argv"] = argv
         return 21
 
-    monkeypatch.setattr("mahilda.cli.test_data.main", fake_test_db_main)
+    monkeypatch.setattr("marita.cli.test_data.main", fake_test_db_main)
 
     exit_code = main(["test-db", "--output", "tmp/test.db"])
 
@@ -428,7 +428,7 @@ def test_main_routes_mlflow_start_command(monkeypatch) -> None:
         captured["argv"] = argv
         return 22
 
-    monkeypatch.setattr("mahilda.cli.mlflow_start.main", fake_mlflow_start_main)
+    monkeypatch.setattr("marita.cli.mlflow_start.main", fake_mlflow_start_main)
 
     exit_code = main(["mlflow", "start"])
 
@@ -443,7 +443,7 @@ def test_main_routes_mlflow_ui_command(monkeypatch) -> None:
         captured["argv"] = argv
         return 23
 
-    monkeypatch.setattr("mahilda.cli.mlflow_ui.main", fake_mlflow_ui_main)
+    monkeypatch.setattr("marita.cli.mlflow_ui.main", fake_mlflow_ui_main)
 
     exit_code = main(["mlflow", "ui", "--port", "6001"])
 

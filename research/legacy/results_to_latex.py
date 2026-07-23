@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Convert MAHILDA Results to LaTeX Tables
+Convert MARITA Results to LaTeX Tables
 
-This script generates LaTeX tables from MAHILDA rule discovery results.
+This script generates LaTeX tables from MARITA rule discovery results.
 Supports multiple output formats and filtering options.
 
 Usage:
     python3 results_to_latex.py [options]
     
 Options:
-    --output FILE           Output LaTeX file (default: mahilda_results.tex)
+    --output FILE           Output LaTeX file (default: marita_results.tex)
     --top N                 Show top N rules per database (default: 10)
     --metric METRIC         Sort by metric: accuracy, confidence, support (default: accuracy)
     --summary               Generate summary statistics table only
@@ -54,7 +54,7 @@ class DatabaseResults:
 
 
 def load_results(base_path: str = "results_all_databases") -> Dict[str, DatabaseResults]:
-    """Load all MAHILDA results from the results directory"""
+    """Load all MARITA results from the results directory"""
     results = {}
     base_path = Path(base_path)
     
@@ -63,9 +63,9 @@ def load_results(base_path: str = "results_all_databases") -> Dict[str, Database
         return results
     
     # Find all result JSON files
-    for result_file in sorted(base_path.glob("MAHILDA_*/MAHILDA_*_results.json")):
-        db_dir = result_file.parent.name  # e.g., "MAHILDA_Bupa"
-        db_name = db_dir.replace("MAHILDA_", "")
+    for result_file in sorted(base_path.glob("MARITA_*/MARITA_*_results.json")):
+        db_dir = result_file.parent.name  # e.g., "MARITA_Bupa"
+        db_name = db_dir.replace("MARITA_", "")
         
         try:
             with open(result_file, 'r') as f:
@@ -185,8 +185,8 @@ def generate_summary_table(results: Dict[str, DatabaseResults]) -> str:
     latex = []
     latex.append(r"\begin{table}[h!]")
     latex.append(r"\centering")
-    latex.append(r"\caption{MAHILDA Rule Discovery Summary Statistics}")
-    latex.append(r"\label{tab:mahilda_summary}")
+    latex.append(r"\caption{MARITA Rule Discovery Summary Statistics}")
+    latex.append(r"\label{tab:marita_summary}")
     latex.append(r"\begin{tabular}{|l|r|r|r|r|}")
     latex.append(r"\hline")
     latex.append(r"\textbf{Database} & \textbf{Rules} & \textbf{Accuracy} & \textbf{Confidence} & \textbf{Time (s)} \\")
@@ -300,7 +300,7 @@ def generate_all_rules_table(results: Dict[str, DatabaseResults]) -> str:
     latex.append(r"\begin{table}[h!]")
     latex.append(r"\centering")
     latex.append(r"\tiny")
-    latex.append(r"\caption{All MAHILDA Rules - Complete Results}")
+    latex.append(r"\caption{All MARITA Rules - Complete Results}")
     latex.append(r"\label{tab:all_rules}")
     latex.append(r"\begin{longtable}{|l|p{6cm}|c|c|c|c|}")
     latex.append(r"\hline")
@@ -356,7 +356,7 @@ def generate_latex_document(
     latex.append(r"\usepackage{hyperref}")
     latex.append(r"\usepackage{xcolor}")
     latex.append("")
-    latex.append(r"\title{MAHILDA Rule Discovery Results}")
+    latex.append(r"\title{MARITA Rule Discovery Results}")
     latex.append(f"\\author{{Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}}}")
     latex.append(r"\date{\today}")
     latex.append("")
@@ -392,13 +392,13 @@ def main():
     start_time = time.perf_counter()
     
     parser = argparse.ArgumentParser(
-        description="Convert MAHILDA results to LaTeX tables",
+        description="Convert MARITA results to LaTeX tables",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__
     )
     
-    parser.add_argument("--output", "-o", default="mahilda_results.tex",
-                        help="Output LaTeX file (default: mahilda_results.tex)")
+    parser.add_argument("--output", "-o", default="marita_results.tex",
+                        help="Output LaTeX file (default: marita_results.tex)")
     parser.add_argument("--top", "-t", type=int, default=10,
                         help="Top N rules per database (default: 10)")
     parser.add_argument("--metric", "-m", choices=["accuracy", "confidence", "support"],
@@ -416,7 +416,7 @@ def main():
     
     args = parser.parse_args()
     
-    print("🔍 Loading MAHILDA results...")
+    print("🔍 Loading MARITA results...")
     results = load_results(args.results_dir)
     
     if not results:

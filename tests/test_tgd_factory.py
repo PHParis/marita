@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from mahilda.utils.tgd_factory import TGDRuleFactory
+from marita.utils.tgd_factory import TGDRuleFactory
 
 
 def test_str_to_tgd_valid() -> None:

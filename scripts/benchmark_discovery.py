@@ -1,4 +1,4 @@
-"""Measure bounded MAHILDA enumeration with the old and indexed graph paths.
+"""Measure bounded MARITA enumeration with the old and indexed graph paths.
 
 The legacy path is intentionally kept here as a benchmark oracle, not as a
 runtime option. It provides a reproducible before/after measurement while
@@ -20,15 +20,15 @@ import tracemalloc
 from pathlib import Path
 from types import MethodType
 
-from mahilda.algorithms.mahilda_core.constraint_graph import ConstraintGraph, JoinableIndexedAttributes
-from mahilda.algorithms.mahilda_core.tgd_discovery import (
+from marita.algorithms.marita_core.constraint_graph import ConstraintGraph, JoinableIndexedAttributes
+from marita.algorithms.marita_core.tgd_discovery import (
     dfs,
     init,
     instantiate_tgd,
     path_pruning,
 )
-from mahilda.audit.parsing import parse_formula
-from mahilda.database.alchemy_utility import AlchemyUtility
+from marita.audit.parsing import parse_formula
+from marita.database.alchemy_utility import AlchemyUtility
 
 
 def _write_synthetic_fk_chain(path: Path, table_count: int = 8) -> Path:
@@ -120,7 +120,7 @@ def benchmark(
     max_vars: int = 3,
     compare_enumeration: bool = False,
 ) -> dict[str, object]:
-    output_dir = Path("/tmp") / f"mahilda-runtime-{database_path.stem}"
+    output_dir = Path("/tmp") / f"marita-runtime-{database_path.stem}"
     output_dir.mkdir(parents=True, exist_ok=True)
     database = AlchemyUtility(
         f"sqlite:///{os.path.abspath(database_path)}",
@@ -133,7 +133,7 @@ def benchmark(
         # The output is intentionally silenced so progress-bar rendering does
         # not distort the timing command's machine-readable result.
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            import mahilda.algorithms.mahilda_core.tgd_discovery as discovery
+            import marita.algorithms.marita_core.tgd_discovery as discovery
 
             discovery.APPLY_DISJOINT = True
             discovery.APPLY_FULL_JOINABILITY = False
@@ -232,7 +232,7 @@ def main() -> int:
     args = parser.parse_args()
     database_paths = list(args.database or [])
     if args.synthetic_fk_chain:
-        database_paths.insert(0, _write_synthetic_fk_chain(Path("/tmp/mahilda-synthetic-fk-chain.db")))
+        database_paths.insert(0, _write_synthetic_fk_chain(Path("/tmp/marita-synthetic-fk-chain.db")))
     if not database_paths:
         database_paths = [Path("data/relational/Carcinogenesis.db")]
     for database_path in database_paths:

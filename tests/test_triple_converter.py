@@ -2,7 +2,7 @@ import logging
 
 from sqlalchemy import Column, ForeignKey, ForeignKeyConstraint, Integer, MetaData, String, Table, create_engine
 
-from mahilda.database.triple_converter import TripleConverter
+from marita.database.triple_converter import TripleConverter
 
 
 def _make_logger() -> logging.Logger:

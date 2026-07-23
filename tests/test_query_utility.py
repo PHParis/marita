@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, create_engine
 from sqlalchemy.dialects.sqlite import dialect
 
-from mahilda.database.query_utility import ColorFormatter, QueryUtility
+from marita.database.query_utility import ColorFormatter, QueryUtility
 
 
 def _build_db() -> tuple:

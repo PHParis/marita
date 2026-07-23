@@ -2,10 +2,10 @@
 
 This repo now uses Popper as an external command instead of vendoring Popper's Python sources.
 
-MAHILDA expects a command named `run-popper` on `PATH`, or a custom command via:
+MARITA expects a command named `run-popper` on `PATH`, or a custom command via:
 
 ```bash
-export MAHILDA_POPPER_CMD="$HOME/bin/run-popper"
+export MARITA_POPPER_CMD="$HOME/bin/run-popper"
 ```
 
 You can also set it in a benchmark config:
@@ -159,7 +159,7 @@ export PATH="$(dirname "$SWIPL"):$PATH"
 uv run --python 3.14 popper.py examples/iggp-rps-next-score
 ```
 
-## Convenience Wrapper Required By MAHILDA
+## Convenience Wrapper Required By MARITA
 
 Create `~/bin/run-popper`:
 
@@ -195,10 +195,10 @@ Test:
 run-popper examples/iggp-rps-next-score
 ```
 
-## MAHILDA Smoke Test
+## MARITA Smoke Test
 
 ```bash
-uv run mahilda paper-benchmark \
+uv run marita paper-benchmark \
   --database-dir data/relational \
   --output results/smoke_popper \
   --logs logs/smoke_popper \

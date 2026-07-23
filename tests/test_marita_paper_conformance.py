@@ -3,13 +3,13 @@ from __future__ import annotations
 import sqlite3
 from typing import TYPE_CHECKING
 
-import mahilda.algorithms.mahilda_core.tgd_discovery as discovery
-from mahilda.algorithms.mahilda import MAHILDA
-from mahilda.algorithms.mahilda_core.constraint_graph import Attribute, ConstraintGraph, JoinableIndexedAttributes
-from mahilda.algorithms.mahilda_core.tgd_discovery import dfs, init, instantiate_tgd
-from mahilda.audit.evaluator import SQLiteRuleEvaluator
-from mahilda.audit.parsing import parse_formula
-from mahilda.database.alchemy_utility import AlchemyUtility
+import marita.algorithms.marita_core.tgd_discovery as discovery
+from marita.algorithms.marita import MARITA
+from marita.algorithms.marita_core.constraint_graph import Attribute, ConstraintGraph, JoinableIndexedAttributes
+from marita.algorithms.marita_core.tgd_discovery import dfs, init, instantiate_tgd
+from marita.audit.evaluator import SQLiteRuleEvaluator
+from marita.audit.parsing import parse_formula
+from marita.database.alchemy_utility import AlchemyUtility
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -47,7 +47,7 @@ def test_marita_mines_and_independently_validates_repeated_relation_rule(
         create_tsv=False,
         get_data=False,
     )
-    algorithm = MAHILDA(
+    algorithm = MARITA(
         database,
         settings={
             "walk_length": 2,

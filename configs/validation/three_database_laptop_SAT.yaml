@@ -2,14 +2,14 @@ monitor:
   memory_threshold: 10737418240
   timeout: 3600
 database:
-  path: ../../results/mahilda_tipi01_20260719/laptop_ubuntu_20260720/combined_laptop_optimizations/inputs
+  path: ../../results/marita_tipi01_20260719/laptop_ubuntu_20260720/combined_laptop_optimizations/inputs
   name: SAT.db
 logging:
-  log_dir: ../../results/mahilda_tipi01_20260719/laptop_ubuntu_20260720/combined_laptop_optimizations/logs/SAT
+  log_dir: ../../results/marita_tipi01_20260719/laptop_ubuntu_20260720/combined_laptop_optimizations/logs/SAT
 results:
-  output_dir: ../../results/mahilda_tipi01_20260719/laptop_ubuntu_20260720/combined_laptop_optimizations/results/MAHILDA
+  output_dir: ../../results/marita_tipi01_20260719/laptop_ubuntu_20260720/combined_laptop_optimizations/results/MARITA
 algorithm:
-  name: MAHILDA
+  name: MARITA
   parameters:
     walk_length: 3
     max_tables: 3

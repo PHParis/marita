@@ -4,7 +4,7 @@ import argparse
 import csv
 from pathlib import Path
 
-ALGOS = ("POPPER", "SPIDER", "AMIE3", "MATILDA", "MAHILDA")
+ALGOS = ("POPPER", "SPIDER", "AMIE3", "MATILDA", "MARITA")
 
 
 def parse_args() -> argparse.Namespace:
@@ -12,7 +12,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", default="results/paper_table2/table2.tsv", help="Input table2 TSV path.")
     parser.add_argument(
         "--output",
-        default="MAHILDA_ISWC_2026_short_paper/appendix_table2_full.tex",
+        default="MARITA_ISWC_2026_short_paper/appendix_table2_full.tex",
         help="Output LaTeX snippet path.",
     )
     return parser.parse_args()

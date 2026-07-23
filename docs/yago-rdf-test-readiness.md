@@ -1,22 +1,22 @@
 # YAGO RDF Benchmark Test Readiness
 
-This note records what remains before running YAGO with MAHILDA and the competitor baselines. The RDF import architecture and AMIE3 direct TSV path exist, but a full comparative benchmark still needs a few follow-up checks and one MAHILDA fix.
+This note records what remains before running YAGO with MARITA and the competitor baselines. The RDF import architecture and AMIE3 direct TSV path exist, but a full comparative benchmark still needs a few follow-up checks and one MARITA fix.
 
 ## Current Status
 
 Implemented:
 
-- `uv run mahilda import-rdf` parses `data/yago-tiny.ttl` and writes benchmark artifacts.
+- `uv run marita import-rdf` parses `data/yago-tiny.ttl` and writes benchmark artifacts.
 - The importer writes a full archive DB, variant SQLite DBs, direct AMIE3 TSV exports, manifest JSON, and report markdown.
 - The `core` variant contains ABox object facts, ABox datatype facts, and instance `rdf:type` facts.
 - The `ontology-lite` variant adds explicit `rdfs:subClassOf` statements.
 - AMIE3 can consume a direct TSV via `benchmark --input-tsv`, avoiding relational re-export bias.
-- `configs/config.yago-core.yaml` points MAHILDA at the generated core SQLite DB with conservative parameters.
+- `configs/config.yago-core.yaml` points MARITA at the generated core SQLite DB with conservative parameters.
 
 Generate the artifacts with:
 
 ```bash
-uv run mahilda import-rdf --input data/yago-tiny.ttl --output-dir data/yago --variants core,ontology-lite --dataset-name yago_tiny
+uv run marita import-rdf --input data/yago-tiny.ttl --output-dir data/yago --variants core,ontology-lite --dataset-name yago_tiny
 ```
 
 Expected outputs:
@@ -31,9 +31,9 @@ data/yago/yago_tiny_manifest.json
 data/yago/yago_tiny_report.md
 ```
 
-## Main MAHILDA Fix (Implemented)
+## Main MARITA Fix (Implemented)
 
-MAHILDA compatibility discovery now checks both foreign-key directions in `src/mahilda/algorithms/mahilda_core/constraint_graph.py`:
+MARITA compatibility discovery now checks both foreign-key directions in `src/marita/algorithms/marita_core/constraint_graph.py`:
 
 ```python
 return (
@@ -42,14 +42,14 @@ return (
 )
 ```
 
-The generated YAGO relational DB is predicate-centric. Predicate tables such as `schema_birthPlace(subject_id, object_id)` reference `entity(entity_id)`. Without this fix, MAHILDA would miss FK edges when iterating attributes in sorted table order. The fix ensures both directions are checked.
+The generated YAGO relational DB is predicate-centric. Predicate tables such as `schema_birthPlace(subject_id, object_id)` reference `entity(entity_id)`. Without this fix, MARITA would miss FK edges when iterating attributes in sorted table order. The fix ensures both directions are checked.
 
-## Recommended MAHILDA Smoke Run
+## Recommended MARITA Smoke Run
 
 After generating artifacts:
 
 ```bash
-uv run mahilda run --config configs/config.yago-core.yaml
+uv run marita run --config configs/config.yago-core.yaml
 ```
 
 If the run is too slow, temporarily lower these values in `configs/config.yago-core.yaml`:
@@ -70,7 +70,7 @@ algorithm:
 Closest to ready. Use direct TSV input:
 
 ```bash
-uv run mahilda benchmark --config configs/config.yago-core.yaml --baseline AMIE3 --input-tsv data/yago/yago_tiny_core.tsv
+uv run marita benchmark --config configs/config.yago-core.yaml --baseline AMIE3 --input-tsv data/yago/yago_tiny_core.tsv
 ```
 
 YAGO runs can raise the AMIE3 subprocess timeout in `configs/config.yago-core.yaml`:
@@ -85,7 +85,7 @@ benchmark:
 Runnable on the generated SQLite DB:
 
 ```bash
-uv run mahilda benchmark --config configs/config.yago-core.yaml --baseline SPIDER
+uv run marita benchmark --config configs/config.yago-core.yaml --baseline SPIDER
 ```
 
 Remaining caveat: SPIDER will see many normalized predicate tables and may produce inclusion dependencies dominated by shared `entity`, `literal`, and `class` reference columns. This is expected for a predicate-centric KG relationalization and should be discussed when interpreting results.
@@ -95,7 +95,7 @@ Remaining caveat: SPIDER will see many normalized predicate tables and may produ
 Not yet practical for full YAGO without additional controls.
 
 ```bash
-uv run mahilda benchmark --config configs/config.yago-core.yaml --baseline POPPER
+uv run marita benchmark --config configs/config.yago-core.yaml --baseline POPPER
 ```
 
 Remaining caveats:
@@ -108,11 +108,11 @@ Remaining caveats:
 
 1. Generate artifacts with `import-rdf`.
 2. Inspect `data/yago/yago_tiny_manifest.json` and `data/yago/yago_tiny_report.md`.
-3. Run `uv run mahilda run --config configs/config.yago-core.yaml`.
+3. Run `uv run marita run --config configs/config.yago-core.yaml`.
 4. Run AMIE3 with `--input-tsv`.
 5. Run SPIDER against the generated SQLite DB.
 6. Attempt POPPER only after confirming table count and dependency availability.
 
 ## Short Answer
 
-The import architecture, AMIE3 fair-input path, and MAHILDA symmetric FK compatibility check are all in place. A full comparative YAGO benchmark is ready to run once the YAGO artifacts have been generated and smoke-tested.
+The import architecture, AMIE3 fair-input path, and MARITA symmetric FK compatibility check are all in place. A full comparative YAGO benchmark is ready to run once the YAGO artifacts have been generated and smoke-tested.

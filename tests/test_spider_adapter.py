@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from mahilda.evaluation.baselines import spider as spider_module
-from mahilda.evaluation.baselines.spider import Spider
-from mahilda.utils.rules import InclusionDependency
+from marita.evaluation.baselines import spider as spider_module
+from marita.evaluation.baselines.spider import Spider
+from marita.utils.rules import InclusionDependency
 
 
 def _spider_with_csv(tmp_path: Path) -> Spider:
@@ -113,8 +113,8 @@ def test_spider_command_failure_raises(monkeypatch, tmp_path: Path) -> None:
 @pytest.mark.integration
 @pytest.mark.java_required
 def test_spider_real_metanome_discovers_tiny_ind(tmp_path: Path) -> None:
-    if os.environ.get("MAHILDA_RUN_INTEGRATION") != "1":
-        pytest.skip("Set MAHILDA_RUN_INTEGRATION=1 to run integration tests")
+    if os.environ.get("MARITA_RUN_INTEGRATION") != "1":
+        pytest.skip("Set MARITA_RUN_INTEGRATION=1 to run integration tests")
     if shutil.which("java") is None:
         pytest.skip("Java required for SPIDER integration")
 

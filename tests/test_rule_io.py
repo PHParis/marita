@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from mahilda.utils.rule_io import RuleIO
-from mahilda.utils.rules import (
+from marita.utils.rule_io import RuleIO
+from marita.utils.rules import (
     DCCondition,
     DenialConstraint,
     FunctionalDependency,

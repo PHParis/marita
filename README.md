@@ -1,24 +1,24 @@
-# MAHILDA
+# MARITA
 
-MAHILDA is a rule-discovery toolkit for relational databases centered on the `MAHILDA` algorithm, with optional competitor baselines for benchmarking.
+MARITA is a rule-discovery toolkit for relational databases centered on the `MARITA` algorithm, with optional competitor baselines for benchmarking.
 
 ## Quick Start
 
 ```bash
 uv sync
-uv run mahilda test-db
-uv run mahilda smoke
+uv run marita test-db
+uv run marita smoke
 ```
 
 ## CLI Overview
 
-- `uv run mahilda run --config configs/config.example.yaml` runs `MAHILDA` on one database.
-- `uv run mahilda benchmark --config configs/config.example.yaml --baseline {AMIE3|SPIDER|POPPER|MATILDA}` runs one baseline.
-- `uv run mahilda download-databases --output data/relational` downloads relational benchmark databases and converts them to SQLite.
-- `uv run mahilda paper-benchmark --dry-run` generates the ISWC 2026 paper benchmark rerun plan.
-- `uv run mahilda import-rdf --input data/yago-tiny.ttl --output-dir data/yago` creates RDF benchmark artifacts.
-- `uv run mahilda batch -c configs/config.example.yaml -d <db_dir> -o results/batch` processes many databases.
-- `uv run mahilda mlflow start` launches a local MLflow tracking server; `uv run mahilda mlflow ui` launches the local MLflow UI.
+- `uv run marita run --config configs/config.example.yaml` runs `MARITA` on one database.
+- `uv run marita benchmark --config configs/config.example.yaml --baseline {AMIE3|SPIDER|POPPER|MATILDA}` runs one baseline.
+- `uv run marita download-databases --output data/relational` downloads relational benchmark databases and converts them to SQLite.
+- `uv run marita paper-benchmark --dry-run` generates the ISWC 2026 paper benchmark rerun plan.
+- `uv run marita import-rdf --input data/yago-tiny.ttl --output-dir data/yago` creates RDF benchmark artifacts.
+- `uv run marita batch -c configs/config.example.yaml -d <db_dir> -o results/batch` processes many databases.
+- `uv run marita mlflow start` launches a local MLflow tracking server; `uv run marita mlflow ui` launches the local MLflow UI.
 
 ## YAGO Reproducibility
 
@@ -28,25 +28,25 @@ Direct per-algorithm path:
 
 ```bash
 uv sync --extra benchmark
-uv run mahilda import-rdf --input data/yago-tiny.ttl --output-dir data/yago --variants core,ontology-lite --dataset-name yago_tiny
-uv run mahilda run --config configs/config.yago-core.yaml
-uv run mahilda benchmark --config configs/config.yago-core.yaml --baseline AMIE3 --input-tsv data/yago/yago_tiny_core.tsv
-uv run mahilda benchmark --config configs/config.yago-core.yaml --baseline SPIDER
-uv run mahilda benchmark --config configs/config.yago-core.yaml --baseline POPPER
+uv run marita import-rdf --input data/yago-tiny.ttl --output-dir data/yago --variants core,ontology-lite --dataset-name yago_tiny
+uv run marita run --config configs/config.yago-core.yaml
+uv run marita benchmark --config configs/config.yago-core.yaml --baseline AMIE3 --input-tsv data/yago/yago_tiny_core.tsv
+uv run marita benchmark --config configs/config.yago-core.yaml --baseline SPIDER
+uv run marita benchmark --config configs/config.yago-core.yaml --baseline POPPER
 ```
 
-Paper-runner path (for MAHILDA, SPIDER, POPPER) plus direct AMIE3 TSV run:
+Paper-runner path (for MARITA, SPIDER, POPPER) plus direct AMIE3 TSV run:
 
 ```bash
-uv run mahilda paper-benchmark \
+uv run marita paper-benchmark \
   --database-dir data/yago \
   --databases yago_tiny_core \
-  --algorithms MAHILDA,SPIDER,POPPER \
+  --algorithms MARITA,SPIDER,POPPER \
   --output results/yago_core_all \
   --logs logs/yago_core_all \
   --timeout 7200 \
   --memory-gb 15
-uv run mahilda benchmark \
+uv run marita benchmark \
   --config configs/config.yago-core.yaml \
   --baseline AMIE3 \
   --input-tsv data/yago/yago_tiny_core.tsv
@@ -71,7 +71,7 @@ See `docs/config.md` for full path-resolution behavior and overrides.
 `paper-benchmark` writes live per-run progress files to `<output>/progress/`. When the output directory is on shared storage, any benchmark host can display the global state:
 
 ```bash
-uv run mahilda paper-benchmark \
+uv run marita paper-benchmark \
   --settings configs/paper/benchmark_83.yaml \
   --hosts tipi01,tipi02 \
   --status
@@ -86,29 +86,29 @@ Use the same `--settings`, `--databases`, `--algorithms`, and `--hosts` values a
 Configure SMTP with environment variables so passwords are not written in shell history:
 
 ```bash
-export MAHILDA_EMAIL_TO="you@example.com"
-export MAHILDA_EMAIL_FROM="you@example.com"
-export MAHILDA_SMTP_HOST="smtp.example.com"
-export MAHILDA_SMTP_PORT="587"
-export MAHILDA_SMTP_USER="you@example.com"
-export MAHILDA_SMTP_PASSWORD="your-smtp-password"
-export MAHILDA_SMTP_STARTTLS="1"
+export MARITA_EMAIL_TO="you@example.com"
+export MARITA_EMAIL_FROM="you@example.com"
+export MARITA_SMTP_HOST="smtp.example.com"
+export MARITA_SMTP_PORT="587"
+export MARITA_SMTP_USER="you@example.com"
+export MARITA_SMTP_PASSWORD="your-smtp-password"
+export MARITA_SMTP_STARTTLS="1"
 ```
 
 Then run the benchmark normally:
 
 ```bash
-uv run mahilda paper-benchmark --settings configs/paper/benchmark_83.yaml --email-to you@example.com
+uv run marita paper-benchmark --settings configs/paper/benchmark_83.yaml --email-to you@example.com
 ```
 
-Equivalent CLI flags are available: `--email-to`, `--email-from`, `--smtp-host`, `--smtp-port`, `--smtp-user`, `--smtp-password-env`, and `--smtp-starttls`. If `--email-to` and `MAHILDA_EMAIL_TO` are both unset, no email is sent.
+Equivalent CLI flags are available: `--email-to`, `--email-from`, `--smtp-host`, `--smtp-port`, `--smtp-user`, `--smtp-password-env`, and `--smtp-starttls`. If `--email-to` and `MARITA_EMAIL_TO` are both unset, no email is sent.
 
 ## Documentation
 
 - `docs/architecture.md`: package structure, active modules, and runtime data flow
 - `docs/cli.md`: command behavior and examples
 - `docs/config.md`: configuration schema, defaults, normalization, and precedence
-- `docs/benchmark-datasets.md`: relational benchmark dataset download, conversion workflow, and fast MAHILDA regression-testing guidance
+- `docs/benchmark-datasets.md`: relational benchmark dataset download, conversion workflow, and fast MARITA regression-testing guidance
 - `docs/iswc2026-benchmark-extraction.md`: extracted paper parameters, reported results, and rerun notes
 - `docs/archive.md`: archive notes for `legacy/` and `research/`
 - `docs/yago-rdf-benchmark-protocol.md`: RDF-to-SQLite benchmark protocol for YAGO-derived datasets
@@ -135,7 +135,7 @@ uv run pre-commit install
 - `AMIE3`: Java runtime
 - `SPIDER`: Java runtime
 - `POPPER`: external `run-popper` command on `PATH`; see `docs/popper-user-space-install.md`
-- `MATILDA`: sibling MATILDA repo configured with `benchmark.matilda_path`, `MAHILDA_MATILDA_PATH`, or default `../MATILDA`
+- `MATILDA`: sibling MATILDA repo configured with `benchmark.matilda_path`, `MARITA_MATILDA_PATH`, or default `../MATILDA`
 
 Install Python baseline extras before running Java competitor benchmarks:
 

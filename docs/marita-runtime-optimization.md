@@ -2,7 +2,7 @@
 
 Date: 2026-07-17
 
-This report records the first runtime optimization pass requested for MAHILDA/MARITA. The paper rule language, support threshold semantics, joinability scope, public rule representation, and bounded completeness contract were left unchanged.
+This report records the first runtime optimization pass requested for MARITA/MARITA. The paper rule language, support threshold semantics, joinability scope, public rule representation, and bounded completeness contract were left unchanged.
 
 ## Bottleneck
 
@@ -39,12 +39,12 @@ uv run python scripts/benchmark_discovery.py \
   --database data/relational/SAT.db
 uv run python scripts/benchmark_discovery.py \
   --database data/relational/SAT.db \
-  --profile-output /tmp/mahilda-sat-final.prof
+  --profile-output /tmp/marita-sat-final.prof
 uv run python scripts/benchmark_discovery.py \
   --synthetic-fk-chain \
-  --profile-output /tmp/mahilda-synthetic-final.prof
+  --profile-output /tmp/marita-synthetic-final.prof
 uv run python -c \
-  'import pstats; pstats.Stats("/tmp/mahilda-sat-final.prof").strip_dirs().sort_stats("cumulative").print_stats(12)'
+  'import pstats; pstats.Stats("/tmp/marita-sat-final.prof").strip_dirs().sort_stats("cumulative").print_stats(12)'
 ```
 
 Fresh measurements from this worktree were:

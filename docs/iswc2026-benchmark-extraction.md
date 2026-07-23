@@ -20,7 +20,7 @@ This document records the benchmark parameters and reported results extracted fr
 - Per-job limits stated in paper: 2 hours and 15 GB.
 - Metrics: wall-clock time and mean resident-set size (RSS).
 
-## MAHILDA Parameters
+## MARITA Parameters
 
 - Joinability scope: declared foreign-key edges only.
 - Support threshold: `k_s = 0`.
@@ -34,7 +34,7 @@ Recommended config mapping for reruns:
 
 ```yaml
 algorithm:
-  name: MAHILDA
+  name: MARITA
   parameters:
     walk_length: 3
     max_tables: 3
@@ -50,12 +50,12 @@ The active paper draft describes the baseline systems but does not fully enumera
 
 ### AMIE3
 
-Adapter: `src/mahilda/evaluation/baselines/amie3.py`
+Adapter: `src/marita/evaluation/baselines/amie3.py`
 
 Command shape:
 
 ```text
-java -Xmx15G -jar src/mahilda/evaluation/third_party/amie3/amie-milestone-intKB.jar \
+java -Xmx15G -jar src/marita/evaluation/third_party/amie3/amie-milestone-intKB.jar \
   -mins 0 -minc 0 -minpca 0 -minhc 0 -minis 0 <input.tsv>
 ```
 
@@ -67,7 +67,7 @@ Notes:
 
 ### SPIDER
 
-Adapter: `src/mahilda/evaluation/baselines/spider.py`
+Adapter: `src/marita/evaluation/baselines/spider.py`
 
 Command shape:
 
@@ -84,12 +84,12 @@ java -cp metanome-cli-1.2-SNAPSHOT.jar:SPIDER-1.2-SNAPSHOT.jar \
 
 Notes:
 
-- Current direct `mahilda benchmark` execution does not pass an explicit timeout to SPIDER.
+- Current direct `marita benchmark` execution does not pass an explicit timeout to SPIDER.
 - The paper-runner added for reproduction wraps the whole command with a wall-clock timeout.
 
 ### POPPER
 
-Adapter: `src/mahilda/evaluation/baselines/popper.py`
+Adapter: `src/marita/evaluation/baselines/popper.py`
 
 Runtime settings passed to Popper:
 
@@ -114,14 +114,14 @@ allow_singletons.
 Notes:
 
 - POPPER depends on an external `run-popper` wrapper; see `docs/popper-user-space-install.md`.
-- Current direct `mahilda benchmark` execution does not enforce the paper timeout uniformly for POPPER.
+- Current direct `marita benchmark` execution does not enforce the paper timeout uniformly for POPPER.
 - The paper-runner added for reproduction wraps the whole command with a wall-clock timeout.
 
 ## Main Paper Results
 
 Reported in `sections/experiment_updated.tex`.
 
-| Database | Popper Rules | Popper Time (s) | SPIDER Rules | SPIDER Time (s) | AMIE3 Rules | AMIE3 Time (s) | MAHILDA Rules | MAHILDA Time (s) |
+| Database | Popper Rules | Popper Time (s) | SPIDER Rules | SPIDER Time (s) | AMIE3 Rules | AMIE3 Time (s) | MARITA Rules | MARITA Time (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Biodegradability | 0 | 1754.1 | 4 | 1.6 | 0 | 0.8 | 4 | 0.22 |
 | CDESchools | OOM | OOM | 2 | 18.5 | OOM | OOM | 3 | 1.79 |
@@ -175,8 +175,8 @@ Non-disjoint results:
 ## Reproduction Caveats
 
 - The active paper draft does not state all baseline command-line parameters; this document records the settings in the current codebase.
-- `mahilda batch` is MAHILDA-only and, at the time of extraction, did not propagate `algorithm.parameters`; use `mahilda paper-benchmark` for paper reruns.
-- Direct `mahilda benchmark` runs one baseline on one database. Use `mahilda paper-benchmark` for multi-database, multi-algorithm reruns.
+- `marita batch` is MARITA-only and, at the time of extraction, did not propagate `algorithm.parameters`; use `marita paper-benchmark` for paper reruns.
+- Direct `marita benchmark` runs one baseline on one database. Use `marita paper-benchmark` for multi-database, multi-algorithm reruns.
 - `data/relational` is ignored by git via `data/*`; benchmark databases are intentionally local artifacts, not repository contents.
 
 Install baseline Python dependencies before baseline reruns:
@@ -190,28 +190,28 @@ uv sync --extra benchmark
 Start with a dry-run plan:
 
 ```bash
-uv run mahilda paper-benchmark --dry-run --algorithms MAHILDA --databases paper
+uv run marita paper-benchmark --dry-run --algorithms MARITA --databases paper
 ```
 
-Run MAHILDA on the 10 reported paper databases first:
+Run MARITA on the 10 reported paper databases first:
 
 ```bash
-uv run mahilda paper-benchmark --algorithms MAHILDA --databases paper --timeout 7200 --memory-gb 15
+uv run marita paper-benchmark --algorithms MARITA --databases paper --timeout 7200 --memory-gb 15
 ```
 
-If the MAHILDA rule counts differ from the paper table, inspect the generated configs under `results/iswc2026/configs/` and the per-run artifacts under `results/iswc2026/MAHILDA/` before running baselines.
+If the MARITA rule counts differ from the paper table, inspect the generated configs under `results/iswc2026/configs/` and the per-run artifacts under `results/iswc2026/MARITA/` before running baselines.
 
 Run selected baselines only after confirming runtime dependencies:
 
 ```bash
-uv run mahilda paper-benchmark --algorithms AMIE3,SPIDER --databases Biodegradability,CORA --timeout 7200 --memory-gb 15
-uv run mahilda paper-benchmark --algorithms POPPER --databases SAT,Dunur --timeout 7200 --memory-gb 15
+uv run marita paper-benchmark --algorithms AMIE3,SPIDER --databases Biodegradability,CORA --timeout 7200 --memory-gb 15
+uv run marita paper-benchmark --algorithms POPPER --databases SAT,Dunur --timeout 7200 --memory-gb 15
 ```
 
 Run the full 10-database, all-algorithm matrix last:
 
 ```bash
-uv run mahilda paper-benchmark --algorithms ALL --databases paper --timeout 7200 --memory-gb 15
+uv run marita paper-benchmark --algorithms ALL --databases paper --timeout 7200 --memory-gb 15
 ```
 
 Use `--databases all` only after the paper subset has been validated, since the local directory currently contains more datasets than the active paper table reports.

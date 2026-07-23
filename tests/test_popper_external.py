@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from mahilda.evaluation.baselines.popper import Popper
+from marita.evaluation.baselines.popper import Popper
 
 
 class _DummyDatabase:
@@ -25,13 +25,13 @@ class _DummyDatabase:
 
 
 def test_resolve_popper_command_prefers_config(monkeypatch) -> None:
-    monkeypatch.setenv("MAHILDA_POPPER_CMD", "env-popper")
+    monkeypatch.setenv("MARITA_POPPER_CMD", "env-popper")
 
     assert Popper._resolve_popper_command("custom --flag") == ["custom", "--flag"]
 
 
 def test_resolve_popper_command_uses_env(monkeypatch) -> None:
-    monkeypatch.setenv("MAHILDA_POPPER_CMD", "env-popper --x")
+    monkeypatch.setenv("MARITA_POPPER_CMD", "env-popper --x")
 
     assert Popper._resolve_popper_command(None) == ["env-popper", "--x"]
 
@@ -63,7 +63,7 @@ def test_external_popper_failure_raises(monkeypatch, tmp_path: Path) -> None:
         del args, kwargs
         return False
 
-    monkeypatch.setattr("mahilda.evaluation.baselines.popper.run_cmd", fake_run_cmd)
+    monkeypatch.setattr("marita.evaluation.baselines.popper.run_cmd", fake_run_cmd)
     popper = Popper(_DummyDatabase())
 
     with pytest.raises(RuntimeError, match="External Popper command failed"):
@@ -86,7 +86,7 @@ def test_external_popper_command_and_parse(monkeypatch, tmp_path: Path) -> None:
         )
         return True
 
-    monkeypatch.setattr("mahilda.evaluation.baselines.popper.run_cmd", fake_run_cmd)
+    monkeypatch.setattr("marita.evaluation.baselines.popper.run_cmd", fake_run_cmd)
     rules = Popper(_DummyDatabase()).discover_rules(
         results_dir=str(tmp_path),
         runtime_dir=str(tmp_path / "runtime"),

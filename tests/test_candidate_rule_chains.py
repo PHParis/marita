@@ -1,5 +1,5 @@
-from mahilda.algorithms.mahilda_core.candidate_rule_chains import CandidateRuleChains
-from mahilda.algorithms.mahilda_core.constraint_graph import (
+from marita.algorithms.marita_core.candidate_rule_chains import CandidateRuleChains
+from marita.algorithms.marita_core.constraint_graph import (
     AttributeMapper,
     IndexedAttribute,
     JoinableIndexedAttributes,

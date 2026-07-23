@@ -13,7 +13,7 @@ results:
   output_dir: ../results/yago_core
 
 algorithm:
-  name: MAHILDA
+  name: MARITA
   parameters:
     walk_length: 3
     max_tables: 3

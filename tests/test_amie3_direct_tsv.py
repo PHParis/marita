@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from mahilda.evaluation.baselines.amie3 import Amie3
+from marita.evaluation.baselines.amie3 import Amie3
 
 
 class _DummyDatabase:
@@ -21,7 +21,7 @@ def test_amie3_uses_direct_input_tsv_when_provided(monkeypatch, tmp_path: Path) 
         Path(kwargs["stdout_path"]).write_text("", encoding="utf-8")
         return True
 
-    monkeypatch.setattr("mahilda.evaluation.baselines.amie3.run_cmd", fake_run_cmd)
+    monkeypatch.setattr("marita.evaluation.baselines.amie3.run_cmd", fake_run_cmd)
 
     rules = Amie3(_DummyDatabase()).discover_rules(results_dir=str(tmp_path), input_tsv=input_tsv)
 
@@ -40,7 +40,7 @@ def test_amie3_uses_configured_timeout(monkeypatch, tmp_path: Path) -> None:
         Path(kwargs["stdout_path"]).write_text("", encoding="utf-8")
         return True
 
-    monkeypatch.setattr("mahilda.evaluation.baselines.amie3.run_cmd", fake_run_cmd)
+    monkeypatch.setattr("marita.evaluation.baselines.amie3.run_cmd", fake_run_cmd)
 
     rules = Amie3(_DummyDatabase()).discover_rules(results_dir=str(tmp_path), timeout=1800)
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from mahilda.algorithms.mahilda_core import tgd_discovery
-from mahilda.algorithms.mahilda_core.constraint_graph import (
+from marita.algorithms.marita_core import tgd_discovery
+from marita.algorithms.marita_core.constraint_graph import (
     Attribute,
     AttributeMapper,
     ConstraintGraph,

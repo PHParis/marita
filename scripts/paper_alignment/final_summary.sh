@@ -21,8 +21,8 @@ out="results/paper_alignment_$(date -I).md"
     echo "## Joinability ablation"
     cat results/ablation_join/comparison*.tsv 2>/dev/null || echo "(missing - run b3_joinability.sh)"
     echo
-    echo "## YAGO core (MAHILDA)"
-    cat results/yago_core/MAHILDA_yago_tiny_core/execution_time_yago_tiny_core.json 2>/dev/null || echo "(missing)"
+    echo "## YAGO core (MARITA)"
+    cat results/yago_core/MARITA_yago_tiny_core/execution_time_yago_tiny_core.json 2>/dev/null || echo "(missing)"
     echo
     echo "## Host info"
     head -20 results/paper_table2/host_info*.txt 2>/dev/null || echo "(missing - run c1_host_info.sh)"

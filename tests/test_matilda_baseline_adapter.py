@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from mahilda.evaluation.baselines.matilda import Matilda
-from mahilda.utils.rules import Predicate, TGDRule
+from marita.evaluation.baselines.matilda import Matilda
+from marita.utils.rules import Predicate, TGDRule
 
 
 def test_resolve_matilda_path_accepts_repo_with_src(tmp_path):

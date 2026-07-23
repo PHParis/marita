@@ -5,10 +5,10 @@ import json
 import sqlite3
 from typing import TYPE_CHECKING
 
-from mahilda.audit import AuditConfig, run_audit
-from mahilda.audit.evaluator import SQLiteRuleEvaluator
-from mahilda.audit.matching import alpha_equivalent, covered_on_instance, subsumes
-from mahilda.audit.models import (
+from marita.audit import AuditConfig, run_audit
+from marita.audit.evaluator import SQLiteRuleEvaluator
+from marita.audit.matching import alpha_equivalent, covered_on_instance, subsumes
+from marita.audit.models import (
     AuditClassification,
     MatchStatus,
     PaperCategory,
@@ -16,8 +16,8 @@ from mahilda.audit.models import (
     ScopeStatus,
     SourceRule,
 )
-from mahilda.audit.parsing import parse_dependency_formula, parse_formula, parse_popper_source
-from mahilda.cli.audit import main as audit_main
+from marita.audit.parsing import parse_dependency_formula, parse_formula, parse_popper_source
+from marita.cli.audit import main as audit_main
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -81,7 +81,7 @@ def test_audit_matches_quoted_and_structured_relation_names(tmp_path: Path) -> N
     _write_tiny_database(database_dir, "tiny.db")
     _write_results(
         results_dir,
-        "MAHILDA",
+        "MARITA",
         "tiny",
         ['∀ x0: "child"_0(parent_id=x0) ⇒ "parent"_0(id=x0)'],
     )
@@ -123,7 +123,7 @@ def test_audit_alpha_matches_multi_column_body_rule(tmp_path: Path) -> None:
     database_dir.mkdir()
     _write_tiny_database(database_dir, "tiny.db")
     display = "∀ x0, y0: child_0(parent_id=x0, id=y0) ⇒ parent_0(id=x0)"
-    _write_results(results_dir, "MAHILDA", "tiny", [display])
+    _write_results(results_dir, "MARITA", "tiny", [display])
     _write_results(results_dir, "MATILDA", "tiny", [display])
 
     records = run_audit(
@@ -178,7 +178,7 @@ def test_audit_classifies_exact_non_horn_tgd(tmp_path: Path) -> None:
     output_dir = tmp_path / "audit"
     database_dir.mkdir()
     _write_tiny_database(database_dir)
-    _write_results(results_dir, "MAHILDA", "tiny", [])
+    _write_results(results_dir, "MARITA", "tiny", [])
     _write_results(
         results_dir,
         "MATILDA",
@@ -240,7 +240,7 @@ def test_audit_skips_sql_evaluation_for_structurally_excluded_rules(
     output_dir = tmp_path / "audit"
     database_dir.mkdir()
     _write_tiny_database(database_dir)
-    _write_results(results_dir, "MAHILDA", "tiny", [])
+    _write_results(results_dir, "MARITA", "tiny", [])
     _write_results(
         results_dir,
         "MATILDA",
@@ -292,7 +292,7 @@ def test_run_audit_classifies_and_reports(tmp_path: Path) -> None:
     _write_tiny_database(database_dir, "tiny.db")
     _write_results(
         results_dir,
-        "MAHILDA",
+        "MARITA",
         "tiny",
         ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"],
     )
@@ -376,7 +376,7 @@ def test_audit_skips_amie_rdf_by_default(tmp_path: Path) -> None:
     output_dir = tmp_path / "audit"
     database_dir.mkdir()
     _write_tiny_database(database_dir, "tiny.db")
-    _write_results(results_dir, "MAHILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    _write_results(results_dir, "MARITA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
     _write_results(results_dir, "AMIE3", "tiny", ["parent(x0, y0) => child(x0, y0)"])
 
     records = run_audit(
@@ -412,12 +412,12 @@ def test_audit_excludes_competitor_rules_when_target_run_failed(tmp_path: Path) 
     output_dir = tmp_path / "audit"
     database_dir.mkdir()
     _write_tiny_database(database_dir, "tiny.db")
-    _write_results(results_dir, "MAHILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    _write_results(results_dir, "MARITA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
     _write_results(results_dir, "MATILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
     progress_dir = results_dir / "progress"
     progress_dir.mkdir()
-    (progress_dir / "MAHILDA_tiny.db.json").write_text(
-        json.dumps({"algorithm": "MAHILDA", "database": "tiny.db", "status": "timeout"}),
+    (progress_dir / "MARITA_tiny.db.json").write_text(
+        json.dumps({"algorithm": "MARITA", "database": "tiny.db", "status": "timeout"}),
         encoding="utf-8",
     )
 
@@ -440,14 +440,14 @@ def test_audit_excludes_partial_target_result_from_summary_status(tmp_path: Path
     output_dir = tmp_path / "audit"
     database_dir.mkdir()
     _write_tiny_database(database_dir, "tiny.db")
-    _write_results(results_dir, "MAHILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    _write_results(results_dir, "MARITA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
     _write_results(results_dir, "MATILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
     (results_dir / "summary.json").write_text(
         json.dumps(
             {
                 "runs": [
                     {
-                        "algorithm": "MAHILDA",
+                        "algorithm": "MARITA",
                         "database": "tiny.db",
                         "status": "success",
                         "rules_count": 2,
@@ -489,7 +489,7 @@ def test_cli_audit_merges_settings_and_overrides(tmp_path: Path, monkeypatch: py
         captured["config"] = config
         return []
 
-    monkeypatch.setattr("mahilda.cli.audit.run_audit", fake_run_audit)
+    monkeypatch.setattr("marita.cli.audit.run_audit", fake_run_audit)
     exit_code = audit_main(
         [
             "--results-dir",
@@ -534,8 +534,8 @@ def test_cli_audit_reads_distributed_settings_and_auto_host(tmp_path: Path, monk
         captured["config"] = config
         return []
 
-    monkeypatch.setattr("mahilda.cli.audit.run_audit", fake_run_audit)
-    monkeypatch.setattr("mahilda.cli.audit.socket.gethostname", lambda: "local.example")
+    monkeypatch.setattr("marita.cli.audit.run_audit", fake_run_audit)
+    monkeypatch.setattr("marita.cli.audit.socket.gethostname", lambda: "local.example")
 
     assert (
         audit_main(
@@ -583,7 +583,7 @@ def test_alpha_coverage_skips_instance_matching(tmp_path: Path, monkeypatch: pyt
     def fail_if_called(*args: object, **kwargs: object) -> bool:
         raise AssertionError("covered_on_instance should not run in alpha mode")
 
-    monkeypatch.setattr("mahilda.audit.runner.covered_on_instance", fail_if_called)
+    monkeypatch.setattr("marita.audit.runner.covered_on_instance", fail_if_called)
     records = run_audit(
         AuditConfig(
             results_dir=results_dir,
@@ -604,7 +604,7 @@ def test_subsumption_coverage_skips_instance_matching(tmp_path: Path, monkeypatc
     def fail_if_called(*args: object, **kwargs: object) -> bool:
         raise AssertionError("covered_on_instance should not run in subsumption mode")
 
-    monkeypatch.setattr("mahilda.audit.runner.covered_on_instance", fail_if_called)
+    monkeypatch.setattr("marita.audit.runner.covered_on_instance", fail_if_called)
     records = run_audit(
         AuditConfig(
             results_dir=results_dir,
@@ -702,7 +702,7 @@ def test_run_audit_reuses_one_evaluator_per_database(tmp_path: Path, monkeypatch
             init_calls.append(database_path)
             super().__init__(database_path, relation_disjoint=relation_disjoint)
 
-    monkeypatch.setattr("mahilda.audit.runner.SQLiteRuleEvaluator", CountingEvaluator)
+    monkeypatch.setattr("marita.audit.runner.SQLiteRuleEvaluator", CountingEvaluator)
     records = run_audit(
         AuditConfig(
             results_dir=results_dir,
@@ -754,8 +754,8 @@ def test_run_audit_writes_checkpoint_state_and_shards(tmp_path: Path) -> None:
     database_dir.mkdir()
     _write_tiny_database(database_dir, "alpha.db")
     _write_tiny_database(database_dir, "beta.db")
-    _write_results(results_dir, "MAHILDA", "alpha", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
-    _write_results(results_dir, "MAHILDA", "beta", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    _write_results(results_dir, "MARITA", "alpha", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    _write_results(results_dir, "MARITA", "beta", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
     _write_results(results_dir, "MATILDA", "alpha", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
     _write_results(results_dir, "MATILDA", "beta", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
 
@@ -789,7 +789,7 @@ def test_distributed_audit_processes_each_database_as_one_job(tmp_path: Path) ->
         _write_tiny_database(database_dir, f"{database}.db")
         _write_results(
             results_dir,
-            "MAHILDA",
+            "MARITA",
             database,
             ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"],
         )
@@ -826,7 +826,7 @@ def test_parallel_audit_disables_worker_progress_bars(tmp_path: Path, monkeypatc
     output_dir = tmp_path / "audit"
     database_dir.mkdir()
     _write_tiny_database(database_dir, "tiny.db")
-    _write_results(results_dir, "MAHILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
+    _write_results(results_dir, "MARITA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
     _write_results(results_dir, "MATILDA", "tiny", ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"])
 
     progress_calls: list[dict[str, object]] = []
@@ -846,7 +846,7 @@ def test_parallel_audit_disables_worker_progress_bars(tmp_path: Path, monkeypatc
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("mahilda.audit.runner.tqdm", RecordingProgress)
+    monkeypatch.setattr("marita.audit.runner.tqdm", RecordingProgress)
     run_audit(
         AuditConfig(
             results_dir=results_dir,
@@ -901,7 +901,7 @@ def test_run_audit_resume_skips_completed_shards(tmp_path: Path, monkeypatch: py
     def fail(*args: object, **kwargs: object) -> object:
         raise AssertionError("completed shard should not rerun on resume")
 
-    monkeypatch.setattr("mahilda.audit.runner._run_audit_shard", fail)
+    monkeypatch.setattr("marita.audit.runner._run_audit_shard", fail)
     records = run_audit(
         AuditConfig(
             results_dir=results_dir,
@@ -924,7 +924,7 @@ def _setup_subsumption_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     _write_tiny_database(database_dir, "tiny.db")
     _write_results(
         results_dir,
-        "MAHILDA",
+        "MARITA",
         "tiny",
         ["∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)"],
     )
@@ -945,7 +945,7 @@ def _setup_evaluator_reuse_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     _write_tiny_database(database_dir, "tiny.db")
     _write_results(
         results_dir,
-        "MAHILDA",
+        "MARITA",
         "tiny",
         [
             "∀ x0: child_0(parent_id=x0) ⇒ parent_0(id=x0)",
@@ -972,7 +972,7 @@ def _setup_instance_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Relationa
     _write_tiny_database(database_dir, "tiny.db")
     target_display = "∀ x0, y0: child_0(parent_id=x0, id=y0) ⇒ parent_0(id=x0)"
     target_rule = parse_formula(target_display)
-    _write_results(results_dir, "MAHILDA", "tiny", [target_display])
+    _write_results(results_dir, "MARITA", "tiny", [target_display])
     _write_results(
         results_dir,
         "MATILDA",

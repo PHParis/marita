@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 
-from mahilda.cli import batch
+from marita.cli import batch
 
 
 def test_run_database_writes_execution_time_file(monkeypatch, tmp_path: Path) -> None:
@@ -24,7 +24,7 @@ def test_run_database_writes_execution_time_file(monkeypatch, tmp_path: Path) ->
 
     result = batch.run_database(db_path, "demo", results_base, timeout=10)
 
-    metrics_path = results_base / "MAHILDA_demo" / "execution_time_demo.json"
+    metrics_path = results_base / "MARITA_demo" / "execution_time_demo.json"
     assert result["status"] == "success"
     assert result["rules_count"] == 3
     assert metrics_path.exists()
@@ -83,8 +83,8 @@ def test_run_database_restores_env_vars(monkeypatch, tmp_path: Path) -> None:
 
     previous_log_dir = "persisted-log-dir"
     previous_quiet = "0"
-    os.environ["MAHILDA_LOG_DIR"] = previous_log_dir
-    os.environ["MAHILDA_QUIET"] = previous_quiet
+    os.environ["MARITA_LOG_DIR"] = previous_log_dir
+    os.environ["MARITA_QUIET"] = previous_quiet
 
     try:
         db_path = tmp_path / "demo.db"
@@ -92,10 +92,10 @@ def test_run_database_restores_env_vars(monkeypatch, tmp_path: Path) -> None:
         results_base = tmp_path / "results"
         batch.run_database(db_path, "demo", results_base, timeout=10, log_root=tmp_path / "logs")
     finally:
-        assert os.environ.get("MAHILDA_LOG_DIR") == previous_log_dir
-        assert os.environ.get("MAHILDA_QUIET") == previous_quiet
-        os.environ.pop("MAHILDA_LOG_DIR", None)
-        os.environ.pop("MAHILDA_QUIET", None)
+        assert os.environ.get("MARITA_LOG_DIR") == previous_log_dir
+        assert os.environ.get("MARITA_QUIET") == previous_quiet
+        os.environ.pop("MARITA_LOG_DIR", None)
+        os.environ.pop("MARITA_QUIET", None)
 
 
 def test_run_database_timeout_fallback_without_sigalrm(monkeypatch, tmp_path: Path) -> None:

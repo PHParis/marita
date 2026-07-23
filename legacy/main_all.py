@@ -33,18 +33,18 @@ except ImportError:
     mlflow_available = False
     mlflow = None
 
-from mahilda.algorithms.base_algorithm import BaseAlgorithm
-from mahilda.algorithms.amie3 import Amie3
-from mahilda.algorithms.ilp import ILP
-from mahilda.algorithms.spider import Spider
-from mahilda.algorithms.mahilda import MAHILDA
+from marita.algorithms.base_algorithm import BaseAlgorithm
+from marita.algorithms.amie3 import Amie3
+from marita.algorithms.ilp import ILP
+from marita.algorithms.spider import Spider
+from marita.algorithms.marita import MARITA
 
-from mahilda.database.alchemy_utility import AlchemyUtility
-from mahilda.utils.logging_utils import configure_global_logger
-from mahilda.utils.monitor import ResourceMonitor
-from mahilda.utils.config_loader import load_config  # type: ignore
-from mahilda.utils.rules import RuleIO
-from mahilda.utils.structure_analysis import (
+from marita.database.alchemy_utility import AlchemyUtility
+from marita.utils.logging_utils import configure_global_logger
+from marita.utils.monitor import ResourceMonitor
+from marita.utils.config_loader import load_config  # type: ignore
+from marita.utils.rules import RuleIO
+from marita.utils.structure_analysis import (
     analyze_rule_structure as compute_structure_analysis,
     log_structure_analysis as log_structure_analysis_util,
     save_pattern_2_2_rules as save_pattern_2_2_rules_util,
@@ -296,9 +296,9 @@ class DatabaseBatchProcessor:
                     "ILP": ILP,
                     "AMIE3": Amie3,
                     "SPIDER": Spider,
-                    "MAHILDA": MAHILDA,
+                    "MARITA": MARITA,
                 }
-                selected_algorithm = algorithm_map.get(self.algorithm_name.upper(), MAHILDA)
+                selected_algorithm = algorithm_map.get(self.algorithm_name.upper(), MARITA)
 
                 db_uri = f"sqlite:///{db_file}"
                 self.logger.info(f"Using database URI: {db_uri}")
@@ -990,7 +990,7 @@ def main() -> None:
         algorithm_name = args.algorithm
     else:
         algo_config = cast(Dict[str, Any], config.get("algorithm", {}))
-        algorithm_name = str(algo_config.get("name", "MAHILDA"))
+        algorithm_name = str(algo_config.get("name", "MARITA"))
 
     # Initialize directories
     initialize_directories(results_dir, log_dir)

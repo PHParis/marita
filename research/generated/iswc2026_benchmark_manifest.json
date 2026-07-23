@@ -30,7 +30,7 @@
     "timeout_seconds": 7200,
     "memory_gb": 15
   },
-  "mahilda_parameters": {
+  "marita_parameters": {
     "joinability_scope": "declared_foreign_keys_only",
     "support_threshold": 0,
     "confidence_threshold": 0,
@@ -76,16 +76,16 @@
     }
   },
   "reported_main_results": [
-    {"database": "Biodegradability", "popper_rules": 0, "popper_time_seconds": 1754.1, "spider_rules": 4, "spider_time_seconds": 1.6, "amie3_rules": 0, "amie3_time_seconds": 0.8, "mahilda_rules": 4, "mahilda_time_seconds": 0.22},
-    {"database": "CDESchools", "popper_rules": "OOM", "popper_time_seconds": "OOM", "spider_rules": 2, "spider_time_seconds": 18.5, "amie3_rules": "OOM", "amie3_time_seconds": "OOM", "mahilda_rules": 3, "mahilda_time_seconds": 1.79},
-    {"database": "Chess", "popper_rules": "OOM", "popper_time_seconds": "OOM", "spider_rules": 1, "spider_time_seconds": 1.9, "amie3_rules": 0, "amie3_time_seconds": 14.8, "mahilda_rules": 2, "mahilda_time_seconds": 0.08},
-    {"database": "Cora", "popper_rules": 0, "popper_time_seconds": 20.6, "spider_rules": 4, "spider_time_seconds": 1.7, "amie3_rules": 0, "amie3_time_seconds": 2.6, "mahilda_rules": 4, "mahilda_time_seconds": 0.43},
-    {"database": "CraftBeer", "popper_rules": 0, "popper_time_seconds": 35.1, "spider_rules": 1, "spider_time_seconds": 1.5, "amie3_rules": 0, "amie3_time_seconds": 2.2, "mahilda_rules": 2, "mahilda_time_seconds": 0.06},
-    {"database": "Countries", "popper_rules": "OOM", "popper_time_seconds": "OOM", "spider_rules": "OOM", "spider_time_seconds": "OOM", "amie3_rules": 0, "amie3_time_seconds": 270.6, "mahilda_rules": 0, "mahilda_time_seconds": 1.21},
-    {"database": "Dunur", "popper_rules": 1, "popper_time_seconds": 3.9, "spider_rules": 20, "spider_time_seconds": 1.7, "amie3_rules": 0, "amie3_time_seconds": 0.6, "mahilda_rules": 12, "mahilda_time_seconds": 0.19},
-    {"database": "Nations", "popper_rules": "OOM", "popper_time_seconds": "OOM", "spider_rules": 2, "spider_time_seconds": 5.7, "amie3_rules": 0, "amie3_time_seconds": 623.2, "mahilda_rules": 2, "mahilda_time_seconds": 0.18},
-    {"database": "PTE", "popper_rules": 6, "popper_time_seconds": 2122.2, "spider_rules": 22, "spider_time_seconds": 4.8, "amie3_rules": 0, "amie3_time_seconds": 3.5, "mahilda_rules": 16, "mahilda_time_seconds": 0.48},
-    {"database": "SAT", "popper_rules": 4, "popper_time_seconds": 0.7, "spider_rules": 8, "spider_time_seconds": 2.6, "amie3_rules": 0, "amie3_time_seconds": 9.5, "mahilda_rules": 7, "mahilda_time_seconds": 0.41}
+    {"database": "Biodegradability", "popper_rules": 0, "popper_time_seconds": 1754.1, "spider_rules": 4, "spider_time_seconds": 1.6, "amie3_rules": 0, "amie3_time_seconds": 0.8, "marita_rules": 4, "marita_time_seconds": 0.22},
+    {"database": "CDESchools", "popper_rules": "OOM", "popper_time_seconds": "OOM", "spider_rules": 2, "spider_time_seconds": 18.5, "amie3_rules": "OOM", "amie3_time_seconds": "OOM", "marita_rules": 3, "marita_time_seconds": 1.79},
+    {"database": "Chess", "popper_rules": "OOM", "popper_time_seconds": "OOM", "spider_rules": 1, "spider_time_seconds": 1.9, "amie3_rules": 0, "amie3_time_seconds": 14.8, "marita_rules": 2, "marita_time_seconds": 0.08},
+    {"database": "Cora", "popper_rules": 0, "popper_time_seconds": 20.6, "spider_rules": 4, "spider_time_seconds": 1.7, "amie3_rules": 0, "amie3_time_seconds": 2.6, "marita_rules": 4, "marita_time_seconds": 0.43},
+    {"database": "CraftBeer", "popper_rules": 0, "popper_time_seconds": 35.1, "spider_rules": 1, "spider_time_seconds": 1.5, "amie3_rules": 0, "amie3_time_seconds": 2.2, "marita_rules": 2, "marita_time_seconds": 0.06},
+    {"database": "Countries", "popper_rules": "OOM", "popper_time_seconds": "OOM", "spider_rules": "OOM", "spider_time_seconds": "OOM", "amie3_rules": 0, "amie3_time_seconds": 270.6, "marita_rules": 0, "marita_time_seconds": 1.21},
+    {"database": "Dunur", "popper_rules": 1, "popper_time_seconds": 3.9, "spider_rules": 20, "spider_time_seconds": 1.7, "amie3_rules": 0, "amie3_time_seconds": 0.6, "marita_rules": 12, "marita_time_seconds": 0.19},
+    {"database": "Nations", "popper_rules": "OOM", "popper_time_seconds": "OOM", "spider_rules": 2, "spider_time_seconds": 5.7, "amie3_rules": 0, "amie3_time_seconds": 623.2, "marita_rules": 2, "marita_time_seconds": 0.18},
+    {"database": "PTE", "popper_rules": 6, "popper_time_seconds": 2122.2, "spider_rules": 22, "spider_time_seconds": 4.8, "amie3_rules": 0, "amie3_time_seconds": 3.5, "marita_rules": 16, "marita_time_seconds": 0.48},
+    {"database": "SAT", "popper_rules": 4, "popper_time_seconds": 0.7, "spider_rules": 8, "spider_time_seconds": 2.6, "amie3_rules": 0, "amie3_time_seconds": 9.5, "marita_rules": 7, "marita_time_seconds": 0.41}
   ],
   "ablation": {
     "database": "Biodegradability.db",

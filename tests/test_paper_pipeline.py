@@ -2,8 +2,8 @@ from pathlib import Path
 
 import yaml
 
-from mahilda.cli import main as main_cli
-from mahilda.cli import paper_pipeline
+from marita.cli import main as main_cli
+from marita.cli import paper_pipeline
 
 
 def _settings_file(tmp_path: Path, db_count: int = 3) -> Path:
@@ -33,7 +33,7 @@ def _settings_file(tmp_path: Path, db_count: int = 3) -> Path:
                     "workers_per_host": 1,
                     "timeout_seconds": 10,
                 },
-                {"id": "030_b1_mahilda", "experiment": "B1", "algorithms": ["MAHILDA"], "databases": "all"},
+                {"id": "030_b1_marita", "experiment": "B1", "algorithms": ["MARITA"], "databases": "all"},
                 {"id": "040_b1_spider", "experiment": "B1", "algorithms": ["SPIDER"], "databases": "all"},
                 {"id": "050_b3_joinability", "experiment": "B3", "databases": "all"},
             ],
@@ -54,7 +54,7 @@ def test_pipeline_plans_expected_job_counts(tmp_path: Path) -> None:
     assert len(jobs) == 1 + 20 + 3 + 3 + 6
     assert by_stage["010_setup"] == 1
     assert by_stage["020_b2_disjointness"] == 20
-    assert by_stage["030_b1_mahilda"] == 3
+    assert by_stage["030_b1_marita"] == 3
     assert by_stage["040_b1_spider"] == 3
     assert by_stage["050_b3_joinability"] == 6
 
@@ -66,7 +66,7 @@ def test_pipeline_initialise_queue_is_idempotent(tmp_path: Path) -> None:
     paper_pipeline.initialise_queue(settings, databases)
     paper_pipeline.initialise_queue(settings, databases)
 
-    pending = list((settings.queue_dir / "queue" / "030_b1_mahilda" / "pending").glob("*.json"))
+    pending = list((settings.queue_dir / "queue" / "030_b1_marita" / "pending").glob("*.json"))
     assert len(pending) == 2
 
 
@@ -74,7 +74,7 @@ def test_claim_job_moves_only_one_pending_file(tmp_path: Path) -> None:
     settings = paper_pipeline.load_settings(_settings_file(tmp_path, db_count=1))
     databases = paper_pipeline.resolve_databases(settings.database_dir, settings.expected_databases)
     paper_pipeline.initialise_queue(settings, databases)
-    stage = next(stage for stage in settings.stages if stage.id == "030_b1_mahilda")
+    stage = next(stage for stage in settings.stages if stage.id == "030_b1_marita")
 
     claim1 = paper_pipeline.claim_job(settings, stage, "tipi00")
     claim2 = paper_pipeline.claim_job(settings, stage, "tipi01")
@@ -88,7 +88,7 @@ def test_recover_stale_jobs_ignores_vanished_running_file(tmp_path: Path, monkey
     settings = paper_pipeline.load_settings(_settings_file(tmp_path, db_count=1))
     databases = paper_pipeline.resolve_databases(settings.database_dir, settings.expected_databases)
     paper_pipeline.initialise_queue(settings, databases)
-    stage = next(stage for stage in settings.stages if stage.id == "030_b1_mahilda")
+    stage = next(stage for stage in settings.stages if stage.id == "030_b1_marita")
     claim = paper_pipeline.claim_job(settings, stage, "tipi00")
     assert claim is not None
     running_path, _ = claim
@@ -108,7 +108,7 @@ def test_recover_stale_jobs_ignores_orphan_heartbeat_file(tmp_path: Path, monkey
     settings = paper_pipeline.load_settings(_settings_file(tmp_path, db_count=1))
     databases = paper_pipeline.resolve_databases(settings.database_dir, settings.expected_databases)
     paper_pipeline.initialise_queue(settings, databases)
-    stage = next(stage for stage in settings.stages if stage.id == "030_b1_mahilda")
+    stage = next(stage for stage in settings.stages if stage.id == "030_b1_marita")
     running_dir = settings.queue_dir / "queue" / stage.id / "running"
     heartbeat_path = running_dir / "orphan.heartbeat.json"
     heartbeat_path.write_text('{"host": "tipi00"}', encoding="utf-8")

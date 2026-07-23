@@ -1,7 +1,7 @@
 # MARITA paper conformance contract
 
 This document maps the active specification in
-`MAHILDA_ISWC_2026_short_paper/main.tex` to executable implementation checks.
+`MARITA_ISWC_2026_short_paper/main.tex` to executable implementation checks.
 It is intended to be reviewed whenever the paper's algorithm or the miner is
 changed.
 

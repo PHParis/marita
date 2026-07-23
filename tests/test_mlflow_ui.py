@@ -1,11 +1,11 @@
 import subprocess
 
-from mahilda.cli import mlflow_ui
+from marita.cli import mlflow_ui
 
 
 def test_mlflow_ui_launches_with_default_port(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("mahilda.cli.mlflow_ui.importlib.util.find_spec", lambda _name: object())
+    monkeypatch.setattr("marita.cli.mlflow_ui.importlib.util.find_spec", lambda _name: object())
 
     captured: dict[str, object] = {}
 
@@ -14,7 +14,7 @@ def test_mlflow_ui_launches_with_default_port(monkeypatch, tmp_path) -> None:
         captured["check"] = check
         return None
 
-    monkeypatch.setattr("mahilda.cli.mlflow_ui.subprocess.run", fake_run)
+    monkeypatch.setattr("marita.cli.mlflow_ui.subprocess.run", fake_run)
 
     exit_code = mlflow_ui.main([])
 
@@ -37,7 +37,7 @@ def test_mlflow_ui_launches_with_default_port(monkeypatch, tmp_path) -> None:
 
 def test_mlflow_ui_launches_with_custom_port(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("mahilda.cli.mlflow_ui.importlib.util.find_spec", lambda _name: object())
+    monkeypatch.setattr("marita.cli.mlflow_ui.importlib.util.find_spec", lambda _name: object())
 
     captured: dict[str, object] = {}
 
@@ -46,7 +46,7 @@ def test_mlflow_ui_launches_with_custom_port(monkeypatch, tmp_path) -> None:
         captured["cmd"] = cmd
         return None
 
-    monkeypatch.setattr("mahilda.cli.mlflow_ui.subprocess.run", fake_run)
+    monkeypatch.setattr("marita.cli.mlflow_ui.subprocess.run", fake_run)
 
     exit_code = mlflow_ui.main(["--port", "6001"])
 
@@ -68,7 +68,7 @@ def test_mlflow_ui_launches_with_custom_port(monkeypatch, tmp_path) -> None:
 
 def test_mlflow_ui_errors_when_mlflow_missing(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("mahilda.cli.mlflow_ui.importlib.util.find_spec", lambda _name: None)
+    monkeypatch.setattr("marita.cli.mlflow_ui.importlib.util.find_spec", lambda _name: None)
 
     exit_code = mlflow_ui.main([])
 
@@ -77,13 +77,13 @@ def test_mlflow_ui_errors_when_mlflow_missing(monkeypatch, tmp_path) -> None:
 
 def test_mlflow_ui_returns_error_on_subprocess_failure(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("mahilda.cli.mlflow_ui.importlib.util.find_spec", lambda _name: object())
+    monkeypatch.setattr("marita.cli.mlflow_ui.importlib.util.find_spec", lambda _name: object())
 
     def fake_run(cmd: list[str], check: bool) -> None:
         del check
         raise subprocess.CalledProcessError(returncode=2, cmd=cmd)
 
-    monkeypatch.setattr("mahilda.cli.mlflow_ui.subprocess.run", fake_run)
+    monkeypatch.setattr("marita.cli.mlflow_ui.subprocess.run", fake_run)
 
     exit_code = mlflow_ui.main([])
 
@@ -92,13 +92,13 @@ def test_mlflow_ui_returns_error_on_subprocess_failure(monkeypatch, tmp_path) ->
 
 def test_mlflow_ui_handles_keyboard_interrupt(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("mahilda.cli.mlflow_ui.importlib.util.find_spec", lambda _name: object())
+    monkeypatch.setattr("marita.cli.mlflow_ui.importlib.util.find_spec", lambda _name: object())
 
     def fake_run(cmd: list[str], check: bool) -> None:
         del cmd, check
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("mahilda.cli.mlflow_ui.subprocess.run", fake_run)
+    monkeypatch.setattr("marita.cli.mlflow_ui.subprocess.run", fake_run)
 
     exit_code = mlflow_ui.main([])
 

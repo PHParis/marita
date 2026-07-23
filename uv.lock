@@ -1465,7 +1465,7 @@ wheels = [
 ]
 
 [[package]]
-name = "mahilda"
+name = "marita"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

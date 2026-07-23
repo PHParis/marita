@@ -6,7 +6,7 @@ import logging
 import subprocess
 from pathlib import Path
 
-from mahilda.utils import run_cmd as run_cmd_module
+from marita.utils import run_cmd as run_cmd_module
 
 
 class DummyLogger:
@@ -217,7 +217,7 @@ def test_external_command_env_adds_user_local_bin(monkeypatch, tmp_path: Path) -
 
 def test_wrap_with_systemd_scope_adds_limits(monkeypatch) -> None:
     logger = DummyLogger()
-    monkeypatch.delenv("MAHILDA_DISABLE_SYSTEMD_SCOPE", raising=False)
+    monkeypatch.delenv("MARITA_DISABLE_SYSTEMD_SCOPE", raising=False)
     monkeypatch.setattr(run_cmd_module.os, "name", "posix")
     monkeypatch.setattr(run_cmd_module, "which", lambda name: "/usr/bin/systemd-run" if name == "systemd-run" else None)
     monkeypatch.setattr(run_cmd_module, "_systemd_user_manager_active", lambda: True)

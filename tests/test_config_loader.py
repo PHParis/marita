@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from mahilda.utils.config_loader import load_config, load_typed_config
+from marita.utils.config_loader import load_config, load_typed_config
 
 
 def test_load_config_resolves_paths_relative_to_config_file(tmp_path: Path) -> None:
@@ -21,7 +21,7 @@ def test_load_config_resolves_paths_relative_to_config_file(tmp_path: Path) -> N
                 "results:",
                 "  output_dir: ../results",
                 "algorithm:",
-                "  name: MAHILDA",
+                "  name: MARITA",
                 "mlflow:",
                 "  tracking_uri: file:../mlruns",
                 "benchmark:",
@@ -78,7 +78,7 @@ def test_load_config_rejects_non_positive_batch_workers(tmp_path: Path) -> None:
                 "results:",
                 "  output_dir: ./results",
                 "algorithm:",
-                "  name: MAHILDA",
+                "  name: MARITA",
                 "batch:",
                 "  workers: 0",
             ]
@@ -103,7 +103,7 @@ def test_load_config_rejects_invalid_mlflow_shape_when_enabled(tmp_path: Path) -
                 "results:",
                 "  output_dir: ./results",
                 "algorithm:",
-                "  name: MAHILDA",
+                "  name: MARITA",
                 "mlflow:",
                 "  use: true",
             ]
@@ -143,7 +143,7 @@ def test_load_config_reports_missing_logging_section(tmp_path: Path) -> None:
                 "results:",
                 "  output_dir: ./results",
                 "algorithm:",
-                "  name: MAHILDA",
+                "  name: MARITA",
             ]
         ),
         encoding="utf-8",
@@ -180,7 +180,7 @@ def test_load_config_rejects_invalid_baseline_name(tmp_path: Path) -> None:
                 "results:",
                 "  output_dir: ./results",
                 "algorithm:",
-                "  name: MAHILDA",
+                "  name: MARITA",
                 "benchmark:",
                 "  baseline: nope",
             ]
@@ -205,7 +205,7 @@ def test_load_config_rejects_invalid_timeout_values(tmp_path: Path) -> None:
                 "results:",
                 "  output_dir: ./results",
                 "algorithm:",
-                "  name: MAHILDA",
+                "  name: MARITA",
                 "  parameters:",
                 "    timeout: 0",
                 "monitor:",
@@ -232,7 +232,7 @@ def test_load_config_rejects_invalid_benchmark_timeout(tmp_path: Path) -> None:
                 "results:",
                 "  output_dir: ./results",
                 "algorithm:",
-                "  name: MAHILDA",
+                "  name: MARITA",
                 "benchmark:",
                 "  timeout: 0",
             ]
@@ -257,7 +257,7 @@ def test_load_typed_config_builds_dataclass_view(tmp_path: Path) -> None:
                 "results:",
                 "  output_dir: ./results",
                 "algorithm:",
-                "  name: mahilda",
+                "  name: marita",
                 "batch:",
                 "  workers: 5",
                 "  timeout: 88",
@@ -271,7 +271,7 @@ def test_load_typed_config_builds_dataclass_view(tmp_path: Path) -> None:
 
     config = load_typed_config(str(config_path))
 
-    assert config.algorithm.name == "MAHILDA"
+    assert config.algorithm.name == "MARITA"
     assert config.batch.workers == 5
     assert config.batch.timeout == 88
     assert config.benchmark.timeout == 99
@@ -291,7 +291,7 @@ def test_load_typed_config_rejects_missing_database_name(tmp_path: Path) -> None
                 "results:",
                 "  output_dir: ./results",
                 "algorithm:",
-                "  name: MAHILDA",
+                "  name: MARITA",
             ]
         ),
         encoding="utf-8",
@@ -310,7 +310,7 @@ def test_load_config_rejects_missing_required_keys(tmp_path: Path) -> None:
                 "logging: {}",
                 "results: {}",
                 "algorithm:",
-                "  name: MAHILDA",
+                "  name: MARITA",
             ]
         ),
         encoding="utf-8",
@@ -339,7 +339,7 @@ def test_load_config_rejects_blank_database_name(tmp_path: Path) -> None:
                 "results:",
                 "  output_dir: ./results",
                 "algorithm:",
-                "  name: MAHILDA",
+                "  name: MARITA",
             ]
         ),
         encoding="utf-8",

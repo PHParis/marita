@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mahilda.cli.main import main
+from marita.cli.main import main
 
 
 def write_config(path: Path, algorithm_name: str) -> None:
@@ -24,7 +24,7 @@ def write_config(path: Path, algorithm_name: str) -> None:
     )
 
 
-def test_run_rejects_non_mahilda_algorithm(tmp_path: Path) -> None:
+def test_run_rejects_non_marita_algorithm(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     write_config(config_path, "AMIE3")
 
@@ -35,7 +35,7 @@ def test_run_rejects_non_mahilda_algorithm(tmp_path: Path) -> None:
 
 def test_benchmark_rejects_invalid_baseline(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
-    write_config(config_path, "MAHILDA")
+    write_config(config_path, "MARITA")
 
     exit_code = main(["benchmark", "--config", str(config_path), "--baseline", "UNKNOWN"])
 

@@ -4,7 +4,7 @@ import json
 import threading
 from typing import TYPE_CHECKING
 
-from mahilda.audit.distributed import (
+from marita.audit.distributed import (
     claim_job,
     finish_job,
     initialise_queue,

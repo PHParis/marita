@@ -4,7 +4,7 @@ from typing import Any
 
 import yaml
 
-from mahilda.cli import paper_benchmark
+from marita.cli import paper_benchmark
 
 
 def test_resolve_paper_databases_with_case_variants(tmp_path: Path) -> None:
@@ -138,14 +138,14 @@ def test_host_sharded_dry_run_writes_only_selected_shard_configs(tmp_path: Path)
     assert sorted(path.name for path in (output_dir / "configs").glob("*.yaml")) == ["popper_B.yaml"]
 
 
-def test_build_mahilda_config_uses_paper_parameters(tmp_path: Path) -> None:
+def test_build_marita_config_uses_paper_parameters(tmp_path: Path) -> None:
     db_dir = tmp_path / "dbs"
     db_dir.mkdir()
     db = db_dir / "Biodegradability.db"
     db.touch()
 
     spec = paper_benchmark._build_run_spec(
-        algorithm="MAHILDA",
+        algorithm="MARITA",
         database=db,
         database_dir=db_dir,
         output_dir=tmp_path / "results",
@@ -154,7 +154,7 @@ def test_build_mahilda_config_uses_paper_parameters(tmp_path: Path) -> None:
     )
     config = yaml.safe_load(spec.config_path.read_text(encoding="utf-8"))
 
-    assert config["algorithm"]["name"] == "MAHILDA"
+    assert config["algorithm"]["name"] == "MARITA"
     assert config["algorithm"]["parameters"]["disjoint_semantics"] is True
     assert config["algorithm"]["parameters"]["walk_length"] == 3
     assert config["monitor"]["timeout"] == 7200
@@ -267,7 +267,7 @@ def test_resolve_hosts_rejects_duplicates() -> None:
 
 
 def test_parse_all_algorithms() -> None:
-    assert paper_benchmark._parse_algorithms("ALL") == ["MAHILDA", "AMIE3", "SPIDER", "POPPER", "MATILDA"]
+    assert paper_benchmark._parse_algorithms("ALL") == ["MARITA", "AMIE3", "SPIDER", "POPPER", "MATILDA"]
 
 
 def test_run_command_classifies_internal_timeout_exit_code(monkeypatch, tmp_path: Path) -> None:
@@ -294,7 +294,7 @@ def test_run_command_classifies_internal_timeout_exit_code(monkeypatch, tmp_path
         algorithm="MATILDA",
         database=tmp_path / "demo.db",
         config_path=tmp_path / "config.yaml",
-        command=["mahilda", "benchmark"],
+        command=["marita", "benchmark"],
         stdout_path=tmp_path / "stdout.log",
     )
 
@@ -330,7 +330,7 @@ def test_run_command_writes_running_and_final_progress(monkeypatch, tmp_path: Pa
         algorithm="POPPER",
         database=tmp_path / "Demo.db",
         config_path=tmp_path / "config.yaml",
-        command=["mahilda", "benchmark"],
+        command=["marita", "benchmark"],
         stdout_path=tmp_path / "stdout.log",
         progress_path=progress_path,
     )
@@ -378,7 +378,7 @@ def test_print_progress_status_overlays_shared_progress(tmp_path: Path, capsys) 
             algorithm="POPPER",
             database=tmp_path / "A.db",
             config_path=tmp_path / "popper_a.yaml",
-            command=["mahilda", "benchmark"],
+            command=["marita", "benchmark"],
             stdout_path=tmp_path / "popper_a.stdout",
             progress_path=output_dir / "progress" / "POPPER_A.db.json",
         ),
@@ -386,7 +386,7 @@ def test_print_progress_status_overlays_shared_progress(tmp_path: Path, capsys) 
             algorithm="POPPER",
             database=tmp_path / "B.db",
             config_path=tmp_path / "popper_b.yaml",
-            command=["mahilda", "benchmark"],
+            command=["marita", "benchmark"],
             stdout_path=tmp_path / "popper_b.stdout",
             progress_path=output_dir / "progress" / "POPPER_B.db.json",
         ),
@@ -394,7 +394,7 @@ def test_print_progress_status_overlays_shared_progress(tmp_path: Path, capsys) 
             algorithm="POPPER",
             database=tmp_path / "C.db",
             config_path=tmp_path / "popper_c.yaml",
-            command=["mahilda", "benchmark"],
+            command=["marita", "benchmark"],
             stdout_path=tmp_path / "popper_c.stdout",
             progress_path=output_dir / "progress" / "POPPER_C.db.json",
         ),
@@ -424,12 +424,12 @@ def test_print_progress_status_overlays_shared_progress(tmp_path: Path, capsys) 
 
 
 def test_email_config_uses_environment(monkeypatch) -> None:
-    monkeypatch.setenv("MAHILDA_EMAIL_TO", "to@example.com")
-    monkeypatch.setenv("MAHILDA_EMAIL_FROM", "from@example.com")
-    monkeypatch.setenv("MAHILDA_SMTP_HOST", "smtp.example.com")
-    monkeypatch.setenv("MAHILDA_SMTP_PORT", "587")
-    monkeypatch.setenv("MAHILDA_SMTP_USER", "user@example.com")
-    monkeypatch.setenv("MAHILDA_SMTP_STARTTLS", "1")
+    monkeypatch.setenv("MARITA_EMAIL_TO", "to@example.com")
+    monkeypatch.setenv("MARITA_EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("MARITA_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("MARITA_SMTP_PORT", "587")
+    monkeypatch.setenv("MARITA_SMTP_USER", "user@example.com")
+    monkeypatch.setenv("MARITA_SMTP_STARTTLS", "1")
 
     args = paper_benchmark.parse_arguments(["--dry-run"])
     config = paper_benchmark._email_config_from_args(args)
@@ -444,7 +444,7 @@ def test_email_config_uses_environment(monkeypatch) -> None:
 
 
 def test_paper_benchmark_dry_run_sends_email(monkeypatch, tmp_path: Path) -> None:
-    for variable in ("MAHILDA_SMTP_HOST", "MAHILDA_SMTP_PORT", "MAHILDA_SMTP_STARTTLS", "MAHILDA_SMTP_USER"):
+    for variable in ("MARITA_SMTP_HOST", "MARITA_SMTP_PORT", "MARITA_SMTP_STARTTLS", "MARITA_SMTP_USER"):
         monkeypatch.delenv(variable, raising=False)
     db_dir = tmp_path / "dbs"
     db_dir.mkdir()

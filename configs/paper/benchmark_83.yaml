@@ -2,7 +2,7 @@ database_dir: data/relational
 output: results/paper_table2
 logs: logs/paper_table2
 databases: all
-algorithms: [POPPER, AMIE3, SPIDER, MAHILDA]
+algorithms: [POPPER, AMIE3, SPIDER, MARITA]
 expected_databases: 83
 
 limits:
@@ -20,7 +20,7 @@ workers:
   POPPER: 1
   AMIE3: 1
   SPIDER: 2
-  MAHILDA: 2
+  MARITA: 2
 
 b2:
   databases: [Biodegradability]
@@ -47,9 +47,9 @@ pipeline:
       timeout_seconds: 600
       memory_gb: 10
 
-    - id: 030_b1_mahilda
+    - id: 030_b1_marita
       experiment: B1
-      algorithms: [MAHILDA]
+      algorithms: [MARITA]
       databases: all
       workers_per_host: 2
       timeout_seconds: 3600
