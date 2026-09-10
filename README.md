@@ -3,33 +3,16 @@
 MARITA is a tool that takes as input a relational database, and that delivers as output *rules* of the form
 > PARENT(parent1,child) and PARENT(parent2,child) and RESIDENCE(parent1, city1, zip1) =>  RESIDENCE(parent2, city1, zip1)
 
-To run MARITA, clone the repository, and create a config file.
-
-```
-uv run marita run --config configs/config.example.yaml
-```
-
-## Artifact Layout
-
-- Logs: `logs/`
-- Downloaded relational benchmark databases: `data/relational/`
-- Single-run and benchmark artifacts: `results/`
-- Batch artifacts: `results/batch/`
-- Local MLflow data: `mlruns/`
-
-See `docs/config.md` for full path-resolution behavior and overrides.
+To run MARITA:
+- clone this repository
+- create a config file like [this one](https://github.com/PHParis/marita/blob/main/configs/config.example.yaml).
+- run  `uv run marita run --config your_config_file` 
 
 ## Documentation
 
 - `docs/architecture.md`: package structure, active modules, and runtime data flow
 - `docs/cli.md`: command behavior and examples
 - `docs/config.md`: configuration schema, defaults, normalization, and precedence
-- `docs/benchmark-datasets.md`: relational benchmark dataset download, conversion workflow, and fast MARITA regression-testing guidance
-- `docs/iswc2026-benchmark-extraction.md`: extracted paper parameters, reported results, and rerun notes
-- `docs/archive.md`: archive notes for `legacy/` and `research/`
-- `docs/yago-rdf-benchmark-protocol.md`: RDF-to-SQLite benchmark protocol for YAGO-derived datasets
-- `docs/yago-rdf-test-readiness.md`: remaining steps before full YAGO benchmark runs
-- `docs/implementation-plan.md`: tracked implementation phases
 
 
 ## Quick Start
@@ -42,7 +25,14 @@ uv run marita smoke
 
 # Reproducing our experiments
 
-We reproduce here the benchmarks and the commands to run MARITA and the competitors on these benchmarks.
+We reproduce here the benchmarks and the commands to run MARITA and the competitors on these benchmarks. The following documentation goes further:
+
+- `docs/benchmark-datasets.md`: relational benchmark dataset download, conversion workflow, and fast MARITA regression-testing guidance
+- `docs/iswc2026-benchmark-extraction.md`: extracted paper parameters, reported results, and rerun notes
+- `docs/archive.md`: archive notes for `legacy/` and `research/`
+- `docs/yago-rdf-benchmark-protocol.md`: RDF-to-SQLite benchmark protocol for YAGO-derived datasets
+- `docs/yago-rdf-test-readiness.md`: remaining steps before full YAGO benchmark runs
+- `docs/implementation-plan.md`: tracked implementation phases
 
 ## Baseline Runtime Dependencies
 
