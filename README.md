@@ -29,8 +29,21 @@ If you use MARITA for academic purposes, please cite our paper
 
 ## Quick Start
 
+### Linux
 ```bash
 uv sync
 uv run marita test-db
 uv run marita smoke
+```
+
+### Windows
+
+```
+python -m venv .venv
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+.venv\Scripts\activate
+python.exe -m pip install --upgrade pip
+pip install -e .
+python -m marita test-db
+python -m marita smoke
 ```
