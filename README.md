@@ -40,10 +40,9 @@ uv run marita smoke
 
 ```
 python -m venv .venv
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser      # only the first time
 .venv\Scripts\activate
-python.exe -m pip install --upgrade pip
-pip install -e .
+python.exe -m pip install --upgrade pip                                   # only the first time
+pip install -e .                                                          # only the first time
 python -m marita test-db
-python -m marita smoke
 ```
